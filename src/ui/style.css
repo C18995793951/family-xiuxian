@@ -116,3 +116,9 @@ nav.bottom { display: none; }
   button { min-height: 44px; }
   .modal { padding: 1em; }
 }
+
+/* AI 润色（表现层） */
+.ai-text p { margin: .2em 0 .6em; text-indent: 2em; }
+.ai-text h3 { margin-top: .8em; }
+.ai-bar { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; font-size: .88em; margin: .2em 0 .6em; }
+.tag.ai-tag { border-color: #7a8fb5; color: #b8c8e8; }
