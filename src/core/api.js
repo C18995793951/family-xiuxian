@@ -56,6 +56,12 @@
     answerRequest: wrap(FX.Family.answerRequest),
     useYanshou: wrap((s, id) => ({ ok: true, text: FX.Sim.takeYanshou(s, s.people[id]) })),
     seal: (s) => FX.Sim.seal(s),
+    // 记一笔玩家侧决策说明（如 AI 托管的理由）：只进历史，不影响任何规则数值
+    note: (s, text, tag) => {
+      const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!t) return { ok: false, error: '空说明' };
+      return { ok: true, hid: FX.H.add(s, { type: 'agent', tags: [tag || 'AI 家主'], key: 'agent', params: { text: t }, severity: 1 }) };
+    },
 
     /* ---------- 视图数据（只读）---------- */
     view: {

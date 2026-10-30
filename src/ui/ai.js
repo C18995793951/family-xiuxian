@@ -62,7 +62,7 @@
   // 能否调用；不能时给出回落原因
   AI.ready = () => {
     const c = AI.config();
-    if (!c.enabled) return { ok: false, reason: '未开启 AI 润色' };
+    if (!c.enabled) return { ok: false, reason: '未开启 AI 功能' };
     if (!AI.hasKey()) return { ok: false, reason: '未填写 key' };
     if (!AI.env.fetch) return { ok: false, reason: '环境不支持网络请求' };
     if (!AI.validEndpoint(c.endpoint)) return { ok: false, reason: '接口地址无效（需 https）' };
@@ -79,7 +79,7 @@
   const setStatus = (kind, ok, reason) => {
     AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' };
   };
-  const KIND_NAME = { turn: '回合纪事润色', event: '事件文本变体', history: '家史润色', advice: '军师建议', test: '测试连接' };
+  const KIND_NAME = { turn: '回合纪事润色', event: '事件文本变体', history: '家史润色', advice: '军师建议', test: '测试连接', agent: 'AI 家主决策' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '尚未调用';
@@ -88,7 +88,7 @@
 
   /* ---------- 底层调用 ---------- */
   // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
-  AI.call = async (kind, messages, maxTokens) => {
+  AI.call = async (kind, messages, maxTokens, extra) => {
     const r = AI.ready();
     if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
     const c = AI.config();
@@ -101,7 +101,7 @@
       const req = AI.env.fetch(c.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
-        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } })),
+        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } }, extra || {})),
         signal: ctrl ? ctrl.signal : undefined,
       });
       const res = await Promise.race([req, timeout]);

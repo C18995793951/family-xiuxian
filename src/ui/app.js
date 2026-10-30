@@ -24,7 +24,7 @@
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
   const unfinished = (t) => `<div class="unfinished">${esc(t)}</div>`;
-  const AI = FX.AI;
+  const AI = FX.AI, Agent = FX.Agent;
   // AI 润色块：模板先行，润色到达后替换显示，可切回原文；失败只给一行灰字
   function aiBlock(key, templateHtml, opt) {
     opt = opt || {};
@@ -195,9 +195,10 @@
     return `${ended}
       <div class="row between"><h1>${esc(ov.surname)}氏宗祠</h1><div class="row">
         <span class="muted">第 ${ov.turn} 回合 · 第 ${ov.year} 年${ov.phase === 'advancing' ? '（推进中，第 ' + (ov.yearInTurn + 1) + ' 年待续）' : ''}</span>
-        <button class="primary" data-act="advance" ${s.ended || s.pending.length ? 'disabled' : ''}>${ov.phase === 'advancing' ? '继续推进' : '推进五年'}</button>
+        <button class="primary" data-act="advance" ${s.ended || s.pending.length || Agent.running ? 'disabled' : ''}>${ov.phase === 'advancing' ? '继续推进' : '推进五年'}</button>
       </div></div>
-      ${s.pending.length ? `<div class="card hl"><b>有 ${s.pending.length} 件事等家主决断：</b>${s.pending.map((i) => esc(FX.Ev.def(i.defId).name)).join('、')} <button data-act="openEvent">处理</button></div>` : ''}
+      ${s.pending.length ? `<div class="card hl"><b>有 ${s.pending.length} 件事等家主决断：</b>${s.pending.map((i) => esc(FX.Ev.def(i.defId).name)).join('、')} <button data-act="openEvent" ${Agent.running ? 'disabled' : ''}>处理</button></div>` : ''}
+      ${pageAgent()}
       <div class="grid">
         <div class="card ${ancWarn ? 'hl' : ''}"><h3>老祖寿元</h3>
           ${anc ? `<div class="big ${ancWarn}">${anc.left} 年</div><p>${pl(anc.id)} · ${esc(anc.realm)} · ${trace('战力 ' + anc.power, '最高战力者即老祖/太上长老')}</p>
@@ -325,7 +326,7 @@
   }
 
   /* ---------- 纪事 ---------- */
-  const CHRON_TYPES = [['', '全部'], ['breakthrough', '突破'], ['death', '死亡'], ['marriage', '婚嫁'], ['event', '事件'], ['succession', '继承'], ['rule', '家规'], ['building', '建设'], ['resource', '经济'], ['leave', '离族']];
+  const CHRON_TYPES = [['', '全部'], ['breakthrough', '突破'], ['death', '死亡'], ['marriage', '婚嫁'], ['event', '事件'], ['succession', '继承'], ['rule', '家规'], ['building', '建设'], ['resource', '经济'], ['leave', '离族'], ['agent', 'AI 家主']];
   function pageChron() {
     const s = UI.s, C2 = UI.chron;
     const es = s.history.filter((e) => (C2.type ? e.type === C2.type : e.severity >= 2)).slice(-400).reverse();
@@ -350,6 +351,21 @@
     return aiBlock(AI.turnKey(s, t), html, { kind: 'turn', arg: t, label: 'AI 润色此回合' });
   }
 
+  /* ---------- AI 家主托管 ---------- */
+  function pageAgent() {
+    const s = UI.s;
+    if (s.ended) return '';
+    const rd = AI.ready();
+    const recent = Agent.log.slice(-8).reverse().map((x) => `<p class="${x.ok ? '' : 'muted'}"><span class="y">${x.year}年</span>${esc(x.text)}</p>`).join('');
+    let ctl;
+    if (Agent.running) ctl = `<div class="row"><b class="warn">${esc(Agent.status)}</b><button class="danger" data-act="agentStop" ${Agent.stopRequested ? 'disabled' : ''}>${Agent.stopRequested ? '本步结束后停下…' : '停止托管'}</button></div>`;
+    else if (!rd.ok) ctl = `<p class="muted">需要先开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
+    else ctl = `<div class="row"><button class="primary" data-act="agentRun" data-n="1" ${s.pending.length ? 'title="会先替你决断待决事件"' : ''}>托管 1 回合</button><button data-act="agentRun" data-n="5">托管 5 回合</button>${Agent.status ? `<span class="muted">${esc(Agent.status)}</span>` : ''}</div>`;
+    return `<div class="card ${Agent.running ? 'hl' : ''}"><h3>AI 家主托管</h3>${ctl}
+      <p class="muted">AI 只能从规则此刻允许的操作里挑（差事、建设、买卖、突破、请求、继承人、家规、事件选项），成败仍由规则结算。每一步的理由都记进纪事（筛选“AI 家主”）。模型出错或回复看不懂时托管暂停，局面不动。每回合约调用 1–3 次。</p>
+      ${recent ? `<div class="log">${recent}</div>` : ''}</div>`;
+  }
+
   /* ---------- 军师（只在玩家点击时调用）---------- */
   function pageAdvisor() {
     const s = UI.s;
@@ -360,7 +376,7 @@
     let body;
     if (text) body = `<div class="ai-text">${esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('')}</div><div class="ai-bar"><span class="tag ai-tag">AI 建议</span><span class="muted">仅供参考：成败仍由规则结算，军师看不到未来。</span></div>`;
     else if (AI.isPending(key)) body = '<p class="muted">军师正在思量…（不影响你继续操作）</p>';
-    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 润色（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
+    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
     else body = (AI.failure(key) ? `<p class="muted">军师未能进言：${esc(AI.failure(key))}</p>` : '<p class="muted">把当前状态摘要（不含存档）发给模型，换几条文字建议。</p>') + '<button data-act="aiPolish" data-kind="advice">请军师进言</button>';
     return `<div class="card"><h3>军师进言</h3>${body}</div>`;
   }
@@ -418,10 +434,11 @@
   function aiSettings() {
     const c = AI.config();
     const rd = AI.ready();
-    return `<div class="card"><h3>AI 润色（DeepSeek，可选）</h3>
+    return `<div class="card"><h3>AI 功能（DeepSeek，可选）：润色与家主托管</h3>
       <p class="muted">规则算结果，大模型只写文字：它只改写纪事、家史、事件描述和军师建议的文字，不决定任何结果，输出不进存档、不影响状态哈希。关闭或失败时一律显示原模板文字，游戏全程可离线玩。</p>
-      <p class="warn">开启后，回合纪事、家史摘录、事件描述和家族状态摘要会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
-      <div class="stat"><label for="in-aion">开启 AI 润色</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
+      <p class="muted">「AI 家主托管」在宗祠里：开启后可让 AI 替你当家若干回合，它只能从规则允许的操作里挑，每步理由记进纪事。</p>
+      <p class="warn">开启后，回合纪事、家史摘录、事件描述、家族状态摘要和当下可选操作会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
+      <div class="stat"><label for="in-aion">开启 AI 功能</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
       <div class="stat"><label for="in-aikey">DeepSeek key</label><span class="row"><input type="password" id="in-aikey" autocomplete="off" spellcheck="false" placeholder="${AI.hasKey() ? '已保存（不回显）' : 'sk-…'}" style="width:14em"><button data-act="aiKey">保存 key</button>${AI.hasKey() ? '<button class="danger" data-act="aiKeyClear">清除 key</button>' : ''}</span></div>
       <div class="stat"><label for="in-aimodel">模型</label><span><input type="text" id="in-aimodel" list="ai-models" value="${esc(c.model)}" style="width:12em"><datalist id="ai-models">${AI.models.map((m) => `<option value="${m}">`).join('')}</datalist></span></div>
       <div class="stat"><label for="in-aiurl">接口地址</label><input type="text" id="in-aiurl" value="${esc(c.endpoint)}" style="width:22em;max-width:100%"></div>
@@ -595,6 +612,16 @@
       toast(AI.setKey(v) ? 'key 已保存在本浏览器' : '✗ 浏览器不允许本地存储，无法保存 key');
       render();
     },
+    async agentRun(d) {
+      if (Agent.running) return;
+      UI.modals = UI.modals.filter((m) => m.type !== 'event');
+      const r = await Agent.run(UI.s, Number(d.n) || 1, { afterTurn: () => { scheduleSave(); autoPolish(); } });
+      scheduleSave();
+      toast(Agent.status, 4000);
+      render();
+      if (!r.ok) openPendingIfAny();
+    },
+    agentStop() { Agent.stop(); render(); },
     aiKeyClear() { AI.setKey(''); toast('key 已清除'); render(); },
     aiSave() {
       const c = AI.saveConfig({ model: ($('#in-aimodel') || {}).value, endpoint: ($('#in-aiurl') || {}).value, dailyLimit: ($('#in-ailimit') || {}).value });
@@ -709,7 +736,7 @@
     batchDuty(d, el) { UI.cult.batchDuty = el.value; },
     set(d, el) { result(Game.setSetting(UI.s, d.k, el.checked)); },
     setNum(d, el) { result(Game.setSetting(UI.s, d.k, Math.max(0, Math.floor(Number(el.value) || 0)))); },
-    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 润色已开启' : 'AI 润色已开启，填写 key 后生效') : 'AI 润色已关闭，全部显示原文'); render(); },
+    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 功能已开启' : 'AI 功能已开启，填写 key 后生效') : 'AI 功能已关闭，全部显示原文、不再托管'); render(); },
   };
   // 每回合结束后批量润色一次（不等待；无 key 或关闭时不发请求）
   function autoPolish() {
@@ -754,6 +781,7 @@
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
 
   // 润色异步到达：有输入框聚焦时先不重绘，避免冲掉正在输入的内容
+  Agent.onStep = () => { scheduleSave(); AI.onUpdate(); };
   AI.onUpdate = () => {
     const a = document.activeElement;
     if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { UI.aiDirty = true; return; }

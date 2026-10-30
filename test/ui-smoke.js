@@ -87,6 +87,11 @@ async function drain(page) {
     const body = JSON.parse(req.postData());
     sent.push({ auth: req.headers().authorization, body: req.postData() });
     const user = body.messages[body.messages.length - 1].content;
+    if (body.response_format) { // AI 家主托管：事件选第一个可选项，回合安排挑前两个操作
+      const pick = (head) => user.split(head)[1].split('\n').slice(1).filter((x) => x.includes('｜')).map((x) => x.split('｜')[0]);
+      const j = /待决事件/.test(user) ? { id: pick('可选项')[0], why: '冒烟测试' } : { actions: pick('可选操作').slice(0, 2).map((id) => ({ id, why: '冒烟测试' })), summary: '冒烟测试' };
+      return route.fulfill({ status: 200, headers: Object.assign({ 'Content-Type': 'application/json' }, cors), body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(j) } }] }) });
+    }
     const content = /原文：/.test(user) ? user.split('原文：')[1].split('\n')[0] : user.split('\n').slice(1).filter((x) => x && !x.startsWith('【')).slice(0, 2).join('\n') || '通';
     await route.fulfill({ status: 200, headers: Object.assign({ 'Content-Type': 'application/json' }, cors), body: JSON.stringify({ choices: [{ message: { content } }] }) });
   });
@@ -129,6 +134,15 @@ async function drain(page) {
   const exported = await page.evaluate(() => FX.Game.save.serialize(FX.UI.s, Date.now()));
   const aiCheck = { aiShown, requests: sent.length, keyEcho: keyEcho === '', keyOnlyInHeader: sent.every((x) => x.auth === 'Bearer ' + KEY && !x.body.includes(KEY)), keyNotInSave: !exported.includes(KEY), hashStable: hAi1 === hAi0 };
   if (!aiCheck.keyEcho || !aiCheck.keyOnlyInHeader || !aiCheck.keyNotInSave || !aiCheck.hashStable || !sent.length) errors.push('AI 检查失败：' + JSON.stringify(aiCheck));
+  // AI 家主托管 1 回合
+  await page.click('nav.side [data-act="page"][data-p="hall"]');
+  const agentT0 = await page.evaluate(() => FX.UI.s.turn);
+  await page.click('[data-act="agentRun"][data-n="1"]');
+  await page.waitForFunction(() => !FX.Agent.running && FX.Agent.status, null, { timeout: 15000 }).catch(() => errors.push('托管未结束'));
+  const agent = await page.evaluate(() => ({ status: FX.Agent.status, turn: FX.UI.s.turn, notes: FX.UI.s.history.filter((e) => e.type === 'agent').length, ended: !!FX.UI.s.ended }));
+  if (!(agent.turn > agentT0 || agent.ended) || !agent.notes) errors.push('托管未推进或未记理由：' + JSON.stringify(agent));
+  await page.screenshot({ path: path.join(out, 'agent.png'), fullPage: true });
+  await drain(page);
   // 关掉 AI，后续不再发请求
   await drain(page);
   await page.click('nav.side [data-act="page"][data-p="rules"]');
@@ -154,6 +168,6 @@ async function drain(page) {
     await m.screenshot({ path: path.join(out, 'mobile-' + p + '.png'), fullPage: false });
   }
   await browser.close();
-  console.log(JSON.stringify({ year, events, reloadSame: h1 === h2, importSame: h2 === h3, offlineRequests, ai: aiCheck, overflow, errors }, null, 1));
+  console.log(JSON.stringify({ year, events, reloadSame: h1 === h2, importSame: h2 === h3, offlineRequests, ai: aiCheck, agent, overflow, errors }, null, 1));
   process.exit(errors.length || offlineRequests || h1 !== h2 || h2 !== h3 || Object.values(overflow).some((x) => x > 0) ? 1 : 0);
 })();
