@@ -688,6 +688,7 @@ nav.bottom { display: none; }
     alchemy: ['{name}开炉 {n} 次，成丹{item} {made} 颗。'],
     milestone: ['里程碑：{what}。'],
     ending: ['家族结局：{what}。'],
+    agent: ['（AI 家主）{text}'],
   });
 
   const H = {};
@@ -3608,6 +3609,12 @@ nav.bottom { display: none; }
     answerRequest: wrap(FX.Family.answerRequest),
     useYanshou: wrap((s, id) => ({ ok: true, text: FX.Sim.takeYanshou(s, s.people[id]) })),
     seal: (s) => FX.Sim.seal(s),
+    // 记一笔玩家侧决策说明（如 AI 托管的理由）：只进历史，不影响任何规则数值
+    note: (s, text, tag) => {
+      const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (!t) return { ok: false, error: '空说明' };
+      return { ok: true, hid: FX.H.add(s, { type: 'agent', tags: [tag || 'AI 家主'], key: 'agent', params: { text: t }, severity: 1 }) };
+    },
 
     /* ---------- 视图数据（只读）---------- */
     view: {
@@ -3832,7 +3839,7 @@ nav.bottom { display: none; }
   // 能否调用；不能时给出回落原因
   AI.ready = () => {
     const c = AI.config();
-    if (!c.enabled) return { ok: false, reason: '未开启 AI 润色' };
+    if (!c.enabled) return { ok: false, reason: '未开启 AI 功能' };
     if (!AI.hasKey()) return { ok: false, reason: '未填写 key' };
     if (!AI.env.fetch) return { ok: false, reason: '环境不支持网络请求' };
     if (!AI.validEndpoint(c.endpoint)) return { ok: false, reason: '接口地址无效（需 https）' };
@@ -3849,7 +3856,7 @@ nav.bottom { display: none; }
   const setStatus = (kind, ok, reason) => {
     AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' };
   };
-  const KIND_NAME = { turn: '回合纪事润色', event: '事件文本变体', history: '家史润色', advice: '军师建议', test: '测试连接' };
+  const KIND_NAME = { turn: '回合纪事润色', event: '事件文本变体', history: '家史润色', advice: '军师建议', test: '测试连接', agent: 'AI 家主决策' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '尚未调用';
@@ -3858,7 +3865,7 @@ nav.bottom { display: none; }
 
   /* ---------- 底层调用 ---------- */
   // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
-  AI.call = async (kind, messages, maxTokens) => {
+  AI.call = async (kind, messages, maxTokens, extra) => {
     const r = AI.ready();
     if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
     const c = AI.config();
@@ -3871,7 +3878,7 @@ nav.bottom { display: none; }
       const req = AI.env.fetch(c.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
-        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } })),
+        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } }, extra || {})),
         signal: ctrl ? ctrl.signal : undefined,
       });
       const res = await Promise.race([req, timeout]);
@@ -4048,6 +4055,217 @@ nav.bottom { display: none; }
   FX.AI = AI;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- ui/agent.js ---------- */
+/* ============================================================
+ * agent —— AI 家主托管（ui 一侧）
+ * 大模型替玩家做家主的决定，但只能从规则当下允许的操作里挑：
+ *  - 每个决定都通过 FX.Game 公开接口执行，结果由规则结算；
+ *  - 选了列表外的操作一律跳过；模型失败、超时或回复看不懂时，托管暂停，局面不动；
+ *  - 每一步的理由用 Game.note 记进纪事；ops 记下操作序列，同种子按序重放结果逐位相同。
+ * 这个文件不访问 DOM，可在 Node 中注入 FX.AI.env 做测试。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+
+  const Agent = {
+    running: false,
+    stopRequested: false,
+    log: [], // { year, turn, text, ok }（界面显示用，不进存档）
+    ops: [], // 操作序列，供重放校验
+    status: '',
+    onStep: null,
+    maxActions: 6,
+  };
+  const Gm = () => FX.Game;
+  const CF = () => FX.CONFIG;
+  const say = (s, text, ok) => {
+    Agent.log.push({ year: s.year, turn: s.turn, text, ok: ok !== false });
+    if (Agent.log.length > 200) Agent.log.shift();
+  };
+  const step = () => { if (typeof Agent.onStep === 'function') { try { Agent.onStep(); } catch (e) { /* 界面刷新失败不影响托管 */ } } };
+
+  /* ---------- 当下可选的操作（全部来自规则校验）---------- */
+  Agent.menu = (s) => {
+    const G2 = Gm(), P = FX.P, C = CF(), res = s.family.resources;
+    const m = [];
+    const add = (id, label, run) => m.push({ id, label, run });
+    const att = FX.Sim.needsAttention(s).length;
+    if (att) add('duty:attention', `按系统建议安排 ${att} 名待安排族人的差事`, () => G2.applySuggestions(s, false));
+    add('duty:all', '全族按系统建议重新安排差事（会撤换现任差事）', () => G2.applySuggestions(s, true));
+    for (const k of Object.keys(C.buildings)) {
+      const c = FX.Econ.canUpgrade(s, k);
+      if (c.ok) add('build:' + k, `升级${C.buildings[k].name}到 ${(s.family.buildings[k] || 0) + 1} 级（花灵石 ${c.cost.stone}${c.cost.ore ? '、矿材 ' + c.cost.ore : ''}）：${C.buildings[k].desc || ''}`, () => G2.upgrade(s, k));
+    }
+    const keepGrain = Math.ceil(FX.Econ.consumption(s).grain * 3 + 20);
+    if (res.grain > keepGrain + 5) { const q = Math.floor(res.grain - keepGrain); add('sell:grain', `卖出灵谷 ${q}（保留三年口粮 ${keepGrain}），约得灵石 ${Math.round(q * FX.Econ.sellPrice(s, 'grain'))}`, () => G2.sell(s, 'grain', q)); }
+    for (const k of ['ore', 'herb']) if (res[k] > 25) { const q = Math.floor(res[k] - 20); add('sell:' + k, `卖出${C.items[k]} ${q}，约得灵石 ${Math.round(q * FX.Econ.sellPrice(s, k))}`, () => G2.sell(s, k, q)); }
+    for (const o of s.market.offers) {
+      if (!o.qty || res.stone < o.price) continue;
+      const q = o.item === 'qiju' ? Math.min(o.qty, 3, Math.floor(res.stone / o.price)) : 1;
+      add('buy:' + o.item, `坊市买入${C.items[o.item] || o.item}×${q}（花灵石 ${Math.round(o.price * q)}）`, () => G2.buy(s, o.item, q));
+    }
+    for (const p of P.living(s)) {
+      const b = G2.breakthroughPreview(s, p.id);
+      if (!b || !b.kind || !b.can || !b.can.ok) continue;
+      add('break:' + p.id, `让${p.name}（${P.realmName(p)}，余寿 ${P.lifespanLeft(s, p)} 年）冲击${b.target}：成功率 ${b.chance}%${b.kind !== 'minor' ? `，失败身死概率 ${b.death}%` : ''}${b.kind === 'zhuji' && res.zhuji ? '，耗筑基丹 1 颗' : ''}`, () => G2.attemptBreakthrough(s, p.id));
+    }
+    for (const q of s.family.requests) {
+      const who = P.name(s, q.personId);
+      add(`req:${q.id}:1`, `准许${who}的请求：${q.what}（代价：${FX.Family.requestCost(s, q)}）`, () => G2.answerRequest(s, q.id, true));
+      add(`req:${q.id}:0`, `驳回${who}的请求：${q.what}`, () => G2.answerRequest(s, q.id, false));
+    }
+    const cands = FX.Family.rankCandidates(s, s.family.headId).filter((x) => x.p.id !== s.family.headId && x.p.id !== s.family.heirId).slice(0, 3);
+    for (const x of cands) {
+      const a = FX.Family.acceptance(s, x.p.id, s.family.headId);
+      add('heir:' + x.p.id, `立${x.p.name}（${P.realmName(x.p)}，${P.age(s, x.p)} 岁）为继承人，全族接受度 ${a.value}${s.family.heirId ? '（替换现继承人' + P.name(s, s.family.heirId) + '）' : ''}`, () => G2.designateHeir(s, x.p.id));
+    }
+    if (s.family.heirId && s.family.headId) add('abdicate', `家主${P.name(s, s.family.headId)}退位，由继承人${P.name(s, s.family.heirId)}接任`, () => G2.abdicate(s));
+    for (const cat of ['succession', 'allocation', 'foreign']) {
+      if (FX.Family.ruleCooldownLeft(s, cat)) continue;
+      for (const o of Object.keys(C.rules[cat])) {
+        if (o === s.family.rules[cat]) continue;
+        const pass = Math.round(FX.Family.resistChance(s, FX.Family.ruleAdverse(s, cat, o)) * 100);
+        add(`rule:${cat}:${o}`, `把家规改为「${C.rules[cat][o].name}」：${C.rules[cat][o].desc}（家主威望 -8，阻力判定通过率约 ${pass}%）`, () => G2.changeRule(s, cat, o));
+      }
+    }
+    if (s.family.buildings.field > (s.family.settings.herbPlots || 0)) add('herb:+1', `多划 1 块灵田种灵药（现 ${s.family.settings.herbPlots || 0} 块，少产灵谷）`, () => G2.setSetting(s, 'herbPlots', (s.family.settings.herbPlots || 0) + 1));
+    if (s.family.settings.herbPlots > 0) add('herb:-1', '少种 1 块灵药，改回灵谷', () => G2.setSetting(s, 'herbPlots', s.family.settings.herbPlots - 1));
+    if (res.yanshou > 0) for (const p of P.living(s)) if (p.yanshouTaken < 3 && P.lifespanLeft(s, p) < 20 && p.realm.major >= 1) add('yanshou:' + p.id, `给${p.name}（${P.realmName(p)}，余寿 ${P.lifespanLeft(s, p)} 年）服延寿丹`, () => G2.useYanshou(s, p.id));
+    return m;
+  };
+
+  /* ---------- 解析模型回复 ---------- */
+  Agent.parse = (text) => {
+    const t = String(text || '');
+    const a = t.indexOf('{'), b = t.lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    try { return JSON.parse(t.slice(a, b + 1)); } catch (e) { return null; }
+  };
+  const ROLE = [
+    '你是一个修仙家族的家主，替玩家经营家族。目标依次是：家族长久延续、不断出筑基与金丹修士、不陷入入不敷出、族人人心稳定。',
+    '你只能从给出的可选操作里挑，用它们的 id；结果由游戏规则结算，你无法改变成败。',
+    '只依据给出的数据判断，不要假设没给出的信息。回复必须是 json。',
+  ].join('\n');
+
+  async function ask(messages, maxTokens) {
+    const r = await FX.AI.call('agent', messages, maxTokens, { response_format: { type: 'json_object' } });
+    if (!r.ok) return { ok: false, reason: r.reason };
+    const j = Agent.parse(r.text);
+    if (!j) return { ok: false, reason: '回复不是可读的 json' };
+    return { ok: true, j };
+  }
+
+  // 回合开始：一次调用排出本回合的若干操作
+  Agent.planTurn = async (s) => {
+    const menu = Agent.menu(s);
+    const facts = FX.AI.adviceFacts(s);
+    const r = await ask([
+      { role: 'system', content: ROLE + `\n回复格式：{"actions":[{"id":"可选操作的 id","why":"一句理由"}],"summary":"本回合方针，一句话"}。最多 ${Agent.maxActions} 个操作，按执行顺序排列；什么都不做就给空数组。` },
+      { role: 'user', content: `家族现状：\n${facts}\n\n可选操作（id｜说明）：\n${menu.map((x) => x.id + '｜' + x.label).join('\n')}\n\n请安排第 ${s.turn} 回合（第 ${s.year} 年起五年）。` },
+    ], 900);
+    if (!r.ok) return r;
+    const acts = Array.isArray(r.j.actions) ? r.j.actions.slice(0, Agent.maxActions) : [];
+    if (r.j.summary) { Gm().note(s, '本回合方针：' + String(r.j.summary).slice(0, 120)); Agent.ops.push(['note']); say(s, '方针：' + String(r.j.summary).slice(0, 120)); }
+    let done = 0;
+    for (const a of acts) {
+      const id = String((a && a.id) || '');
+      const why = String((a && a.why) || '').slice(0, 100);
+      const item = Agent.menu(s).find((x) => x.id === id); // 每步重新校验：前一步可能花掉了灵石
+      if (!item) { say(s, `跳过「${id}」：此刻不在可选列表里`, false); continue; }
+      const res = item.run();
+      Agent.ops.push(['act', id]);
+      if (res && res.ok === false) { say(s, `${item.label}：未成（${res.error}）`, false); continue; }
+      done++;
+      const extra = id.startsWith('break:') && res ? (res.success ? '，破关成功' : '，破关失败' + (res.died ? '，身死道消' : '')) : '';
+      Gm().note(s, `${item.label.split('：')[0]}${extra}。理由：${why || '未说明'}`);
+      Agent.ops.push(['note']);
+      say(s, `${item.label.split('：')[0]}${extra}${why ? ' —— ' + why : ''}`);
+      step();
+    }
+    return { ok: true, done };
+  };
+
+  // 待决事件：一次调用选一个选项
+  Agent.decideEvent = async (s) => {
+    const inst = s.pending[0];
+    const v = FX.Ev.view(s, inst);
+    const av = v.options.filter((o) => o.available);
+    if (!av.length) return { ok: false, reason: '事件没有可选项' };
+    const r = await ask([
+      { role: 'system', content: ROLE + '\n回复格式：{"id":"选项 id","why":"一句理由"}。' },
+      { role: 'user', content: `家族现状：\n${FX.AI.adviceFacts(s)}\n\n待决事件「${v.name}」：${v.text}${v.causes.length ? '\n起因：' + v.causes.join('；') : ''}\n可选项（id｜内容｜成本｜风险｜可能结果）：\n${av.map((o) => [o.id, o.label, o.cost, o.risk, o.outcome || '—'].join('｜')).join('\n')}\n请决断。` },
+    ], 400);
+    if (!r.ok) return r;
+    const o = av.find((x) => x.id === String(r.j.id || ''));
+    if (!o) return { ok: false, reason: `选了不存在的选项「${r.j.id}」` };
+    const res = Gm().resolveEvent(s, inst.id, o.id);
+    Agent.ops.push(['event', inst.id, o.id]);
+    if (!res.ok) return { ok: false, reason: res.error };
+    const why = String(r.j.why || '').slice(0, 100);
+    Gm().note(s, `${v.name}：选「${o.label}」。理由：${why || '未说明'}`);
+    Agent.ops.push(['note']);
+    say(s, `${v.name}：选「${o.label}」${why ? ' —— ' + why : ''}。${res.result || ''}`);
+    step();
+    return { ok: true };
+  };
+
+  /* ---------- 托管主循环 ---------- */
+  // hooks.afterTurn(s)：每个回合结束时调用（界面用来存档、润色）
+  Agent.run = async (s, turns, hooks) => {
+    hooks = hooks || {};
+    if (Agent.running) return { ok: false, reason: '托管已在进行' };
+    const rd = FX.AI.ready();
+    if (!rd.ok) { Agent.status = '无法托管：' + rd.reason; step(); return { ok: false, reason: rd.reason }; }
+    Agent.running = true; Agent.stopRequested = false;
+    let finished = 0, planned = -1, reason = '';
+    const pause = (why) => { reason = why; say(s, '托管暂停：' + why, false); };
+    try {
+      while (finished < turns && !s.ended) {
+        if (Agent.stopRequested) { pause('你叫停了托管'); break; }
+        Agent.status = `托管中：第 ${s.turn} 回合（${finished}/${turns}）`; step();
+        if (s.pending.length) {
+          const r = await Agent.decideEvent(s);
+          if (!r.ok) { pause('事件「' + FX.Ev.def(s.pending[0].defId).name + '」未能决断（' + r.reason + '），请你来处理'); break; }
+          continue;
+        }
+        if (s.phase !== 'advancing' && planned !== s.turn) {
+          planned = s.turn;
+          const r = await Agent.planTurn(s);
+          if (!r.ok) { pause('第 ' + s.turn + ' 回合安排失败（' + r.reason + '），局面未动'); break; }
+          if (Agent.stopRequested) continue;
+        }
+        const t0 = s.turn;
+        const r = Gm().advance(s);
+        Agent.ops.push(['advance']);
+        if (!r.ok) { pause('推进失败：' + r.error); break; }
+        if (s.turn !== t0 || s.ended) { finished++; if (hooks.afterTurn) hooks.afterTurn(s); }
+        step();
+      }
+    } finally {
+      Agent.running = false;
+      Agent.status = reason ? '已暂停：' + reason : s.ended ? '本局已结束' : `托管完成 ${finished} 回合`;
+      step();
+    }
+    return { ok: !reason, finished, reason };
+  };
+  Agent.stop = () => { Agent.stopRequested = true; };
+
+  // 按 ops 重放（测试用）：同种子同操作序列应得到同一状态
+  Agent.replay = (s, ops, notes) => {
+    let ni = 0;
+    for (const op of ops) {
+      if (op[0] === 'act') { const it = Agent.menu(s).find((x) => x.id === op[1]); if (it) it.run(); }
+      else if (op[0] === 'event') Gm().resolveEvent(s, op[1], op[2]);
+      else if (op[0] === 'advance') Gm().advance(s);
+      else if (op[0] === 'note') Gm().note(s, notes[ni++]);
+    }
+    return s;
+  };
+
+  FX.Agent = Agent;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- ui/app.js ---------- */
 /* ============================================================
  * ui —— 交互界面。只通过 FX.Game 公开函数操作核心，不直接修改状态。
@@ -4075,7 +4293,7 @@ nav.bottom { display: none; }
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
   const unfinished = (t) => `<div class="unfinished">${esc(t)}</div>`;
-  const AI = FX.AI;
+  const AI = FX.AI, Agent = FX.Agent;
   // AI 润色块：模板先行，润色到达后替换显示，可切回原文；失败只给一行灰字
   function aiBlock(key, templateHtml, opt) {
     opt = opt || {};
@@ -4246,9 +4464,10 @@ nav.bottom { display: none; }
     return `${ended}
       <div class="row between"><h1>${esc(ov.surname)}氏宗祠</h1><div class="row">
         <span class="muted">第 ${ov.turn} 回合 · 第 ${ov.year} 年${ov.phase === 'advancing' ? '（推进中，第 ' + (ov.yearInTurn + 1) + ' 年待续）' : ''}</span>
-        <button class="primary" data-act="advance" ${s.ended || s.pending.length ? 'disabled' : ''}>${ov.phase === 'advancing' ? '继续推进' : '推进五年'}</button>
+        <button class="primary" data-act="advance" ${s.ended || s.pending.length || Agent.running ? 'disabled' : ''}>${ov.phase === 'advancing' ? '继续推进' : '推进五年'}</button>
       </div></div>
-      ${s.pending.length ? `<div class="card hl"><b>有 ${s.pending.length} 件事等家主决断：</b>${s.pending.map((i) => esc(FX.Ev.def(i.defId).name)).join('、')} <button data-act="openEvent">处理</button></div>` : ''}
+      ${s.pending.length ? `<div class="card hl"><b>有 ${s.pending.length} 件事等家主决断：</b>${s.pending.map((i) => esc(FX.Ev.def(i.defId).name)).join('、')} <button data-act="openEvent" ${Agent.running ? 'disabled' : ''}>处理</button></div>` : ''}
+      ${pageAgent()}
       <div class="grid">
         <div class="card ${ancWarn ? 'hl' : ''}"><h3>老祖寿元</h3>
           ${anc ? `<div class="big ${ancWarn}">${anc.left} 年</div><p>${pl(anc.id)} · ${esc(anc.realm)} · ${trace('战力 ' + anc.power, '最高战力者即老祖/太上长老')}</p>
@@ -4376,7 +4595,7 @@ nav.bottom { display: none; }
   }
 
   /* ---------- 纪事 ---------- */
-  const CHRON_TYPES = [['', '全部'], ['breakthrough', '突破'], ['death', '死亡'], ['marriage', '婚嫁'], ['event', '事件'], ['succession', '继承'], ['rule', '家规'], ['building', '建设'], ['resource', '经济'], ['leave', '离族']];
+  const CHRON_TYPES = [['', '全部'], ['breakthrough', '突破'], ['death', '死亡'], ['marriage', '婚嫁'], ['event', '事件'], ['succession', '继承'], ['rule', '家规'], ['building', '建设'], ['resource', '经济'], ['leave', '离族'], ['agent', 'AI 家主']];
   function pageChron() {
     const s = UI.s, C2 = UI.chron;
     const es = s.history.filter((e) => (C2.type ? e.type === C2.type : e.severity >= 2)).slice(-400).reverse();
@@ -4401,6 +4620,21 @@ nav.bottom { display: none; }
     return aiBlock(AI.turnKey(s, t), html, { kind: 'turn', arg: t, label: 'AI 润色此回合' });
   }
 
+  /* ---------- AI 家主托管 ---------- */
+  function pageAgent() {
+    const s = UI.s;
+    if (s.ended) return '';
+    const rd = AI.ready();
+    const recent = Agent.log.slice(-8).reverse().map((x) => `<p class="${x.ok ? '' : 'muted'}"><span class="y">${x.year}年</span>${esc(x.text)}</p>`).join('');
+    let ctl;
+    if (Agent.running) ctl = `<div class="row"><b class="warn">${esc(Agent.status)}</b><button class="danger" data-act="agentStop" ${Agent.stopRequested ? 'disabled' : ''}>${Agent.stopRequested ? '本步结束后停下…' : '停止托管'}</button></div>`;
+    else if (!rd.ok) ctl = `<p class="muted">需要先开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
+    else ctl = `<div class="row"><button class="primary" data-act="agentRun" data-n="1" ${s.pending.length ? 'title="会先替你决断待决事件"' : ''}>托管 1 回合</button><button data-act="agentRun" data-n="5">托管 5 回合</button>${Agent.status ? `<span class="muted">${esc(Agent.status)}</span>` : ''}</div>`;
+    return `<div class="card ${Agent.running ? 'hl' : ''}"><h3>AI 家主托管</h3>${ctl}
+      <p class="muted">AI 只能从规则此刻允许的操作里挑（差事、建设、买卖、突破、请求、继承人、家规、事件选项），成败仍由规则结算。每一步的理由都记进纪事（筛选“AI 家主”）。模型出错或回复看不懂时托管暂停，局面不动。每回合约调用 1–3 次。</p>
+      ${recent ? `<div class="log">${recent}</div>` : ''}</div>`;
+  }
+
   /* ---------- 军师（只在玩家点击时调用）---------- */
   function pageAdvisor() {
     const s = UI.s;
@@ -4411,7 +4645,7 @@ nav.bottom { display: none; }
     let body;
     if (text) body = `<div class="ai-text">${esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('')}</div><div class="ai-bar"><span class="tag ai-tag">AI 建议</span><span class="muted">仅供参考：成败仍由规则结算，军师看不到未来。</span></div>`;
     else if (AI.isPending(key)) body = '<p class="muted">军师正在思量…（不影响你继续操作）</p>';
-    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 润色（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
+    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
     else body = (AI.failure(key) ? `<p class="muted">军师未能进言：${esc(AI.failure(key))}</p>` : '<p class="muted">把当前状态摘要（不含存档）发给模型，换几条文字建议。</p>') + '<button data-act="aiPolish" data-kind="advice">请军师进言</button>';
     return `<div class="card"><h3>军师进言</h3>${body}</div>`;
   }
@@ -4469,10 +4703,11 @@ nav.bottom { display: none; }
   function aiSettings() {
     const c = AI.config();
     const rd = AI.ready();
-    return `<div class="card"><h3>AI 润色（DeepSeek，可选）</h3>
+    return `<div class="card"><h3>AI 功能（DeepSeek，可选）：润色与家主托管</h3>
       <p class="muted">规则算结果，大模型只写文字：它只改写纪事、家史、事件描述和军师建议的文字，不决定任何结果，输出不进存档、不影响状态哈希。关闭或失败时一律显示原模板文字，游戏全程可离线玩。</p>
-      <p class="warn">开启后，回合纪事、家史摘录、事件描述和家族状态摘要会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
-      <div class="stat"><label for="in-aion">开启 AI 润色</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
+      <p class="muted">「AI 家主托管」在宗祠里：开启后可让 AI 替你当家若干回合，它只能从规则允许的操作里挑，每步理由记进纪事。</p>
+      <p class="warn">开启后，回合纪事、家史摘录、事件描述、家族状态摘要和当下可选操作会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
+      <div class="stat"><label for="in-aion">开启 AI 功能</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
       <div class="stat"><label for="in-aikey">DeepSeek key</label><span class="row"><input type="password" id="in-aikey" autocomplete="off" spellcheck="false" placeholder="${AI.hasKey() ? '已保存（不回显）' : 'sk-…'}" style="width:14em"><button data-act="aiKey">保存 key</button>${AI.hasKey() ? '<button class="danger" data-act="aiKeyClear">清除 key</button>' : ''}</span></div>
       <div class="stat"><label for="in-aimodel">模型</label><span><input type="text" id="in-aimodel" list="ai-models" value="${esc(c.model)}" style="width:12em"><datalist id="ai-models">${AI.models.map((m) => `<option value="${m}">`).join('')}</datalist></span></div>
       <div class="stat"><label for="in-aiurl">接口地址</label><input type="text" id="in-aiurl" value="${esc(c.endpoint)}" style="width:22em;max-width:100%"></div>
@@ -4646,6 +4881,16 @@ nav.bottom { display: none; }
       toast(AI.setKey(v) ? 'key 已保存在本浏览器' : '✗ 浏览器不允许本地存储，无法保存 key');
       render();
     },
+    async agentRun(d) {
+      if (Agent.running) return;
+      UI.modals = UI.modals.filter((m) => m.type !== 'event');
+      const r = await Agent.run(UI.s, Number(d.n) || 1, { afterTurn: () => { scheduleSave(); autoPolish(); } });
+      scheduleSave();
+      toast(Agent.status, 4000);
+      render();
+      if (!r.ok) openPendingIfAny();
+    },
+    agentStop() { Agent.stop(); render(); },
     aiKeyClear() { AI.setKey(''); toast('key 已清除'); render(); },
     aiSave() {
       const c = AI.saveConfig({ model: ($('#in-aimodel') || {}).value, endpoint: ($('#in-aiurl') || {}).value, dailyLimit: ($('#in-ailimit') || {}).value });
@@ -4760,7 +5005,7 @@ nav.bottom { display: none; }
     batchDuty(d, el) { UI.cult.batchDuty = el.value; },
     set(d, el) { result(Game.setSetting(UI.s, d.k, el.checked)); },
     setNum(d, el) { result(Game.setSetting(UI.s, d.k, Math.max(0, Math.floor(Number(el.value) || 0)))); },
-    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 润色已开启' : 'AI 润色已开启，填写 key 后生效') : 'AI 润色已关闭，全部显示原文'); render(); },
+    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 功能已开启' : 'AI 功能已开启，填写 key 后生效') : 'AI 功能已关闭，全部显示原文、不再托管'); render(); },
   };
   // 每回合结束后批量润色一次（不等待；无 key 或关闭时不发请求）
   function autoPolish() {
@@ -4805,6 +5050,7 @@ nav.bottom { display: none; }
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
 
   // 润色异步到达：有输入框聚焦时先不重绘，避免冲掉正在输入的内容
+  Agent.onStep = () => { scheduleSave(); AI.onUpdate(); };
   AI.onUpdate = () => {
     const a = document.activeElement;
     if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { UI.aiDirty = true; return; }

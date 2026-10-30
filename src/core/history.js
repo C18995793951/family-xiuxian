@@ -42,6 +42,7 @@
     alchemy: ['{name}开炉 {n} 次，成丹{item} {made} 颗。'],
     milestone: ['里程碑：{what}。'],
     ending: ['家族结局：{what}。'],
+    agent: ['（AI 家主）{text}'],
   });
 
   const H = {};
