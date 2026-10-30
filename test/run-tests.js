@@ -32,11 +32,11 @@ function check(no, name, fn) {
 const assert = (c, m) => { if (!c) throw new Error(m); };
 
 // 0. 分层规则：核心不得访问 DOM、浏览器存储、Math.random、Date.now
-check('0', '核心纯净（无 DOM / Math.random / Date.now）', () => {
+check('0', '核心纯净（无 DOM / 网络 / Math.random / Date.now）', () => {
   const bad = [];
   for (const f of loadCore.FILES) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', f + '.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    for (const pat of ['Math.random', 'Date.now', 'new Date', 'window.', 'document.', 'localStorage', 'indexedDB']) if (src.includes(pat)) bad.push(f + ':' + pat);
+    for (const pat of ['Math.random', 'Date.now', 'new Date', 'window.', 'document.', 'localStorage', 'indexedDB', 'fetch(', 'XMLHttpRequest', 'WebSocket', 'FX.AI']) if (src.includes(pat)) bad.push(f + ':' + pat);
   }
   assert(!bad.length, bad.join(', '));
   return loadCore.FILES.length + ' 个核心文件';

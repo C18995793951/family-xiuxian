@@ -124,6 +124,12 @@ nav.bottom { display: none; }
   .modal { padding: 1em; }
 }
 
+/* AI 润色（表现层） */
+.ai-text p { margin: .2em 0 .6em; text-indent: 2em; }
+.ai-text h3 { margin-top: .8em; }
+.ai-bar { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; font-size: .88em; margin: .2em 0 .6em; }
+.tag.ai-tag { border-color: #7a8fb5; color: #b8c8e8; }
+
 </style>
 </head>
 <body>
@@ -829,6 +835,39 @@ nav.bottom { display: none; }
     if (p.status === 'dead') parts.push(U.fill(pick(LIFE.end, 1), { dy: p.deathYear, age: p.deathYear - p.birthYear, cause: p.deathCause }));
     else if (p.status === 'left') parts.push(`第 ${p.leftYear} 年离族：${p.leftCause}。`);
     return parts.join('');
+  };
+
+  /* ---------- 家史（简版）：按“第一次、最高、最惨”与重要度选取节点 ----------
+   * 只读状态，不写入任何东西。每个节点都带来源记录 id，可追溯。
+   * 完整的节点选取规则与雷同度检查属于阶段 4。 */
+  H.familyHistory = (s) => {
+    const P = FX.P;
+    const node = (e) => ({ hid: e.id, year: e.year, text: H.text(e) });
+    const byType = (types, minSev) => s.history.filter((e) => types.includes(e.type) && e.severity >= (minSev || 1));
+    const firsts = s.records.firsts;
+    const firstNode = (k) => (firsts[k] ? H.get(s, firsts[k]) : null);
+    const ch = [];
+    const found = s.history.find((e) => e.type === 'found');
+    ch.push({ title: '开山始祖', nodes: found ? [node(found)] : [] });
+    ch.push({ title: '历任家主', nodes: byType(['succession'], 3).map(node).slice(0, 12) });
+    const brk = byType(['breakthrough'], 4).filter((e) => e.params.ok);
+    const fz = firstNode('firstBreakFail');
+    ch.push({ title: '重大突破', nodes: brk.slice(0, 10).map(node).concat(fz ? [node(fz)] : []).sort((a, b) => a.year - b.year) });
+    const rise = byType(['milestone', 'resource'], 3).slice(0, 8).map(node);
+    const pk = s.records.peaks;
+    const extra = [];
+    if (pk.population) extra.push({ hid: null, year: pk.population.year, text: `人口峰值 ${pk.population.value} 口（第 ${pk.population.year} 年）` });
+    if (pk.stone) extra.push({ hid: null, year: pk.stone.year, text: `灵石库存峰值 ${Math.round(pk.stone.value)}（第 ${pk.stone.year} 年）` });
+    ch.push({ title: '家族兴衰', nodes: rise.concat(extra).sort((a, b) => a.year - b.year) });
+    ch.push({ title: '重要战争', nodes: byType(['crisis'], 3).map(node) });
+    const mar = byType(['marriage'], 2).filter((e) => e.firstOf || (e.params.from && e.params.from !== '外姓' && e.params.from !== '族内'));
+    ch.push({ title: '婚姻联盟', nodes: mar.slice(0, 8).map(node) });
+    const strife = s.history.filter((e) => e.type === 'leave' && /出走|逐出|放逐|私奔/.test(e.params.cause || '') || (e.type === 'event' && ['S01', 'E06', 'E10B'].includes(e.params.defId)));
+    ch.push({ title: '重大内斗', nodes: strife.slice(0, 8).map(node) });
+    const end = s.ended ? H.get(s, s.ended.hid) : null;
+    const head = s.people[s.family.headId];
+    ch.push({ title: '家族结局', nodes: end ? [node(end)] : [{ hid: null, year: s.year, text: `至第 ${s.year} 年，族人 ${P.living(s).length} 口，家主${head ? head.name : '空缺'}，家史仍在续写` }] });
+    return { title: s.family.surname + '氏家史', chapters: ch };
   };
 
   FX.H = H;
@@ -3728,6 +3767,287 @@ nav.bottom { display: none; }
   FX.Store = Store;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- ui/ai.js ---------- */
+/* ============================================================
+ * ai —— 大模型润色（表现层，ui 一侧）
+ * 规则算结果，大模型只写文字：
+ *  - 只读游戏状态，从不写回；结果只存在本页内存里，不进存档、不影响哈希。
+ *  - 未开启、无 key、无网络、失败或超时，一律静默回落到模板文字；推进从不等待它。
+ *  - key 只存在浏览器 localStorage，只发往玩家配置的接口地址，不进存档、不打日志。
+ * 这个文件不访问 DOM，可在 Node 中注入 fetch / storage 做测试。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+
+  const LS_CFG = 'family-xiuxian:ai';
+  const LS_KEY = 'family-xiuxian:ai-key';
+
+  const AI = {
+    defaults: {
+      enabled: false,
+      // 与 project-companion（AI 朋友）实测可用的配置一致：deepseek-flash、官方 chat/completions、关闭思考
+      model: 'deepseek-flash',
+      endpoint: 'https://api.deepseek.com/chat/completions',
+      timeoutMs: 30000,
+      dailyLimit: 100, // 本机每天最多调用次数，防止误刷
+    },
+    models: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'],
+    // 可注入：测试时替换为假实现
+    env: {
+      fetch: typeof G.fetch === 'function' ? (...a) => G.fetch(...a) : null,
+      storage: (() => { try { return G.localStorage || null; } catch (e) { return null; } })(),
+      now: () => Date.now(),
+    },
+    cache: new Map(), // key -> { text, at }
+    pending: new Map(), // key -> Promise
+    failed: new Map(), // key -> reason（失败后不自动重试，避免反复计费）
+    status: null, // 最近一次调用：{ at, kind, ok, reason }
+    onUpdate: null,
+    calls: 0,
+  };
+
+  /* ---------- 配置与 key ---------- */
+  const store = () => AI.env.storage;
+  AI.config = () => {
+    let c = {};
+    try { c = JSON.parse((store() && store().getItem(LS_CFG)) || '{}') || {}; } catch (e) { c = {}; }
+    return Object.assign({}, AI.defaults, c);
+  };
+  AI.saveConfig = (patch) => {
+    const c = Object.assign(AI.config(), patch || {});
+    const clean = { enabled: !!c.enabled, model: String(c.model || AI.defaults.model).trim().slice(0, 64), endpoint: String(c.endpoint || AI.defaults.endpoint).trim().slice(0, 300), timeoutMs: Number(c.timeoutMs) || AI.defaults.timeoutMs, dailyLimit: Math.max(1, Math.floor(Number(c.dailyLimit) || AI.defaults.dailyLimit)) };
+    try { store() && store().setItem(LS_CFG, JSON.stringify(clean)); } catch (e) { /* 存不了就只在本页生效 */ }
+    return clean;
+  };
+  AI.hasKey = () => { try { return !!(store() && store().getItem(LS_KEY)); } catch (e) { return false; } };
+  AI.setKey = (k) => {
+    k = String(k || '').trim();
+    try { if (!store()) return false; if (k) store().setItem(LS_KEY, k); else store().removeItem(LS_KEY); return true; } catch (e) { return false; }
+  };
+  const getKey = () => { try { return (store() && store().getItem(LS_KEY)) || ''; } catch (e) { return ''; } };
+
+  AI.validEndpoint = (u) => /^https:\/\/[^\s/]+\/\S*$/.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\S*$/.test(u);
+
+  // 能否调用；不能时给出回落原因
+  AI.ready = () => {
+    const c = AI.config();
+    if (!c.enabled) return { ok: false, reason: '未开启 AI 润色' };
+    if (!AI.hasKey()) return { ok: false, reason: '未填写 key' };
+    if (!AI.env.fetch) return { ok: false, reason: '环境不支持网络请求' };
+    if (!AI.validEndpoint(c.endpoint)) return { ok: false, reason: '接口地址无效（需 https）' };
+    if (AI.usedToday() >= c.dailyLimit) return { ok: false, reason: '今日调用已达上限 ' + c.dailyLimit + ' 次' };
+    return { ok: true };
+  };
+
+  /* ---------- 每日用量（只记次数，存本机）---------- */
+  const LS_USE = 'family-xiuxian:ai-usage';
+  const today = () => new Date(AI.env.now()).toISOString().slice(0, 10);
+  AI.usedToday = () => { try { const u = JSON.parse((store() && store().getItem(LS_USE)) || '{}'); return u.day === today() ? u.n || 0 : 0; } catch (e) { return 0; } };
+  const countUse = () => { try { store() && store().setItem(LS_USE, JSON.stringify({ day: today(), n: AI.usedToday() + 1 })); } catch (e) { /* 忽略 */ } };
+
+  const setStatus = (kind, ok, reason) => {
+    AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' };
+  };
+  const KIND_NAME = { turn: '回合纪事润色', event: '事件文本变体', history: '家史润色', advice: '军师建议', test: '测试连接' };
+  AI.statusText = () => {
+    const st = AI.status;
+    if (!st) return '尚未调用';
+    return `${KIND_NAME[st.kind] || st.kind}：${st.ok ? '成功' : '已回落模板（' + st.reason + '）'}`;
+  };
+
+  /* ---------- 底层调用 ---------- */
+  // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
+  AI.call = async (kind, messages, maxTokens) => {
+    const r = AI.ready();
+    if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
+    const c = AI.config();
+    AI.calls++;
+    countUse();
+    let timer = null;
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    try {
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, c.timeoutMs); });
+      const req = AI.env.fetch(c.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
+        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } })),
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      const res = await Promise.race([req, timeout]);
+      if (!res || !res.ok) {
+        const HINT = { 400: '请求格式有误（400，检查模型名）', 401: 'key 不对或已删除（401）', 402: '账户余额不足（402）', 422: '参数有误（422，检查模型名）', 429: '请求太快被限流（429）', 500: 'DeepSeek 服务器出错（500）', 503: 'DeepSeek 服务器繁忙（503）' };
+        const reason = res ? HINT[res.status] || 'HTTP ' + res.status : '无响应';
+        setStatus(kind, false, reason);
+        return { ok: false, reason };
+      }
+      const j = await Promise.race([res.json(), timeout]);
+      const text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+      if (!text || typeof text !== 'string') { setStatus(kind, false, '返回内容为空'); return { ok: false, reason: '返回内容为空' }; }
+      setStatus(kind, true);
+      return { ok: true, text: text.trim() };
+    } catch (e) {
+      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil(c.timeoutMs / 1000) + ' 秒）' : '网络错误';
+      setStatus(kind, false, reason);
+      return { ok: false, reason };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  /* ---------- 防编造：输出校验 ---------- */
+  const digits = (t) => (String(t).match(/\d+/g) || []);
+  AI.knownNames = (s) => Object.values(s.people).map((p) => p.name).filter((n) => n && n.length >= 2);
+  // 输出中的数字必须都出现在事实里；不得出现事实之外的本族人名
+  AI.validate = (text, factsText, s, opts) => {
+    opts = opts || {};
+    const t = String(text || '').trim();
+    if (!t) return '空文本';
+    if (t.length > (opts.maxLen || 2000)) return '过长';
+    const allowed = new Set(digits(factsText).concat(opts.allowNums || []));
+    const bad = digits(t).filter((d) => !allowed.has(d) && !allowed.has(String(Number(d))));
+    if (bad.length) return '出现事实外的数字：' + bad.slice(0, 3).join('、');
+    if (s) {
+      const outside = AI.knownNames(s).filter((n) => t.includes(n) && !factsText.includes(n));
+      if (outside.length) return '出现事实外的人物：' + outside.slice(0, 3).join('、');
+    }
+    for (const n of opts.mustNames || []) if (!t.includes(n)) return '漏掉了人物 ' + n;
+    return null;
+  };
+  // 去掉模型常见的 Markdown 痕迹
+  const tidy = (t) => String(t).replace(/^#+\s*/gm, '').replace(/\*\*/g, '').replace(/^\s*[-*]\s+/gm, '· ').trim();
+
+  const RULES = [
+    '你只能使用用户给出的事实写作。',
+    '严禁新增任何人物、事件、地名、法宝、功法、数字；严禁改变任何结果、因果与先后。',
+    '年份与数字一律照抄阿拉伯数字，不要改写成汉字数字，不要估算。',
+    '可以省略次要条目，可以调整语序、补充不含新信息的修饰。',
+    '只输出正文纯文本，不要标题、不要 Markdown、不要解释你在做什么。',
+  ].join('\n');
+
+  /* ---------- 请求编排：异步、去重、缓存 ---------- */
+  function request(key, kind, build) {
+    if (AI.cache.has(key) || AI.pending.has(key)) return AI.pending.get(key) || Promise.resolve(AI.cache.get(key));
+    const r = AI.ready();
+    if (!r.ok) { setStatus(kind, false, r.reason); return Promise.resolve(null); }
+    const job = build();
+    if (!job) return Promise.resolve(null);
+    const p = AI.call(kind, job.messages, job.maxTokens).then((res) => {
+      AI.pending.delete(key);
+      if (!res.ok) { AI.failed.set(key, res.reason); notify(); return null; }
+      const text = tidy(res.text);
+      const why = AI.validate(text, job.facts, job.state, job.check);
+      if (why) { AI.failed.set(key, '校验未通过：' + why); setStatus(kind, false, '校验未通过：' + why); notify(); return null; }
+      const v = { text, at: AI.env.now() };
+      AI.cache.set(key, v);
+      AI.failed.delete(key);
+      notify();
+      return v;
+    });
+    AI.pending.set(key, p);
+    notify();
+    return p;
+  }
+  function notify() { if (typeof AI.onUpdate === 'function') { try { AI.onUpdate(); } catch (e) { /* 界面刷新失败不影响游戏 */ } } }
+  AI.get = (key) => (AI.cache.get(key) || {}).text || null;
+  AI.isPending = (key) => AI.pending.has(key);
+  AI.failure = (key) => AI.failed.get(key) || null;
+
+  /* ---------- 事实摘要（只读状态）---------- */
+  const H = () => FX.H;
+  AI.turnFacts = (s, turn) => {
+    const es = s.history.filter((e) => e.turn === turn && e.severity >= 2);
+    const lines = es.map((e) => `第 ${e.year} 年：${H().text(e)}`);
+    return lines.join('\n');
+  };
+  AI.turnKey = (s, turn) => `turn:${s.seed}:${turn}:${FX.U.hash(AI.turnFacts(s, turn))}`;
+  AI.polishTurn = (s, turn) => {
+    const facts = AI.turnFacts(s, turn);
+    return request(AI.turnKey(s, turn), 'turn', () => {
+      if (!facts) return null;
+      const head = s.people[s.family.headId];
+      return {
+        facts, state: s, maxTokens: 700, check: { maxLen: 900 },
+        messages: [
+          { role: 'system', content: '你是修仙家族编年史的执笔人，文风古雅简练，近似史书纪事。\n' + RULES },
+          { role: 'user', content: `${s.family.surname}氏家族，第 ${turn} 回合的纪事。${head ? '时任家主' + head.name + '。' : ''}请把下列事实写成 120 到 300 字的一段编年叙述：\n${facts}` },
+        ],
+      };
+    });
+  };
+
+  AI.historyFacts = (s) => {
+    const h = H().familyHistory(s);
+    return h.chapters.map((c) => `【${c.title}】\n` + (c.nodes.length ? c.nodes.map((n) => `第 ${n.year} 年：${n.text}`).join('\n') : '（无记载）')).join('\n');
+  };
+  AI.historyKey = (s) => `history:${s.seed}:${FX.U.hash(AI.historyFacts(s))}`;
+  AI.polishHistory = (s) => {
+    const facts = AI.historyFacts(s);
+    return request(AI.historyKey(s), 'history', () => ({
+      facts, state: s, maxTokens: 1800, check: { maxLen: 3000 },
+      messages: [
+        { role: 'system', content: '你是修仙家族的史官，为家族撰写家史，文风近似古代史书列传。\n' + RULES + '\n按给出的章节顺序写，每章用【章名】开头另起一段；某章无记载就写“无记载”。' },
+        { role: 'user', content: `请依据以下事实撰写《${s.family.surname}氏家史》，全文 400 到 1200 字：\n${facts}` },
+      ],
+    }));
+  };
+
+  AI.eventKey = (s, inst) => `event:${s.seed}:${inst.id}`;
+  AI.polishEvent = (s, inst) => {
+    const v = FX.Ev.view(s, inst);
+    const names = v.people.map((id) => s.people[id] && s.people[id].name).filter(Boolean);
+    return request(AI.eventKey(s, inst), 'event', () => ({
+      facts: v.text, state: s, maxTokens: 300, check: { maxLen: Math.max(120, v.text.length * 2), mustNames: names },
+      messages: [
+        { role: 'system', content: '你为修仙家族游戏改写事件描述，让同一事件每次读来不同。\n' + RULES + '\n保留原文中的每个人名与数字，长度与原文相近，不要替玩家做选择，不要提及选项。' },
+        { role: 'user', content: `事件「${v.name}」原文：${v.text}\n请换一种说法重写。` },
+      ],
+    }));
+  };
+
+  AI.adviceFacts = (s) => {
+    const G2 = FX.Game, P = FX.P;
+    const ov = G2.view.overview(s);
+    const L = [];
+    L.push(`第 ${ov.year} 年（第 ${ov.turn} 回合），${ov.surname}氏，出身${ov.origin}，族人 ${ov.population} 口（本家血脉 ${ov.natives}）。`);
+    if (ov.ancestor) L.push(`老祖${ov.ancestor.name}，${ov.ancestor.realm}，剩余寿元 ${ov.ancestor.left} 年；可顶上的后继：${ov.successors.map((x) => x.name + '（' + x.realm + '）').join('、') || '无'}。`);
+    if (ov.head) L.push(`家主${ov.head.name}，${ov.head.realm}，${ov.head.age} 岁，威望 ${ov.head.prestige}；嫡系支持度 ${Math.round(ov.branches.main.support)}，旁支支持度 ${Math.round(ov.branches.side.support)}；继承人${ov.heir ? ov.heir.name : '未指定'}。`);
+    const r = ov.resources;
+    L.push(`资源：灵石 ${Math.round(r.stone)}（每年净 ${Math.round(ov.forecast.netStone)}），灵谷 ${Math.round(r.grain)}（每年净 ${Math.round(ov.forecast.netGrain)}），灵药 ${Math.round(r.herb)}，聚气丹 ${r.qiju}，筑基丹 ${r.zhuji}。${ov.deficit ? '处于入不敷出状态。' : ''}`);
+    const B = FX.CONFIG.buildings;
+    L.push('建筑：' + Object.keys(B).map((k) => B[k].name + ' ' + (s.family.buildings[k] || 0) + ' 级').join('，') + '。');
+    const rules = s.family.rules, R2 = FX.CONFIG.rules;
+    L.push(`家规：${R2.succession[rules.succession].name}、${R2.allocation[rules.allocation].name}、${R2.foreign[rules.foreign].name}。锋芒 ${Math.round(ov.edge)}，护族战力 ${Math.round(ov.defense.total)}。`);
+    const gates = P.living(s).map((p) => ({ p, b: G2.breakthroughPreview(s, p.id) })).filter((x) => x.b && x.b.kind && x.b.can.ok).slice(0, 4);
+    if (gates.length) L.push('可冲关者：' + gates.map((x) => `${x.p.name}冲击${x.b.target}成功率 ${x.b.chance}%`).join('，') + '。');
+    const near = P.living(s).filter((p) => p.realm.major === 1 && p.realm.stage >= 8).map((p) => p.name + P.realmName(p));
+    if (near.length) L.push('接近筑基：' + near.slice(0, 5).join('、') + '。');
+    if (s.pending.length) L.push('待决事件：' + s.pending.map((i) => FX.Ev.def(i.defId).name).join('、') + '。');
+    if (ov.attention) L.push(`有 ${ov.attention} 人差事待安排。`);
+    if (ov.requests) L.push(`有 ${ov.requests} 条族人请求未处理。`);
+    return L.join('\n');
+  };
+  AI.adviceKey = (s) => `advice:${s.seed}:${FX.U.hash(AI.adviceFacts(s))}`;
+  AI.advise = (s) => {
+    const facts = AI.adviceFacts(s);
+    return request(AI.adviceKey(s), 'advice', () => ({
+      facts, state: s, maxTokens: 700, check: { maxLen: 1200, allowNums: ['1', '2', '3', '4', '5'] },
+      messages: [
+        { role: 'system', content: '你是修仙家族的军师，向家主进言。\n' + RULES + '\n给出 3 到 5 条具体可执行的建议，每条一行，以“· ”开头，说明理由；只能依据给出的数据，不要承诺任何结果的成败。' },
+        { role: 'user', content: `家族现状：\n${facts}\n请进言。` },
+      ],
+    }));
+  };
+
+  AI.testConnection = async () => {
+    const r = await AI.call('test', [{ role: 'user', content: '请只回复：通' }], 5);
+    notify();
+    return r;
+  };
+
+  FX.AI = AI;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- ui/app.js ---------- */
 /* ============================================================
  * ui —— 交互界面。只通过 FX.Game 公开函数操作核心，不直接修改状态。
@@ -3744,6 +4064,7 @@ nav.bottom { display: none; }
     chron: { type: '', open: null },
     start: { origin: 'market', surname: '', seed: '' },
     storeKind: 'none', lastSaveWarn: null,
+    aiRaw: new Set(), aiDirty: false, // 看原文的条目；输入框聚焦时延后刷新
   };
   const $ = (sel) => document.querySelector(sel);
   const esc = (x) => String(x === undefined || x === null ? '' : x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3754,6 +4075,27 @@ nav.bottom { display: none; }
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
   const unfinished = (t) => `<div class="unfinished">${esc(t)}</div>`;
+  const AI = FX.AI;
+  // AI 润色块：模板先行，润色到达后替换显示，可切回原文；失败只给一行灰字
+  function aiBlock(key, templateHtml, opt) {
+    opt = opt || {};
+    const text = AI.get(key);
+    const raw = UI.aiRaw.has(key);
+    if (text && !raw) {
+      const body = opt.html ? opt.html(text) : esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('');
+      return `<div class="ai-text">${body}</div><div class="ai-bar"><span class="tag ai-tag" title="由大模型依据真实记录改写，不影响游戏结果">AI 润色</span><button class="link" data-act="aiRaw" data-k="${esc(key)}">看原文</button></div>`;
+    }
+    let bar = '';
+    if (text) bar = `<span class="tag">原文</span><button class="link" data-act="aiRaw" data-k="${esc(key)}">看润色</button>`;
+    else if (AI.isPending(key)) bar = '<span class="muted">AI 润色中…（先显示原文）</span>';
+    else if (opt.kind) {
+      const fail = AI.failure(key);
+      const rd = AI.ready();
+      if (fail) bar = `<span class="muted">AI 润色未采用：${esc(fail)}，已显示原文。</span>` + (rd.ok ? ` <button class="link" data-act="aiPolish" data-kind="${opt.kind}" data-t="${opt.arg || ''}">重试</button>` : '');
+      else if (rd.ok && !opt.auto) bar = `<button class="link" data-act="aiPolish" data-kind="${opt.kind}" data-t="${opt.arg || ''}">${opt.label || 'AI 润色'}</button>`;
+    }
+    return templateHtml + (bar ? `<div class="ai-bar">${bar}</div>` : '');
+  }
   const BR = { main: '嫡系', side: '旁支' };
   const ORIGIN_P = { native: '本家', married_in: '嫁入/入赘', guest: '客卿' };
 
@@ -3899,7 +4241,7 @@ nav.bottom { display: none; }
     const defParts = ov.defense.parts.map((x) => x.label + ' ' + x.value).join('；');
     const heirAcc = s.family.heirId ? FX.Family.acceptance(s, s.family.heirId, s.family.headId) : null;
     const reqs = s.family.requests.map((q) => `<div class="stat"><span>${pl(q.personId)}：${esc(q.what)} <span class="muted">（${esc(q.why)}；代价：${esc(FX.Family.requestCost(s, q))}）</span></span><span class="row"><button data-act="req" data-id="${q.id}" data-a="1">准</button><button data-act="req" data-id="${q.id}" data-a="0">驳</button></span></div>`).join('');
-    const ended = s.ended ? `<div class="card hl"><h2>${esc(s.ended.what)}</h2><p>第 ${s.ended.year} 年 · 评级 <b class="big">${s.ended.rating.grade}</b> ${esc(s.ended.rating.title)} ${esc(s.ended.rating.why)}（${s.ended.rating.total} 分）</p><p class="muted">${s.ended.rating.parts.map((x) => x.label + ' ' + x.value).join('，')}</p>${unfinished('完整《' + s.family.surname + '氏家史》生成属于阶段 4；可在年代纪事中回顾全部记录。')}<div class="row"><button data-act="newRun">再开一局</button></div></div>` : '';
+    const ended = s.ended ? `<div class="card hl"><h2>${esc(s.ended.what)}</h2><p>第 ${s.ended.year} 年 · 评级 <b class="big">${s.ended.rating.grade}</b> ${esc(s.ended.rating.title)} ${esc(s.ended.rating.why)}（${s.ended.rating.total} 分）</p><p class="muted">${s.ended.rating.parts.map((x) => x.label + ' ' + x.value).join('，')}</p><div class="row"><button class="primary" data-act="history">查看《${esc(s.family.surname)}氏家史》</button><button data-act="newRun">再开一局</button></div>${unfinished('当前家史为简版（按章节摘录真实记录）；完整家史与导出属于阶段 4。')}</div>` : '';
     const lr = s.lastReport;
     return `${ended}
       <div class="row between"><h1>${esc(ov.surname)}氏宗祠</h1><div class="row">
@@ -3933,7 +4275,8 @@ nav.bottom { display: none; }
         <div>${r1('qiju', '聚气丹')}${r1('heal', '疗伤丹')}${r1('zhuji', '筑基丹')}${r1('rareHerb', '稀有灵药')}${res.yanshou ? r1('yanshou', '延寿丹') : ''}${res.ningdan ? r1('ningdan', '凝丹丹药') : ''}</div>
       </div></div>
       ${reqs ? `<div class="card"><h3>族人请求</h3>${reqs}<p class="muted">未处理的请求在下回合结束时按驳回处理。</p></div>` : ''}
-      ${lr ? `<div class="card"><h3>上回合摘要（第 ${lr.fromYear}–${lr.toYear} 年）</h3><p class="muted">灵石 ${sign(lr.delta.stone)}，灵谷 ${sign(lr.delta.grain)}，人口 ${lr.population[0]} → ${lr.population[1]}</p><div class="log">${lr.entries.slice(-10).map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('')}</div><button data-act="page" data-p="chron">查看全部纪事</button></div>` : ''}
+      ${lr ? `<div class="card"><h3>上回合摘要（第 ${lr.fromYear}–${lr.toYear} 年）</h3><p class="muted">灵石 ${sign(lr.delta.stone)}，灵谷 ${sign(lr.delta.grain)}，人口 ${lr.population[0]} → ${lr.population[1]}</p>${lr.entries.length ? aiBlock(AI.turnKey(s, lr.turn), `<div class="log">${lr.entries.slice(-10).map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('')}</div>`, { kind: 'turn', arg: lr.turn }) : '<p class="muted">五年无大事。</p>'}<button data-act="page" data-p="chron">查看全部纪事</button></div>` : ''}
+      ${pageAdvisor()}
       <div class="row"><button class="danger" data-act="seal" ${s.ended ? 'disabled' : ''}>封存族史（结束本局）</button></div>`;
   }
 
@@ -4040,16 +4383,45 @@ nav.bottom { display: none; }
     const byTurn = {};
     for (const e of es) (byTurn[e.turn] = byTurn[e.turn] || []).push(e);
     const turns = Object.keys(byTurn).map(Number).sort((a, b) => b - a);
-    return `<h1>年代纪事</h1>
+    return `<div class="row between"><h1>年代纪事</h1><button data-act="history">《${esc(s.family.surname)}氏家史》（简版）</button></div>
       <div class="row">${CHRON_TYPES.map(([k, l]) => `<button class="${C2.type === k ? 'primary' : ''}" data-act="chronType" data-k="${k}">${l}</button>`).join('')}</div>
       <p class="muted">“全部”只列重要度 ≥ 2 的条目；点击条目展开前因与后果。</p>
-      ${turns.map((t) => `<div class="card"><h3>第 ${t} 回合</h3><div class="log">${byTurn[t].map((e) => {
+      ${turns.map((t) => `<div class="card"><h3>第 ${t} 回合</h3>${chronTurn(t, `<div class="log">${byTurn[t].map((e) => {
         const open = C2.open === e.id;
         const causes = open ? FX.H.causeChain(s, e.id, 3) : [];
         const cons = open ? FX.H.consequences(s, e.id) : [];
         return `<p class="clickable" data-act="chronOpen" data-id="${e.id}"><span class="y">${e.year}年</span>${'★'.repeat(Math.max(0, e.severity - 2))}${esc(FX.H.text(e))}${e.firstOf ? ' <span class="tag t-warn">第一次</span>' : ''}</p>
           ${open ? `<div class="opt"><div class="meta">前因：${causes.length ? causes.map((c) => `${c.year}年 ${esc(FX.H.text(c))}`).join(' ← ') : '无记录'}</div><div class="meta">后果：${cons.length ? cons.map((c) => `${c.year}年 ${esc(FX.H.text(c))}`).join('；') : '暂无'}</div><div class="meta">涉及：${e.actors.map(pl).join('、') || '—'}</div></div>` : ''}`;
-      }).join('')}</div></div>`).join('') || '<p class="muted">尚无记录</p>'}`;
+      }).join('')}</div>`)}</div>`).join('') || '<p class="muted">尚无记录</p>'}`;
+  }
+  // 只在“全部”视图、且回合已结束时提供整回合润色（按回合批量调一次）
+  function chronTurn(t, html) {
+    const s = UI.s;
+    if (UI.chron.type || (t >= s.turn && !s.ended)) return html;
+    return aiBlock(AI.turnKey(s, t), html, { kind: 'turn', arg: t, label: 'AI 润色此回合' });
+  }
+
+  /* ---------- 军师（只在玩家点击时调用）---------- */
+  function pageAdvisor() {
+    const s = UI.s;
+    if (s.ended) return '';
+    const rd = AI.ready();
+    const key = AI.adviceKey(s);
+    const text = AI.get(key);
+    let body;
+    if (text) body = `<div class="ai-text">${esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('')}</div><div class="ai-bar"><span class="tag ai-tag">AI 建议</span><span class="muted">仅供参考：成败仍由规则结算，军师看不到未来。</span></div>`;
+    else if (AI.isPending(key)) body = '<p class="muted">军师正在思量…（不影响你继续操作）</p>';
+    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 润色（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
+    else body = (AI.failure(key) ? `<p class="muted">军师未能进言：${esc(AI.failure(key))}</p>` : '<p class="muted">把当前状态摘要（不含存档）发给模型，换几条文字建议。</p>') + '<button data-act="aiPolish" data-kind="advice">请军师进言</button>';
+    return `<div class="card"><h3>军师进言</h3>${body}</div>`;
+  }
+
+  /* ---------- 家史（简版，只读）---------- */
+  function historyTemplate(h) {
+    return h.chapters.map((c) => `<h3>${esc(c.title)}</h3><div class="log">${c.nodes.length ? c.nodes.map((n) => `<p><span class="y">${n.year}年</span>${esc(n.text)}</p>`).join('') : '<p class="muted">无记载</p>'}</div>`).join('');
+  }
+  function historyPolished(text) {
+    return esc(text).split('\n').filter(Boolean).map((x) => { const m = /^【(.+?)】\s*(.*)$/.exec(x); return m ? `<h3>${m[1]}</h3>${m[2] ? `<p>${m[2]}</p>` : ''}` : `<p>${x}</p>`; }).join('');
   }
 
   /* ---------- 族谱（简版）---------- */
@@ -4083,13 +4455,32 @@ nav.bottom { display: none; }
         ${Object.keys(CF.rules[k]).map((o) => `<div class="stat"><span>${CF.rules[k][o].name} <span class="muted">${esc(CF.rules[k][o].desc)}</span></span>${o === cur ? '<span class="tag t-good">现行</span>' : `<button data-act="rule" data-c="${k}" data-o="${o}" ${cd || s.ended ? 'disabled' : ''}>改为此规</button>`}</div>`).join('')}</div>`; }).join('')}
       </div>
       <div class="card"><h3>存档</h3><p class="muted">存储：${storeLabel()}。每次操作后自动存档。</p><button data-act="openSaves">存档管理 / 导入导出</button></div>
+      ${aiSettings()}
       <div class="card"><h3>显示</h3><div class="row">字号 <button data-act="font" data-d="-1">A−</button><button data-act="font" data-d="1">A＋</button><span class="muted">当前 ${Math.round(UI.fontScale * 100)}%</span></div></div>
       <div class="card"><h3>未完成功能（阶段 1）</h3><ul class="muted">
         <li>阶段 2：交互族谱树、完整关系网络（亲密/恩怨已有简版）、分支积怨的事件化、联姻外交。</li>
         <li>阶段 3：外部势力独立演化、七种外交行为、锋芒触发的外部事件、危机部署与自动战斗结算、护族大阵与藏经阁效果、执行外交任务差事。</li>
-        <li>阶段 4：其余基础事件（目前 30 个中已做 14 个及其后续节点）、13 条事件链的完整后续、家史《某氏家史》生成与导出。</li>
+        <li>阶段 4：其余基础事件（目前 30 个中已做 14 个及其后续节点）、13 条事件链的完整后续、完整家史与导出（当前为按章节摘录的简版）。</li>
+        <li>AI 润色：润色文本只存在当前页面，刷新或读档后需重新生成；家史与军师建议暂不支持导出。</li>
         <li>阶段 5：视觉打磨、平衡校准（第 18 章指标）、完整 README 与最终验收。</li>
       </ul></div>`;
+  }
+
+  function aiSettings() {
+    const c = AI.config();
+    const rd = AI.ready();
+    return `<div class="card"><h3>AI 润色（DeepSeek，可选）</h3>
+      <p class="muted">规则算结果，大模型只写文字：它只改写纪事、家史、事件描述和军师建议的文字，不决定任何结果，输出不进存档、不影响状态哈希。关闭或失败时一律显示原模板文字，游戏全程可离线玩。</p>
+      <p class="warn">开启后，回合纪事、家史摘录、事件描述和家族状态摘要会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
+      <div class="stat"><label for="in-aion">开启 AI 润色</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
+      <div class="stat"><label for="in-aikey">DeepSeek key</label><span class="row"><input type="password" id="in-aikey" autocomplete="off" spellcheck="false" placeholder="${AI.hasKey() ? '已保存（不回显）' : 'sk-…'}" style="width:14em"><button data-act="aiKey">保存 key</button>${AI.hasKey() ? '<button class="danger" data-act="aiKeyClear">清除 key</button>' : ''}</span></div>
+      <div class="stat"><label for="in-aimodel">模型</label><span><input type="text" id="in-aimodel" list="ai-models" value="${esc(c.model)}" style="width:12em"><datalist id="ai-models">${AI.models.map((m) => `<option value="${m}">`).join('')}</datalist></span></div>
+      <div class="stat"><label for="in-aiurl">接口地址</label><input type="text" id="in-aiurl" value="${esc(c.endpoint)}" style="width:22em;max-width:100%"></div>
+      <div class="stat"><label for="in-ailimit">每日调用上限</label><input type="number" id="in-ailimit" min="1" value="${c.dailyLimit}" style="width:6em"></div>
+      <div class="row" style="margin-top:.5em"><button data-act="aiSave">保存设置</button><button data-act="aiTest" ${rd.ok ? '' : 'disabled'}>测试连接</button><button class="link" data-act="aiReset">恢复默认地址与模型</button></div>
+      <p class="muted">状态：${rd.ok ? '可用' : '不调用（' + esc(rd.reason) + '）'} · 最近一次：${esc(AI.statusText())} · 今日已调用 ${AI.usedToday()} / ${c.dailyLimit} 次</p>
+      <p class="muted">key 只存在本浏览器的 localStorage，只发往上面的接口地址；不写进存档、不随导出、不打日志。浏览器直连 DeepSeek 可能被跨域（CORS）拦截，测试连接报“网络错误”时，可把接口地址换成你自己的中转。</p>
+    </div>`;
   }
 
   /* ---------- 模态 ---------- */
@@ -4105,10 +4496,10 @@ nav.bottom { display: none; }
       if (!s.pending.length) { setTimeout(popModal, 0); return ''; }
       m.blocking = true;
       const v = FX.Ev.view(s, s.pending[0]);
-      let text = esc(v.text);
-      for (const id of v.people) { const p = s.people[id]; if (p) text = text.split(esc(p.name)).join(pl(id)); }
+      const linkNames = (t) => { let x = esc(t); for (const id of v.people) { const p = s.people[id]; if (p) x = x.split(esc(p.name)).join(pl(id)); } return x; };
+      const evKey = AI.eventKey(s, s.pending[0]);
       return `<h2>${esc(v.name)} <span class="tag">${esc(v.category)}</span>${v.chain ? ` <span class="tag t-warn">事件链 ${v.chain}</span>` : ''}</h2>
-        <p>${text}</p>${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
+        ${aiBlock(evKey, `<p>${linkNames(v.text)}</p>`, { kind: 'event', label: '换个说法（AI）', html: (t) => `<p>${linkNames(t)}</p>` })}${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
         ${v.options.map((o, i) => `<div class="opt ${o.available ? '' : 'disabled'}"><div class="row between"><b>${i + 1}. ${esc(o.label)}${o.irreversible ? ' <span class="tag t-bad">不可逆</span>' : ''}</b>
           <button class="${o.available ? 'primary' : ''}" data-act="choose" data-i="${v.id}" data-o="${o.id}" data-irr="${o.irreversible ? 1 : ''}" ${o.available ? '' : 'disabled'} ${i === 0 ? 'autofocus' : ''}>选择</button></div>
           <div class="meta">成本：<b>${esc(o.cost)}</b></div><div class="meta">风险：<b>${esc(o.risk)}</b></div>${o.outcome ? `<div class="meta">可能结果：<b>${esc(o.outcome)}</b></div>` : ''}${o.available ? '' : `<div class="meta bad">不可选：${esc(o.reason)}</div>`}</div>`).join('')}
@@ -4150,8 +4541,16 @@ nav.bottom { display: none; }
       const keys = ['stone', 'grain', 'herb', 'ore', 'qiju', 'zhuji'];
       return `<h2>第 ${r.fromYear}–${r.toYear} 年摘要</h2>
         <p>${keys.filter((k) => r.delta[k]).map((k) => `${CF.items[k]} <b class="${r.delta[k] >= 0 ? 'good' : 'bad'}">${sign(r.delta[k])}</b>`).join('，') || '资源无变化'}；人口 ${r.population[0]} → ${r.population[1]}</p>
-        <div class="log">${r.entries.map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('') || '<p class="muted">五年无大事。</p>'}</div>
+        ${r.entries.length ? aiBlock(AI.turnKey(s, r.turn), `<div class="log">${r.entries.map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('')}</div>`, { kind: 'turn', arg: r.turn }) : '<p class="muted">五年无大事。</p>'}
         <div class="row"><button class="primary" data-act="close" autofocus>知道了</button></div>`;
+    },
+    history() {
+      const s = UI.s, h = FX.H.familyHistory(s);
+      return `<div class="row between"><h2>《${esc(h.title)}》</h2><button data-act="close" aria-label="关闭">✕</button></div>
+        <p class="muted">依据族中真实记录按章摘录（简版）。</p>
+        ${aiBlock(AI.historyKey(s), historyTemplate(h), { kind: 'history', label: 'AI 润色全文', html: historyPolished })}
+        ${unfinished('完整家史（人物列传、评语）与导出属于阶段 4。')}
+        <div class="row"><button data-act="close">关闭</button></div>`;
     },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
@@ -4218,8 +4617,48 @@ nav.bottom { display: none; }
       if (r.interrupted) { toast(`第 ${r.year} 年发生大事，推进暂停`); openPendingIfAny(); }
       else if (r.ended) toast('本局结束：' + UI.s.ended.what, 4000);
       else { openPendingIfAny(); pushModal({ type: 'report', title: '回合摘要' }); }
+      autoPolish();
     },
     openEvent() { openPendingIfAny(); },
+    history() {
+      pushModal({ type: 'history', title: '家史' });
+      if (UI.s.ended && AI.ready().ok && !AI.failure(AI.historyKey(UI.s))) AI.polishHistory(UI.s); // 结局家史自动润色一次
+    },
+    aiRaw(d) { if (UI.aiRaw.has(d.k)) UI.aiRaw.delete(d.k); else UI.aiRaw.add(d.k); render(); },
+    aiPolish(d) {
+      const s = UI.s;
+      const k = d.kind;
+      const key = k === 'turn' ? AI.turnKey(s, Number(d.t)) : k === 'history' ? AI.historyKey(s) : k === 'advice' ? AI.adviceKey(s) : s.pending[0] ? AI.eventKey(s, s.pending[0]) : null;
+      if (!key) return;
+      AI.failed.delete(key); // 玩家主动重试
+      if (k === 'turn') AI.polishTurn(s, Number(d.t));
+      else if (k === 'history') AI.polishHistory(s);
+      else if (k === 'advice') AI.advise(s);
+      else AI.polishEvent(s, s.pending[0]);
+      UI.aiRaw.delete(key);
+      render();
+    },
+    aiKey() {
+      const el = $('#in-aikey');
+      const v = el ? el.value.trim() : '';
+      if (el) el.value = '';
+      if (!v) return toast('请先粘贴 key');
+      toast(AI.setKey(v) ? 'key 已保存在本浏览器' : '✗ 浏览器不允许本地存储，无法保存 key');
+      render();
+    },
+    aiKeyClear() { AI.setKey(''); toast('key 已清除'); render(); },
+    aiSave() {
+      const c = AI.saveConfig({ model: ($('#in-aimodel') || {}).value, endpoint: ($('#in-aiurl') || {}).value, dailyLimit: ($('#in-ailimit') || {}).value });
+      toast(AI.validEndpoint(c.endpoint) ? '设置已保存' : '已保存，但接口地址无效（需 https），不会调用', 3500);
+      render();
+    },
+    aiReset() { AI.saveConfig({ model: AI.defaults.model, endpoint: AI.defaults.endpoint }); toast('已恢复默认：' + AI.defaults.model); render(); },
+    async aiTest() {
+      toast('正在测试连接…');
+      const r = await AI.testConnection();
+      toast(r.ok ? '连接成功' : '连接失败：' + r.reason, 4500);
+      render();
+    },
     choose(d) {
       const go = () => {
         const r = Game.resolveEvent(UI.s, d.i, d.o);
@@ -4321,7 +4760,15 @@ nav.bottom { display: none; }
     batchDuty(d, el) { UI.cult.batchDuty = el.value; },
     set(d, el) { result(Game.setSetting(UI.s, d.k, el.checked)); },
     setNum(d, el) { result(Game.setSetting(UI.s, d.k, Math.max(0, Math.floor(Number(el.value) || 0)))); },
+    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 润色已开启' : 'AI 润色已开启，填写 key 后生效') : 'AI 润色已关闭，全部显示原文'); render(); },
   };
+  // 每回合结束后批量润色一次（不等待；无 key 或关闭时不发请求）
+  function autoPolish() {
+    const s = UI.s, r = s && s.lastReport;
+    if (!r || !r.entries.length || !AI.ready().ok) return;
+    const key = AI.turnKey(s, r.turn);
+    if (!AI.failure(key)) AI.polishTurn(s, r.turn);
+  }
 
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
@@ -4356,6 +4803,14 @@ nav.bottom { display: none; }
     }
   });
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
+
+  // 润色异步到达：有输入框聚焦时先不重绘，避免冲掉正在输入的内容
+  AI.onUpdate = () => {
+    const a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { UI.aiDirty = true; return; }
+    render();
+  };
+  document.addEventListener('focusout', () => { if (UI.aiDirty) { UI.aiDirty = false; setTimeout(() => { const a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) render(); else UI.aiDirty = true; }, 0); } });
 
   async function boot() {
     try { UI.fontScale = Number(localStorage.getItem('family-xiuxian:font')) || 1; } catch (e) { UI.fontScale = 1; }

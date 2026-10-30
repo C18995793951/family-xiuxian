@@ -191,5 +191,38 @@
     return parts.join('');
   };
 
+  /* ---------- 家史（简版）：按“第一次、最高、最惨”与重要度选取节点 ----------
+   * 只读状态，不写入任何东西。每个节点都带来源记录 id，可追溯。
+   * 完整的节点选取规则与雷同度检查属于阶段 4。 */
+  H.familyHistory = (s) => {
+    const P = FX.P;
+    const node = (e) => ({ hid: e.id, year: e.year, text: H.text(e) });
+    const byType = (types, minSev) => s.history.filter((e) => types.includes(e.type) && e.severity >= (minSev || 1));
+    const firsts = s.records.firsts;
+    const firstNode = (k) => (firsts[k] ? H.get(s, firsts[k]) : null);
+    const ch = [];
+    const found = s.history.find((e) => e.type === 'found');
+    ch.push({ title: '开山始祖', nodes: found ? [node(found)] : [] });
+    ch.push({ title: '历任家主', nodes: byType(['succession'], 3).map(node).slice(0, 12) });
+    const brk = byType(['breakthrough'], 4).filter((e) => e.params.ok);
+    const fz = firstNode('firstBreakFail');
+    ch.push({ title: '重大突破', nodes: brk.slice(0, 10).map(node).concat(fz ? [node(fz)] : []).sort((a, b) => a.year - b.year) });
+    const rise = byType(['milestone', 'resource'], 3).slice(0, 8).map(node);
+    const pk = s.records.peaks;
+    const extra = [];
+    if (pk.population) extra.push({ hid: null, year: pk.population.year, text: `人口峰值 ${pk.population.value} 口（第 ${pk.population.year} 年）` });
+    if (pk.stone) extra.push({ hid: null, year: pk.stone.year, text: `灵石库存峰值 ${Math.round(pk.stone.value)}（第 ${pk.stone.year} 年）` });
+    ch.push({ title: '家族兴衰', nodes: rise.concat(extra).sort((a, b) => a.year - b.year) });
+    ch.push({ title: '重要战争', nodes: byType(['crisis'], 3).map(node) });
+    const mar = byType(['marriage'], 2).filter((e) => e.firstOf || (e.params.from && e.params.from !== '外姓' && e.params.from !== '族内'));
+    ch.push({ title: '婚姻联盟', nodes: mar.slice(0, 8).map(node) });
+    const strife = s.history.filter((e) => e.type === 'leave' && /出走|逐出|放逐|私奔/.test(e.params.cause || '') || (e.type === 'event' && ['S01', 'E06', 'E10B'].includes(e.params.defId)));
+    ch.push({ title: '重大内斗', nodes: strife.slice(0, 8).map(node) });
+    const end = s.ended ? H.get(s, s.ended.hid) : null;
+    const head = s.people[s.family.headId];
+    ch.push({ title: '家族结局', nodes: end ? [node(end)] : [{ hid: null, year: s.year, text: `至第 ${s.year} 年，族人 ${P.living(s).length} 口，家主${head ? head.name : '空缺'}，家史仍在续写` }] });
+    return { title: s.family.surname + '氏家史', chapters: ch };
+  };
+
   FX.H = H;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
