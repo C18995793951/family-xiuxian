@@ -1,0 +1,13 @@
+{
+  "name": "family-xiuxian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "家族修仙录：单文件中文修仙家族模拟游戏",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/run-tests.js",
+    "test:quick": "node test/run-tests.js --quick",
+    "balance": "node test/balance.js",
+    "test:ui": "node test/ui-smoke.js"
+  }
+}
