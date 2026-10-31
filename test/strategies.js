@@ -41,6 +41,19 @@ const STRATEGIES = {
     const curTier = ov.lianqi ? ov.lianqi.tier : 0;
     const learn = find((a) => a.type === 'learn' && CF.techniques[a.tech].tier > curTier && (!me.techniqueId || (me.realm.major === 2 && me.realm.stage <= 3)));
     if (learn) return learn;
+    // 天下大事：玄真派弟子回山门应道脉校考；筑基以后、无伤，地渊开了就去外围采药
+    const jk = A.find((a) => a.type === 'jiaokao');
+    if (jk && jk.ok) return jk;
+    if (jk && /^要回到/.test(jk.reason)) { const t = goTo(house.faction.seatId); if (t) return t; }
+    const dyCfg = CF.saga.diyuan;
+    const dyOpen = FX.Saga.openYear(s, 'diyuan') !== null && s.saga.diyuan.done !== s.saga.diyuan.open.from;
+    if (dyOpen && me.realm.major >= 3 && me.health.state === 'healthy') {
+      const dy = find((a) => a.type === 'diyuan');
+      if (dy) return dy;
+      const pit = Object.values(s.places).find((x) => x.name === dyCfg.place);
+      const r = pit && FX.World.route(s, here, pit.id);
+      if (r && r.days <= 60) { const t = goTo(pit.id); if (t) return t; }
+    }
     const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
     // 等大造元珠最多等八年，再等不到就硬冲
@@ -89,6 +102,9 @@ const STRATEGIES = {
       const cur = rateAt(ov.place);
       const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: FX.World.route(s, here, p.id) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
       if (goal) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
+      // 钱多了就在此开洞府（灵机更足、少受打扰）
+      const df = find((a) => a.type === 'dongfu');
+      if (df && ov.place.danger <= 1 && ov.stone > df.cost * 2) return df;
       // 钱多时以符钱修行
       const coin = find((a) => a.type === 'cultivate' && a.coin && a.days === 360);
       if (coin && ov.stone > coin.cost * 3 && CF.cultivation.qiMult[CF.cultivation.coin.qi] > cur) return coin;
@@ -104,6 +120,9 @@ const STRATEGIES = {
     if (ov.me.health.state !== 'healthy') return A.find((a) => a.type === 'use' && a.item === 'heal') || A.find((a) => a.type === 'rest');
     const br = A.find((a) => a.type === 'breakthrough');
     if (br && (ov.breakthrough.kind !== 'zhuji' || ov.inv.zhuji > 0)) return br;
+    // 碰上了就去：地渊、撷芳宴
+    const big = A.find((a) => a.type === 'diyuan' || a.type === 'xiefang');
+    if (big) return big;
     const lr = A.find((a) => a.type === 'learn' && !ov.me.techniqueId);
     if (lr) return lr;
     const r = rng();

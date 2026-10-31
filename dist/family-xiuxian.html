@@ -61,7 +61,12 @@ aside.right { background: var(--panel); border-left: 1px solid var(--line-soft);
 .stat { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line-soft); padding: .2em 0; gap: .5em; }
 .stat:last-child { border-bottom: none; }
 .stat b { font-weight: 600; }
-.stat > .row { flex-shrink: 0; justify-content: flex-end; }
+.stat > .row { flex: 0 1 auto; max-width: 64%; justify-content: flex-end; }
+.stat > :first-child { min-width: 34%; }
+.stat > span:first-child { flex: 1 1 auto; }
+.saga { border-bottom: 1px dashed var(--line-soft); padding: .3em 0; }
+.saga:last-child { border-bottom: none; }
+.saga .muted { font-size: .9em; }
 .stat > .row button { white-space: nowrap; }
 .big { font-size: 1.6em; font-family: var(--title-font); color: var(--accent); }
 .bar { height: 8px; background: #120f0b; border-radius: 4px; overflow: hidden; border: 1px solid var(--line-soft); }
@@ -175,8 +180,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 4,
-    gameVersion: '0.3.1-xianye2',
+    schemaVersion: 5,
+    gameVersion: '0.3.2-xianye3',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -449,12 +454,40 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         { item: 'wujing', merit: 160, minMajor: 4 },
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
       ],
+      // 门中职位：按境界自然升任，掌门另由推举或接任。俸禄按职位加成
+      posts: { sect: ['弟子', '执事', '长老', '掌门'], clan: ['族人', '管事', '族老', '家主'], minMajor: [0, 3, 4], stipendMult: [1, 1.5, 2.5, 4] },
+      // 修为远超掌门时，门中推举你接任：至少紫府，且高出掌门 tuijuGap 个小境界；推辞后 tuijuAgain 年内不再提
+      tuijuMinMajor: 4, tuijuGap: 3, tuijuAgain: 20,
       // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁以上另发中孚丹
       stipend: {
         sect: { stone: [0, 6, 24, 60, 200, 500, 1200], tierMult: [0, 1, 1.5], qiju: 2 },
         clan: { stone: [0, 6, 18, 45, 150, 400, 1000], qiju: 1 },
       },
     },
+
+    /* ---------- 天下大事 ----------
+     * 日期开局就由种子排好，提前几年就有风声，玩家可以预先准备，不是只靠撞上。
+     * 地渊开启：玄真派奉事房发地渊符诏，人人都可进去，越深越险、所得越好。
+     * 撷芳宴：花神府招收散修，交了供奉连斗三场，活到最后的拜入花神府。
+     * 道脉校考：玉宸派每三十年派巡照道人来查校道脉；玄真派弟子按同辈排名得上、中、下考，上考荐入玉宸派听讲。 */
+    saga: {
+      notice: 3,
+      diyuan: { name: '地渊开启', every: [12, 20], first: [4, 8], years: 1, place: '地渊', days: 90, minMajor: 2,
+        outerHerb: [2, 4], outerHurt: 0.3, midSwing: [0.6, 1.0], deepSwing: [1.0, 1.6], merit: { outer: 3, middle: 6, deep: 10 }, npcDeaths: [0, 3] },
+      xiefang: { name: '花神府撷芳宴', every: [18, 30], first: [5, 12], years: 1, faction: 'huashen', minMajor: 2, rounds: 3, days: 30,
+        fee: { base: 300, perRank: 60 }, foeRank: [-2, 0], loserDies: 0.5 },
+      jiaokao: { name: '玉宸派道脉校考', every: [30, 30], first: [10, 16], years: 1, faction: 'xuanzhen', days: 30, peerAge: 25,
+        tingjiangDays: 1080, tingjiangGain: 0.25, upperMerit: 20, midMerit: 10, midQiju: 4,
+        // 上考的下赐按境界：练炁得可筑上品道基的练炁术，筑基得上乘开府真法，紫府得玉髓，洞玄得先天五行之精。
+        // 凝丹大药不白给：玄真派弟子要托金谷墟市代寻，或下地渊深处去取
+        upperGift: { 1: 'tech:handou', 2: 'tech:handou', 3: 'tech:kaifu_high', 4: 'yusui', 5: 'wujing', 6: 'wujing' } },
+      // 打退过的劫修记了仇，修为跟得上时每年有这个概率找上门
+      revenge: { chance: 0.04, rankGap: 4 },
+    },
+
+    /* ---------- 洞府 ----------
+     * 筑基以后可在荒野、险地开辟洞府：在自家洞府里灵机高一级（至多 5 级），闭关被打扰的机会只剩两成。只能有一处。 */
+    dongfu: { minMajor: 3, minQi: 3, cost: { 3: 3000, 4: 8000, 5: 20000 }, qiBonus: 1, disturbMult: 0.2 },
 
     /* ---------- 出身 ---------- */
     origins: {
@@ -486,9 +519,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       heal: { name: '小白阳丹', price: 20, desc: '护住内腑、调理伤势，加快伤势恢复' },
       zhuji: { name: '大造元珠', price: 420, desc: '补益元炁的外药，冲击筑基时服下，成功率 +25%', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
       danmusha: { name: '丹母砂', price: 900, desc: '全真外药。筑基二重修到三重「龟蛇相抱」时必须用上一枚', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
-      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
-      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
-      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '五光宗、花神府弟子可用道功换；墟市、山门货架偶尔有' },
+      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
+      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
+      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '在浮玉泊托金谷墟市代寻，约三年一定送到；五光宗、花神府弟子可用道功换；货架上偶尔也有' },
       yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
       fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
       fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
@@ -761,9 +794,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   // 文本模板（config 区块）：同一键可有多个变体，按记录 id 轮换，不消耗随机数
   const TX = (FX.CONFIG.text = {
     start: ['{name}，{origin}，{age} 岁，{realm}。这一年，{name}站在{place}，仙路从此开始。'],
-    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}。'],
+    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}{pills}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}{pills}。'],
     cultivate_idle: ['{name}在{place}{verb} {dur}，{what}已到头，未见增长。'],
-    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}。'],
+    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}{pills}。'],
     realm_up: ['{name}修为精进，晋入{realm}。'],
     lianqi_start: ['{name}胎息壮大到头，依《{tech}》采气炼炁，踏入练炁境界，从此可称羽士。'],
     taixi_ok: ['{name}静坐中忽有所感，证得胎息气感（成功率 {chance}%），从此脱离凡身，寿元上限增至 {life}。', '{name}悟得那一点先天真阳（成功率 {chance}%），成就胎息。'],
@@ -797,6 +830,16 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     sect_learn_merit: ['{name}以 {cost} {merit}向{faction}换得《{tech}》。'],
     redeem: ['{name}以 {cost} {merit}从{faction}库藏换得{item}。'],
     submit: ['{name}向{faction}上交{what}，记 {gain} {merit}。'],
+    saga_notice: ['南域传开了风声：{year} 年将有「{what}」。{hint}。'],
+    saga_open_diyuan: ['「{what}」：地渊开了，玄真派奉事房发下地渊符诏，各路散修也往那里去。{hint}。'],
+    saga_open_xiefang: ['「{what}」：花神府开宴，广招散修。{hint}。'],
+    saga_open_jiaokao: ['「{what}」：玉宸派的巡照道人到了南域，查校各家道脉。{hint}。'],
+    xiefang_enter: ['{name}交了 {fee} 符钱供奉，赴花神府撷芳宴。'],
+    xiefang_win: ['{name}在撷芳宴上连胜三场，拜入{faction}门下。'],
+    jiaokao: ['{name}应玉宸派道脉校考，{what}。'],
+    dongfu: ['{name}花了 {cost} 符钱，在{place}{how}。'],
+    post_up: ['{name}在{faction}升任{post}。'],
+    post_leader: ['{name}成为{faction}的{post}。'],
     order: ['{name}在{place}付了 {cost} 符钱，托人代寻{item}，约 {dur}后送到。'],
     order_arrive: ['{place}托人代寻的{item}送到了{name}手上。'],
     rest: ['{name}在{place}静养 {dur}，{state}。'],
@@ -805,7 +848,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     use_item: ['{name}服下{item}，{effect}。'],
     learn: ['{name}改修《{tech}》{loss}。'],
     learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
-    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}。'],
+    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}{pills}。'],
     injury_heal: ['{name}伤势痊愈。'],
     disturb: ['{name}闭关时，{what}。'],
     npc_break: ['传闻：{name}（{faction}）成就{target}。'],
@@ -863,7 +906,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const vs = TX[entry.key] || ['{key}'];
     const n = parseInt(entry.id.slice(1), 10) || 0;
     const tpl = vs[n % vs.length];
-    return U.fill(tpl, Object.assign({ key: entry.key }, entry.params));
+    // 旧存档里的条目可能没有后来加的可选参数，按空串补上
+    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '' }, entry.params));
   };
 
   H.markFirst = (s, key, hid) => {
@@ -1210,6 +1254,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (!place) return 1;
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
+    if (FX.Saga.isDongfu(s, p, place.id)) return Math.min(5, place.qi + C().dongfu.qiBonus);
     return place.qi;
   };
 
@@ -2133,6 +2178,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     ],
   };
 
+  // 供 saga.js 等处的事件复用
+  Object.assign(Combat, { fightOpt, fleeOpt, npcFoe, lootBeast });
   FX.EVENTS = EV;
   FX.Combat = Combat;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -2192,6 +2239,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     W().genPlaces(s, { clanSurname: origin === 'clan' ? surname : null });
     W().genFactions(s);
     W().genPeople(s);
+    FX.Saga.init(s);
 
     // 主角
     let place, faction = null;
@@ -2219,6 +2267,10 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       joinTried: {},   // 各宗门今年是否已求过
       submitted: [],   // 献过抄本的功法
       orders: [],      // 托墟市代寻、尚未送到的货
+      autoPill: true,  // 修炼时自动续服中孚丹
+      dongfu: null,    // 洞府所在地点
+      post: 0,         // 已告知过的门中职位
+      tuijuDeclined: null,
       stats: { cultivateDays: 0, explores: 0, exploreNothing: 0, fights: 0, wins: 0, seek: 0, seekNoGain: 0, fortunes: 0, actions: 0 },
     };
     if (faction) {
@@ -2247,7 +2299,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const p = P().player(s);
     const cf = C();
     let left = Math.max(0, Math.floor(days));
-    let used = 0, gained = 0, interrupted = false;
+    let used = 0, gained = 0, interrupted = false, pills = 0;
     while (left > 0 && P().alive(p) && !s.pending.length && !s.ended) {
       const toMonthEnd = cf.daysPerMonth - (s.t % cf.daysPerMonth);
       const step = Math.min(left, toMonthEnd);
@@ -2255,6 +2307,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const healMult = mode === 'rest' ? cf.life.restHealMult : 1;
       if (P().heal(p, step * healMult)) H().add(s, { type: 'health', tags: ['伤愈'], actors: [p.id], key: 'injury_heal', pov: true, params: { name: p.name }, severity: 1 });
       if (mode === 'cultivate') {
+        // 药力过了就自动续服一颗中孚丹（行囊里可以关掉）
+        if (s.player.autoPill !== false && p.realm.major >= 2 && s.player.qijuUntil <= s.t && (s.player.inv.qiju || 0) > 0) {
+          s.player.inv.qiju--;
+          s.player.qijuUntil = s.t + cf.cultivation.qijuDays;
+          pills++;
+        }
         const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t, coin: !!opts.coin }).total;
         if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
@@ -2269,7 +2327,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       if (interrupted) break;
     }
     S.checkEnd(s);
-    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length) };
+    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length), pills };
   };
 
   // 月末：主角的重伤风险、闭关被打扰。返回是否打断当前行动
@@ -2285,7 +2343,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (s.pending.length) return true;
     if (mode === 'cultivate' && opts.interruptible) {
       const place = s.places[p.locationId];
-      if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5))) {
+      const df = FX.Saga.isDongfu(s, p, place.id) ? cf.dongfu.disturbMult : 1; // 自家洞府有禁制护着
+      if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5) * df)) {
         FX.Act.disturb(s, place);
         return true;
       }
@@ -2300,6 +2359,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     // 主角：寿元、俸禄
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
     FX.Sect.payStipend(s);
+    FX.Saga.yearly(s);
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
     const npcs = P().living(s).filter((p) => p.id !== pl.id).sort((a, b) => (Number(a.id.slice(1)) - Number(b.id.slice(1))));
     for (const p of npcs) {
@@ -2447,6 +2507,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     for (const o of Act.orderable(s)) add({ type: 'order', item: o.item, days: 0, cost: o.cost, label: '托人代寻' + W().itemName(o.item) + '（' + o.cost + ' 符钱，约 ' + T().dur(o.days) + '后送到）', group: '坊市', ok: s.player.stone >= o.cost, reason: s.player.stone >= o.cost ? '' : '符钱不够（需 ' + o.cost + '）' });
     // 宗门、家族：拜入、符诏、请授、兑换、上交（见 sect.js）
     FX.Sect.list(s, add);
+    // 天下大事与洞府（见 saga.js）
+    FX.Saga.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -2479,7 +2541,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
     s.player.stats.actions++;
-    const r = (Act.DO[item.type] || FX.Sect.DO[item.type])(s, item);
+    // 兑换可以一次换多份
+    const req = Object.assign({}, item);
+    if (item.type === 'redeem' && a.qty > 1) {
+      req.qty = Math.floor(a.qty);
+      if (item.cost * req.qty > s.player.merit) return { ok: false, error: C().house.meritName + '不够（需 ' + item.cost * req.qty + '）' };
+    }
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type])(s, req);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
   };
@@ -2498,8 +2566,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     else if (r.gained <= 0) key = 'cultivate_idle';
     const what = ['气感', '胎息'][p.realm.major] || '修为';
     const verb = ['静坐', '温养胎息'][p.realm.major] || (a.days >= 360 ? '闭关' : '修炼');
-    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb } });
-    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}`, interrupted: r.interrupted };
+    const pills = r.pills ? '，其间服下' + C().items.qiju.name + ' ' + r.pills + ' 颗' : '';
+    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb, pills } });
+    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}${pills}`, interrupted: r.interrupted };
   };
 
   Act.DO.breakthrough = (s, a) => {
@@ -2891,13 +2960,39 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     return Math.floor(C().techniques[tech].price / HS().manualRate);
   };
 
-  // 每年的俸禄
+  // 门中职位：掌门（家主）看 leaderId，其余按境界自然升任
+  Sect.post = (s, f, p) => {
+    if (f.leaderId === p.id) return 3;
+    const mm = HS().posts.minMajor;
+    let i = 0;
+    while (i + 1 < mm.length && p.realm.major >= mm[i + 1]) i++;
+    return i;
+  };
+  Sect.postName = (s, f, p) => (HS().posts[f.type] || HS().posts.sect)[Sect.post(s, f, p)];
+
+  // 每年的俸禄（按境界，再按宗门品级、门中职位加成）
   Sect.stipend = (s, f) => {
     const p = me(s);
     const st = HS().stipend[f.type];
     if (!st) return { stone: 0, qiju: 0 };
-    const stone = Math.round((st.stone[p.realm.major] || 0) * (st.tierMult ? st.tierMult[f.tier] || 1 : 1));
+    const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)];
+    const stone = Math.round((st.stone[p.realm.major] || 0) * mult);
     return { stone, qiju: p.realm.major >= 2 ? st.qiju || 0 : 0 };
+  };
+
+  // 每年：职位升了写一笔；修为远超掌门时，门中推举你接任
+  Sect.tuijuYear = (s) => {
+    const p = me(s), f = Sect.mine(s);
+    if (!f || !P().alive(p)) return;
+    const post = Sect.post(s, f, p);
+    if (post > (s.player.post || 0)) H().add(s, { type: 'post', tags: ['宗门'], actors: [p.id], factions: [f.id], key: post === 3 ? 'post_leader' : 'post_up', pov: true, severity: post === 3 ? 4 : 2, params: { name: p.name, faction: f.name, post: Sect.postName(s, f, p) } });
+    s.player.post = post;
+    if (post === 3 || s.pending.length) return;
+    const lead = s.people[f.leaderId];
+    if (!lead || !P().alive(lead)) return;
+    if (p.realm.major < HS().tuijuMinMajor || P().realmRank(p) < P().realmRank(lead) + HS().tuijuGap) return;
+    if (s.player.tuijuDeclined !== null && s.year - s.player.tuijuDeclined < HS().tuijuAgain) return;
+    FX.Ev.spawn(s, 'TUIJU', { faction: f.id, place: f.seatId, lead: lead.id }, []);
   };
   Sect.payStipend = (s) => {
     const p = me(s), f = Sect.mine(s);
@@ -3017,11 +3112,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   DO.redeem = (s, a) => {
-    const p = me(s), f = Sect.mine(s);
-    s.player.merit -= a.cost;
-    s.player.inv[a.item] = (s.player.inv[a.item] || 0) + 1;
-    H().add(s, { type: 'redeem', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'redeem', pov: true, severity: 1, params: { name: p.name, faction: f.name, item: C().items[a.item].name, cost: a.cost, merit: M() } });
-    return { text: '换得' + C().items[a.item].name };
+    const p = me(s), f = Sect.mine(s), n = a.qty || 1;
+    s.player.merit -= a.cost * n;
+    s.player.inv[a.item] = (s.player.inv[a.item] || 0) + n;
+    const item = C().items[a.item].name + (n > 1 ? '×' + n : '');
+    H().add(s, { type: 'redeem', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'redeem', pov: true, severity: 1, params: { name: p.name, faction: f.name, item, cost: a.cost * n, merit: M() } });
+    return { text: '换得' + item };
   };
 
   DO.submit = (s, a) => {
@@ -3055,7 +3151,357 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   Sect.DO = DO;
+
+  FX.EVENTS.TUIJU = {
+    name: '推举掌门', category: '宗门', severity: 4,
+    text: (s, b, n) => { const q = s.people[b.lead]; return `${n.faction}的${n.lead}（${P().realmName(q)}）执掌门户多年，可如今你已是${P().realmName(me(s))}，修为远在其上。门中长老商议，要推举你接任${s.factions[b.faction].type === 'clan' ? '家主' : '掌门'}。`; },
+    options: [
+      {
+        id: 'accept', label: '接任',
+        cost: () => '往后要担起门户', risk: () => '无', outcome: (s, b) => '成为' + s.factions[b.faction].name + (s.factions[b.faction].type === 'clan' ? '家主' : '掌门') + '，俸禄按'+(s.factions[b.faction].type === 'clan' ? '家主' : '掌门')+'的份例发',
+        apply(s, b) {
+          const f = s.factions[b.faction], p = me(s), q = s.people[b.lead];
+          f.leaderId = p.id; p.role = 'leader'; q.role = 'elder';
+          P().adjustRelation(s, p.id, q.id, -5, '让位');
+          return { text: '接任' + f.name + (f.type === 'clan' ? '家主' : '掌门') };
+        },
+      },
+      {
+        id: 'decline', label: '推辞',
+        cost: () => '无', risk: () => '无', outcome: () => '照旧做长老，专心修行；' + HS().tuijuAgain + ' 年内不再提',
+        apply(s, b) { s.player.tuijuDeclined = s.year; P().adjustRelation(s, me(s).id, b.lead, 5, '推辞'); return { text: '推辞了掌门之位' }; },
+      },
+    ],
+  };
   FX.Sect = Sect;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ---------- core/saga.js ---------- */
+/* ============================================================
+ * saga —— 天下大事与后期玩法：地渊开启、花神府撷芳宴、玉宸派道脉校考、仇家寻仇、洞府
+ * 大事的日期开局就由种子排好，提前几年放出风声（写进纪事），玩家可以预先准备。
+ * 成败照旧由规则掷骰；但每件大事都给出稳妥的选项，运气只决定得多得少。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const R = FX.RNG;
+  const U = FX.U;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const T = () => FX.T;
+  const W = () => FX.World;
+  const CU = () => FX.CU;
+  const Sim = () => FX.Sim;
+  const Sect = () => FX.Sect;
+  const Cb = () => FX.Combat;
+
+  const Saga = {};
+  const SG = () => C().saga;
+  const KINDS = ['diyuan', 'xiefang', 'jiaokao'];
+  const me = (s) => P().player(s);
+  const pl = (s) => P().player(s);
+  const give = (s, k, n) => { s.player.inv[k] = (s.player.inv[k] || 0) + n; };
+  const giveAny = (s, key) => {
+    if (key.startsWith('tech:')) { const t = key.slice(5); if (!s.player.manuals.includes(t)) s.player.manuals.push(t); return W().itemName(key); }
+    give(s, key, 1);
+    return C().items[key].name;
+  };
+  const factionByKey = (s, key) => Object.values(s.factions).find((f) => f.key === key) || null;
+  const placeByName = (s, name) => Object.values(s.places).find((x) => x.name === name) || null;
+
+  /* ---------- 排期 ---------- */
+  Saga.init = (s) => {
+    s.saga = {};
+    for (const k of KINDS) s.saga[k] = { next: s.year + R.int(s.rng, SG()[k].first[0], SG()[k].first[1]), open: null, done: null, count: 0 };
+  };
+
+  // 本次大事正在进行（返回开始的年份），否则 null
+  Saga.openYear = (s, k) => (s.saga[k].open && s.year <= s.saga[k].open.until ? s.saga[k].open.from : null);
+
+  Saga.yearly = (s) => {
+    const n = SG().notice;
+    for (const k of KINDS) {
+      const st = s.saga[k], cfg = SG()[k];
+      if (st.open && s.year > st.open.until) {
+        if (k === 'diyuan') Saga.diyuanToll(s);
+        st.open = null;
+        st.next = s.year + R.int(s.rng, cfg.every[0], cfg.every[1]);
+      }
+      if (st.open) continue;
+      if (s.year === st.next - n) H().add(s, { type: 'saga', tags: ['大事', '风声'], key: 'saga_notice', pov: true, severity: 3, params: { what: cfg.name, year: st.next, hint: Saga.hint(s, k) } });
+      if (s.year >= st.next) {
+        st.open = { from: s.year, until: s.year + cfg.years - 1 };
+        st.count++;
+        H().add(s, { type: 'saga', tags: ['大事'], key: 'saga_open_' + k, pov: true, severity: 4, params: { what: cfg.name, hint: Saga.hint(s, k) } });
+      }
+    }
+    Saga.revengeYear(s);
+    Sect().tuijuYear(s);
+  };
+
+  // 每件大事对玩家的提示：去哪、要什么条件
+  Saga.hint = (s, k) => {
+    const cfg = SG()[k];
+    if (k === 'diyuan') { const pl2 = placeByName(s, cfg.place); return '到' + (pl2 ? pl2.name : cfg.place) + '去，练炁以上都能进'; }
+    if (k === 'xiefang') { const f = factionByKey(s, cfg.faction); return '无门无派、练炁以上的散修可到' + (f ? s.places[f.seatId].name : '花神府') + '赴宴，要交供奉'; }
+    const f = factionByKey(s, cfg.faction);
+    return (f ? f.name : '玄真派') + '弟子回' + (f ? s.places[f.seatId].name : '山门') + '应考，按同辈排名评上、中、下考';
+  };
+
+  // 天下大事一览（界面用）：正在进行的、有了风声的；道脉校考三十年一回，人人知道日子
+  Saga.view = (s) => KINDS.map((k) => {
+    const st = s.saga[k], cfg = SG()[k];
+    const open = Saga.openYear(s, k) !== null;
+    const known = open || k === 'jiaokao' || st.next - s.year <= SG().notice;
+    return { kind: k, name: cfg.name, open, known, year: open ? st.open.from : st.next, until: open ? st.open.until : null, done: open && st.done === st.open.from, hint: Saga.hint(s, k) };
+  });
+
+  /* ---------- 行动清单（由 Act.list 调用）---------- */
+  Saga.list = (s, add) => {
+    const p = me(s), place = s.places[p.locationId], cf = C();
+    // 地渊
+    const dy = SG().diyuan;
+    if (Saga.openYear(s, 'diyuan') !== null && place.name === dy.place) {
+      const done = s.saga.diyuan.done === s.saga.diyuan.open.from;
+      const why = done ? '这回地渊开启已经进去过了' : p.realm.major < dy.minMajor ? '练炁以上才进得去' : p.health.state === 'heavy' ? '重伤未愈' : '';
+      add({ type: 'diyuan', days: dy.days, label: '深入地渊 ' + T().dur(dy.days), group: '大事', ok: !why, reason: why });
+    }
+    // 撷芳宴
+    const xf = SG().xiefang;
+    const hs = factionByKey(s, xf.faction);
+    if (hs && Saga.openYear(s, 'xiefang') !== null && place.id === hs.seatId && !p.factionId) {
+      const fee = Saga.xiefangFee(p);
+      const done = s.saga.xiefang.done === s.saga.xiefang.open.from;
+      const why = done ? '这回撷芳宴你已经赴过了' : p.realm.major < xf.minMajor ? '练炁以上才收' : p.health.state !== 'healthy' ? '带伤赴宴是送死' : s.player.stone < fee ? '供奉不够（需 ' + fee + ' 符钱）' : '';
+      add({ type: 'xiefang', days: xf.days, cost: fee, label: '赴撷芳宴（供奉 ' + fee + ' 符钱，连斗 ' + xf.rounds + ' 场）', group: '大事', ok: !why, reason: why });
+    }
+    // 道脉校考
+    const jk = SG().jiaokao;
+    const xz = factionByKey(s, jk.faction);
+    if (xz && Saga.openYear(s, 'jiaokao') !== null && p.factionId === xz.id) {
+      const done = s.saga.jiaokao.done === s.saga.jiaokao.open.from;
+      const why = done ? '这回校考已经应过了' : place.id !== xz.seatId ? '要回到' + s.places[xz.seatId].name + '应考' : '';
+      add({ type: 'jiaokao', days: jk.days, label: '应道脉校考（预计' + Saga.grade(s).name + '）', group: '大事', ok: !why, reason: why });
+    }
+    // 洞府
+    const D = cf.dongfu;
+    if ((place.type === 'wild' || place.type === 'danger') && place.qi >= D.minQi && s.player.dongfu !== place.id) {
+      const cost = D.cost[place.qi];
+      const why = p.realm.major < D.minMajor ? '筑基以后才开得了洞府' : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
+      add({ type: 'dongfu', days: 30, cost, label: (s.player.dongfu ? '把洞府迁到此地（' : '在此开辟洞府（') + cost + ' 符钱）', group: '修炼', ok: !why, reason: why });
+    }
+  };
+
+  /* ---------- 地渊 ---------- */
+  const DIYUAN_FOES = [['阴马', '行尸'], ['金纹豹妖', '恶嗔阴魔'], ['下位天魔', '朱厌大妖']];
+  Saga.DO = {};
+  Saga.DO.diyuan = (s, a) => {
+    const p = me(s), dy = SG().diyuan;
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.diyuan.done = s.saga.diyuan.open.from; // 先记下：进去的这一趟可能跨年，地渊合上也算这回去过
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没进去就出了变故', interrupted: true };
+    const my = P().power(s, p);
+    const pick = (i) => R.pick(s.rng, DIYUAN_FOES[i]);
+    const xz = factionByKey(s, 'xuanzhen');
+    const fuzhao = xz && p.factionId === xz.id ? Sect().taskMerit(p) : 0;
+    FX.Ev.spawn(s, 'DIYUAN', {
+      place: p.locationId, _fuzhao: fuzhao,
+      _midBeast: pick(Math.min(2, Math.max(0, p.realm.major - 2))), _midPower: Math.round(my * R.range(s.rng, dy.midSwing[0], dy.midSwing[1]) * 10) / 10,
+      _deepBeast: pick(Math.min(2, Math.max(0, p.realm.major - 1))), _deepPower: Math.round(my * R.range(s.rng, dy.deepSwing[0], dy.deepSwing[1]) * 10) / 10,
+    }, []);
+    return { text: '下到地渊里头', interrupted: true };
+  };
+  // 地渊合上时，进去的人里总有几个没出来
+  Saga.diyuanToll = (s) => {
+    const dy = SG().diyuan;
+    const pool = P().living(s).filter((q) => !P().isPlayer(s, q) && q.realm.major >= 2 && q.realm.major <= 3).sort((a, b) => (a.id < b.id ? -1 : 1));
+    const n = R.int(s.rng, dy.npcDeaths[0], dy.npcDeaths[1]);
+    for (let i = 0; i < n && pool.length; i++) {
+      const q = pool.splice(R.int(s.rng, 0, pool.length - 1), 1)[0];
+      P().kill(s, q, '殒于地渊', [], {});
+    }
+  };
+  // 越深所得越好；打赢就一定有，按境界给用得上的
+  const deepGift = (p) => (p.realm.major >= 5 ? 'ningdan' : p.realm.major >= 4 ? 'yusui' : 'danmusha');
+  const meritFor = (s, b, layer) => { const m = b._fuzhao * SG().diyuan.merit[layer]; if (m) s.player.merit += m; return m ? '，地渊符诏记' + C().house.meritName + ' ' + m : ''; };
+  const layerFoe = (layer) => (s, b) => ({
+    name: b[layer === 'deep' ? '_deepBeast' : '_midBeast'], power: b[layer === 'deep' ? '_deepPower' : '_midPower'],
+    winText: layer === 'deep' ? '斩了它，取深处的大药' : '斩了它，取中层的五行之精',
+    onWin(s2, b2) {
+      const p = pl(s2);
+      const got = [];
+      if (layer === 'deep') { got.push(giveAny(s2, deepGift(p))); give(s2, 'wujing', 2); got.push(C().items.wujing.name + '×2'); }
+      else { give(s2, 'wujing', 1); give(s2, 'rareHerb', 2); got.push(C().items.wujing.name, C().items.rareHerb.name + '×2'); }
+      return '得' + got.join('、') + meritFor(s2, b2, layer);
+    },
+  });
+  const layerOpt = (layer, label) => Object.assign({}, Cb().fightOpt(layerFoe(layer)), {
+    id: layer, label,
+    outcome: (s, b) => (layer === 'deep' ? '打赢可得' + C().items[deepGift(pl(s))].name + '与先天五行之精×2' : '打赢可得先天五行之精、人面芝×2') + (b._fuzhao ? '，并记道功' : ''),
+  });
+
+  /* ---------- 撷芳宴 ---------- */
+  Saga.xiefangFee = (p) => SG().xiefang.fee.base + P().realmRank(p) * SG().xiefang.fee.perRank;
+  Saga.DO.xiefang = (s, a) => {
+    const p = me(s);
+    s.player.stone -= a.cost;
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.xiefang.done = s.saga.xiefang.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (s.pending.length) return { text: '开宴前出了变故，供奉没退', interrupted: true };
+    H().add(s, { type: 'saga', tags: ['大事', '撷芳宴'], actors: [p.id], places: [p.locationId], key: 'xiefang_enter', pov: true, severity: 3, params: { name: p.name, fee: a.cost } });
+    Saga.xiefangRound(s, 1);
+    return { text: '撷芳宴开席', interrupted: true, used: r.used };
+  };
+  Saga.xiefangRound = (s, round) => {
+    const p = me(s), xf = SG().xiefang;
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, xf.foeRank[0], xf.foeRank[1]), 2, P().maxRank());
+    const foe = W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: p.locationId, kind: 'loose' });
+    FX.Ev.spawn(s, 'XIEFANG', { place: p.locationId, foe: foe.id, _round: round }, []);
+  };
+  const xiefangFoe = (s, b) => {
+    const q = s.people[b.foe];
+    return {
+      name: q.name, power: P().power(s, q), winText: b._round < SG().xiefang.rounds ? '胜了这场，进下一场' : '胜下最后一场，拜入花神府',
+      onWin(s2, b2) {
+        const xf = SG().xiefang;
+        if (R.chance(s2.rng, xf.loserDies)) P().kill(s2, q, '殒于撷芳宴', [], {}); else P().injure(s2, q, 'heavy');
+        if (b2._round < xf.rounds) { Saga.xiefangRound(s2, b2._round + 1); return '第 ' + b2._round + ' 场胜了，还有 ' + (xf.rounds - b2._round) + ' 场'; }
+        const p = pl(s2), f = factionByKey(s2, xf.faction);
+        p.factionId = f.id; p.role = 'member';
+        f.relToPlayer = Math.max(f.relToPlayer, 10);
+        const hid = H().add(s2, { type: 'join', tags: ['宗门', '撷芳宴'], actors: [p.id], factions: [f.id], key: 'xiefang_win', pov: true, severity: 4, params: { name: p.name, faction: f.name } });
+        H().markFirst(s2, 'join', hid);
+        return '连胜 ' + xf.rounds + ' 场，拜入' + f.name;
+      },
+      onLose() {},
+    };
+  };
+
+  /* ---------- 道脉校考 ---------- */
+  // 按同辈排名评定（确定的，不掷骰）：同辈里修为最高为上考，不低于中位为中考，否则下考
+  Saga.grade = (s) => {
+    const p = me(s), jk = SG().jiaokao;
+    const age = P().age(s, p), my = P().realmRank(p);
+    const peers = P().living(s).filter((q) => q.id !== p.id && q.factionId === p.factionId && Math.abs(P().age(s, q) - age) <= jk.peerAge).map((q) => P().realmRank(q)).sort((a, b) => a - b);
+    let g;
+    if (!peers.length) g = p.realm.major >= 3 ? 3 : 2;
+    else if (my >= peers[peers.length - 1]) g = 3;
+    else if (my >= peers[Math.floor(peers.length / 2)]) g = 2;
+    else g = 1;
+    return { g, name: ['', '下考', '中考', '上考'][g], peers: peers.length };
+  };
+  Saga.DO.jiaokao = (s, a) => {
+    const p = me(s), jk = SG().jiaokao, f = s.factions[p.factionId];
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.jiaokao.done = s.saga.jiaokao.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '应考前出了变故', interrupted: true };
+    const gr = Saga.grade(s);
+    const tm = Sect().taskMerit(p);
+    let what;
+    if (gr.g === 3) {
+      const gift = jk.upperGift[p.realm.major];
+      const giftName = gift && !(gift.startsWith('tech:') && s.player.manuals.includes(gift.slice(5))) ? giveAny(s, gift) : null;
+      s.player.merit += tm * jk.upperMerit;
+      // 荐入玉宸派听讲三年
+      Sim().passDays(s, jk.tingjiangDays, 'other');
+      if (!P().alive(p)) return { text: '' };
+      const gain = Math.round(CU().addProgress(s, p, Math.min(P().need(p), 20000) * jk.tingjiangGain) * 10) / 10;
+      what = '评为上考，由派主举荐入玉宸派听讲三年，修为 +' + gain + (giftName ? '，得玉宸派下赐' + giftName : '') + '，记' + C().house.meritName + ' ' + tm * jk.upperMerit;
+    } else if (gr.g === 2) {
+      s.player.merit += tm * jk.midMerit;
+      give(s, 'qiju', jk.midQiju);
+      what = '评为中考，记' + C().house.meritName + ' ' + tm * jk.midMerit + '，得' + C().items.qiju.name + '×' + jk.midQiju;
+    } else what = '评为下考，同辈里修为落在后头，什么也没得';
+    H().add(s, { type: 'saga', tags: ['大事', '校考'], actors: [p.id], factions: [f.id], key: 'jiaokao', pov: true, severity: gr.g === 3 ? 4 : 2, params: { name: p.name, what } });
+    return { text: what };
+  };
+
+  /* ---------- 仇家寻仇 ---------- */
+  Saga.revengeYear = (s) => {
+    const p = me(s), rv = SG().revenge;
+    if (!P().alive(p) || s.pending.length) return;
+    const f = Sect().mine(s);
+    if (f && p.locationId === f.seatId) return; // 在山门里，仇家不敢来
+    const foes = P().relationsOf(s, p.id).filter((r) => r.strength <= C().relations.feudThreshold && r.tags.includes('交手'))
+      .map((r) => s.people[r.a === p.id ? r.b : r.a]).filter((q) => q && P().alive(q) && P().realmRank(q) >= P().realmRank(p) - rv.rankGap)
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    for (const q of foes) {
+      if (!R.chance(s.rng, rv.chance)) continue;
+      q.locationId = p.locationId;
+      FX.Ev.spawn(s, 'REVENGE', { place: p.locationId, foe: q.id }, []);
+      return;
+    }
+  };
+
+  /* ---------- 洞府 ---------- */
+  Saga.DO.dongfu = (s, a) => {
+    const p = me(s), place = s.places[p.locationId];
+    s.player.stone -= a.cost;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    const moved = !!s.player.dongfu;
+    s.player.dongfu = place.id;
+    H().add(s, { type: 'dongfu', tags: ['洞府'], actors: [p.id], places: [place.id], key: 'dongfu', pov: true, severity: 3, params: { name: p.name, place: place.name, cost: a.cost, how: moved ? '迁了洞府' : '开辟洞府' } });
+    return { text: '在' + place.name + (moved ? '迁了洞府' : '开辟了洞府'), interrupted: r.interrupted };
+  };
+  Saga.isDongfu = (s, p, placeId) => P().isPlayer(s, p) && s.player.dongfu === placeId;
+
+  /* ---------- 事件定义 ---------- */
+  const EV = FX.EVENTS;
+  EV.DIYUAN = {
+    name: '地渊', category: '大事', severity: 3,
+    text: (s, b) => `地渊里阴气森森，外围长着些人面芝，往下走是${b._midBeast}出没的中层，再往深处有${b._deepBeast}盘踞，听说大药都在那里。你如今战力 ${P().power(s, pl(s))}。${b._fuzhao ? '你身上带着玄真派的地渊符诏，办成了记道功。' : ''}`,
+    options: [
+      {
+        id: 'outer', label: '只在外围采药',
+        cost: () => '无', risk: () => `约 ${Math.round(SG().diyuan.outerHurt * 100)}% 会被阴气所伤（轻伤）`,
+        outcome: (s, b) => '稳得人面芝 ' + SG().diyuan.outerHerb.join('–') + ' 株' + (b._fuzhao ? '，并记道功' : ''),
+        apply(s, b) {
+          const dy = SG().diyuan;
+          const q = R.int(s.rng, dy.outerHerb[0], dy.outerHerb[1]);
+          give(s, 'rareHerb', q);
+          let t = '采得' + C().items.rareHerb.name + '×' + q + meritFor(s, b, 'outer');
+          if (R.chance(s.rng, dy.outerHurt)) { P().injure(s, pl(s), 'light'); t += '，被阴气侵体，受了轻伤'; }
+          return { text: t, gain: true };
+        },
+      },
+      layerOpt('middle', '往中层去'),
+      layerOpt('deep', '闯深处'),
+    ],
+  };
+
+  EV.XIEFANG = {
+    name: '撷芳宴', category: '大事', severity: 3,
+    text: (s, b, n) => { const q = s.people[b.foe]; return `撷芳宴第 ${b._round} 场（共 ${SG().xiefang.rounds} 场）。对手是散修${n.foe}（${P().realmName(q)}，战力 ${P().power(s, q)}）。你战力 ${P().power(s, pl(s))}。花神府的人在台上看着，只收最后站着的人。`; },
+    options: [
+      Object.assign({}, Cb().fightOpt(xiefangFoe), { label: '出手' }),
+      { id: 'quit', label: '认输离场', cost: () => '供奉不退', risk: () => '无', outcome: () => '保住性命，这回撷芳宴就此作罢', apply() { return { text: '认输离场' }; } },
+    ],
+  };
+
+  EV.REVENGE = {
+    name: '仇家寻仇', category: '遭遇', severity: 3,
+    text: (s, b, n) => { const q = s.people[b.foe]; return `${n.place}，当年被你打退的${n.foe}找上门来，如今已是${P().realmName(q)}（战力 ${P().power(s, q)}）。你战力 ${P().power(s, pl(s))}，身上有符钱 ${s.player.stone}。`; },
+    options: [
+      Cb().fightOpt(Cb().npcFoe),
+      {
+        id: 'pay', label: '赔礼了结旧怨',
+        cost: (s) => `符钱 −${Math.ceil(s.player.stone * 0.3)}`, risk: () => '无', outcome: () => '对方收下赔礼，旧怨就此了结',
+        apply(s, b) { const lost = Math.ceil(s.player.stone * 0.3); s.player.stone -= lost; const r = P().relationBetween(s, s.player.id, b.foe); if (r) P().adjustRelation(s, s.player.id, b.foe, -10 - r.strength, '和解'); return { text: `赔了符钱 ${lost}，旧怨了结` }; },
+      },
+      Cb().fleeOpt(Cb().npcFoe),
+    ],
+  };
+
+  FX.Saga = Saga;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---------- core/save.js ---------- */
@@ -3098,10 +3544,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   SV.migrations = {
     // v3 → v4：加入宗门道功、拜入记录、献书记录、墟市代寻
     3: (st) => { Object.assign(st.player, { merit: 0, joinTried: {}, submitted: [], orders: [] }); st.schemaVersion = 4; return st; },
+    // v4 → v5：天下大事排期、洞府、门中职位、自动服药
+    4: (st) => { Object.assign(st.player, { autoPill: true, dongfu: null, post: 0, tuijuDeclined: null }); FX.Saga.init(st); st.schemaVersion = 5; return st; },
   };
 
   const REQUIRED = {
-    state: ['schemaVersion', 'seed', 'origin', 'rng', 't', 'year', 'places', 'factions', 'people', 'relations', 'markets', 'pending', 'eventQueue', 'history', 'records', 'player', 'aiLog'],
+    state: ['schemaVersion', 'seed', 'origin', 'rng', 't', 'year', 'places', 'factions', 'people', 'relations', 'markets', 'pending', 'eventQueue', 'history', 'records', 'player', 'aiLog', 'saga'],
     player: ['id', 'stone', 'inv', 'manuals', 'visited', 'stats', 'merit', 'joinTried', 'submitted', 'orders'],
   };
 
@@ -3158,6 +3606,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     act: (s, a) => FX.Act.run(s, a),
     buy: (s, item, qty) => FX.Act.run(s, { type: 'buy', item, qty }),
     sell: (s, item, qty) => FX.Act.run(s, { type: 'sell', item, qty }),
+    // 玩家偏好（白名单内的开关，不影响规则校验）
+    setOption: (s, key, val) => {
+      const OPTS = { autoPill: 'bool' };
+      if (!OPTS[key]) return { ok: false, error: '没有这个选项' };
+      s.player[key] = !!val;
+      return { ok: true };
+    },
     pendingEvents: (s) => s.pending.map((i) => FX.Ev.view(s, i)),
     choose: (s, instId, optId) => {
       if (s.ended) return { ok: false, error: '这一生已经结束' };
@@ -3237,6 +3692,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
             library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech })),
             store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
             submit: cf.house.submit,
+            post: Sect.post(s, f, p), postName: Sect.postName(s, f, p),
+            leader: f.leaderId && s.people[f.leaderId] ? s.people[f.leaderId] : null,
           };
         }
         return {
@@ -3248,6 +3705,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           }),
         };
       },
+      // 天下大事：已有风声或正在进行的
+      sagas: (s) => FX.Saga.view(s),
       feed: (s, n) => FX.H.feed(s, n),
       rating: (s) => FX.Sim.rating(s),
       historyText: (e) => FX.H.text(e),
@@ -3505,6 +3964,19 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 
   /* ---------- 此刻 ---------- */
   const PAGE = {};
+  const autoPillBtn = () => {
+    const on = UI.s.player.autoPill !== false;
+    return `<button class="link" data-act="autoPill" data-v="${on ? 0 : 1}" title="闭关、修炼时药力一尽就从行囊里续服一颗；点一下切换">${on ? '自动续服（开）' : '自动续服（关）'}</button>`;
+  };
+  // 天下大事：日期开局就排好，提前几年有风声；正在进行的高亮
+  const sagaCard = (s) => {
+    const list = Game.view.sagas(s).filter((x) => x.known);
+    if (!list.length) return '';
+    return `<div class="card"><h3>天下大事</h3>${list.map((x) => {
+      const when = x.open ? (x.done ? '<span class="muted">这回你已经去过了</span>' : `<span class="good">正在进行</span>，到 ${x.until} 年为止`) : x.year === s.year ? '今年' : `${x.year} 年（还有 ${x.year - s.year} 年）`;
+      return `<div class="saga"><div class="row between"><b>${esc(x.name)}</b><span>${when}</span></div><div class="muted">${esc(x.hint)}</div></div>`;
+    }).join('')}</div>`;
+  };
   PAGE.now = (ov) => {
     const s = UI.s, me = ov.me;
     const A = Game.actions(s);
@@ -3534,14 +4006,15 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
           ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
           <div class="stat"><span>符钱</span><b>${n0(ov.stone)}</b></div>
-          ${ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan') ? `<div class="stat"><span>${esc(CF.house.meritName)}</span><b>${n0(ov.merit)} <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中库藏' : '长老房'}</button></b></div>` : ''}
-          ${ov.pillUntil ? `<div class="stat"><span>${esc(CF.items.qiju.name)}药力</span><b>至 ${T.fmt(ov.pillUntil)}</b></div>` : ''}
+          ${ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan') ? `<div class="stat"><span>${esc(CF.house.meritName)}</span><b>${n0(ov.merit)} <span class="tag">${esc(FX.Sect.postName(s, ov.faction, me))}</span> <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中库藏' : '长老房'}</button></b></div>` : ''}
+          ${ov.pillUntil || (me.realm.major >= 2 && s.player.inv.qiju) ? `<div class="stat"><span>${esc(CF.items.qiju.name)}</span><b>${ov.pillUntil ? '药力至 ' + T.fmt(ov.pillUntil) + ' · ' : ''}${autoPillBtn()}</b></div>` : ''}
           <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         </div>
         <div class="card">
           <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc(pv.typeName)}</span></div>
           <div class="stat"><span>灵机</span><b>${stars(place.qi)} ${QI[place.qi]} · 属「${esc(place.attr)}」${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
           <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(place.danger)} ${DANGER[place.danger]}</b></div>
+          ${s.player.dongfu ? `<div class="stat"><span>洞府</span><b>${s.player.dongfu === place.id ? '<span class="good">就在此地</span> <span class="muted">（灵机 +' + CF.dongfu.qiBonus + '，闭关少受打扰）</span>' : placeLink(s.player.dongfu)}</b></div>` : ''}
           <div class="stat"><span>势力</span><b>${pv.faction ? esc(pv.faction.name) : '无人管辖'}</b></div>
           <div class="stat"><span>此地的人</span><b>${pv.people.length} 人 <button class="link" data-act="page" data-p="people">看看</button></b></div>
           ${pv.market ? `<div class="stat"><span>${place.type === 'city' ? '集市' : '货架'}</span><b><button class="link" data-act="page" data-p="bag">去逛逛</button></b></div>` : ''}
@@ -3553,8 +4026,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
         ${reqList(ov.reqs)}
         ${bt.can.ok ? '' : `<p class="bad">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}</div>` : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : ''}
+      ${sagaCard(s)}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
-        ${['修炼', '外出', '营生', '宗门', '物品'].map((g) => { const list = grp(g).filter((a) => g !== '宗门' || a.ok || !/^要回到/.test(a.reason)); return list.length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${list.map(btn).join('')}</div></div>` : ''; }).join('')}
+        ${['大事', '修炼', '外出', '营生', '宗门', '物品'].map((g) => { const list = grp(g).filter((a) => g !== '宗门' || a.ok || !/^要回到/.test(a.reason)); return list.length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${list.map(btn).join('')}</div></div>` : ''; }).join('')}
         <p class="muted" style="margin-bottom:0">闭关一年以上可能被打扰；游历多半一无所获，偶有遭遇。练炁以后可以把符钱炼进去修行，奢费但不挑地方。时间一过就回不来。</p>
       </div>`;
   };
@@ -3608,7 +4082,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const s = UI.s;
     const A = Game.actions(s);
     const inv = Object.entries(ov.inv).filter(([, n]) => n > 0);
-    const useBtn = (k) => { const a = A.find((x) => x.type === 'use' && x.item === k); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">服用</button>` : ''; };
+    const useBtn = (k) => { const a = A.find((x) => x.type === 'use' && x.item === k); return (a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">服用</button>` : '') ; };
+    const buyBtns = (x) => {
+      const can = Math.min(x.qty, Math.floor(ov.stone / x.price));
+      if (x.item.startsWith('tech:')) return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买下</button>`;
+      return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买 1</button>${x.qty >= 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="5" ${can >= 5 ? '' : 'disabled'}>买 5</button>` : ''}${can > 1 && can !== 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="${can}">${can === x.qty ? '全买' : '买得起的全买'}（${can}）</button>` : ''}`;
+    };
     const m = s.markets[ov.place.id];
     const sellable = inv.filter(([k]) => CF.items[k]);
     const learn = A.filter((a) => a.type === 'learn');
@@ -3621,10 +4100,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     return `<h2>行囊</h2>
       <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
+        ${ov.me.realm.major >= 2 && s.player.inv.qiju ? `<p class="muted" style="margin:.4em 0 0">闭关、修炼时${esc(CF.items.qiju.name)}药力一尽就从行囊里续服一颗 · ${autoPillBtn()}</p>` : ''}
         <h3>法门</h3>${ov.manuals.length ? ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
       </div>
       ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
-        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b><button data-act="buy" data-k="${esc(x.item)}" ${x.qty > 0 && ov.stone >= x.price ? '' : 'disabled'}>买 1</button></span></div>`).join('')}
+        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b>${buyBtns(x)}</span></div>`).join('')}
         ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}
       ${orderCard}`;
   };
@@ -3654,7 +4134,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
-      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted">（已有 ' + e.have + '）</span>' : ''} <span class="muted">${esc(e.it.desc)}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才换' : ''}</span></span><span class="row">${btn(a, e.merit + ' ' + M, true)}</span></div>`;
+      const many = a && a.ok && e.merit * 5 <= v.merit && ['qiju', 'heal'].includes(e.item) ? `<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5 份（${e.merit * 5}）</button>` : '';
+      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted">（已有 ' + e.have + '）</span>' : ''} <span class="muted">${esc(e.it.desc)}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才换' : ''}</span></span><span class="row">${btn(a, e.merit + ' ' + M, true)}${many}</span></div>`;
     }).join('');
     const subs = A.filter((x) => x.type === 'submit');
     const work = A.find((x) => x.type === 'work');
@@ -3662,6 +4143,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     return `<h2>${clan ? '家族' : '宗门'} <span class="muted">${esc(f.name)}</span></h2>
       <div class="card hl">
         <div class="stat"><span>${esc(M)}</span><b class="big">${n0(v.merit)}</b></div>
+        <div class="stat"><span>职位</span><b>${esc(v.postName)}${v.leader && v.post < 3 ? ' <span class="muted">· ' + (clan ? '家主' : '掌门') + '是' + esc(v.leader.name) + '（' + esc(P.realmName(v.leader)) + '）</span>' : ''}</b></div>
         <div class="stat"><span>每年俸禄（按你如今的境界）</span><b>符钱 ${v.stipend.stone}${v.stipend.qiju ? '、' + esc(CF.items.qiju.name) + '×' + v.stipend.qiju : ''}</b></div>
         <div class="stat"><span>${clan ? '族中' : '山门'}</span><b>${placeLink(v.seat.id)}${v.atSeat ? ' <span class="good">（你在这里）</span>' : ' <span class="muted">（请授、兑换、上交、领差事都要回来办）</span>'}</b></div>
         <p class="muted" style="margin-bottom:0">${clan ? '族里' : '奉事房'}的差事每月记 ${v.taskMerit} ${esc(M)}，另给符钱；${clan ? '替家族除妖' : '领符诏除妖'}打赢了记 ${v.missionMerit} ${esc(M)}，逃了就算没办成。</p>
@@ -3688,7 +4170,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，以及后期的天下大事（地渊开启、撷芳宴、道脉校考）、职位与推举、洞府、仇家都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -3810,7 +4292,16 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       if (r.text) toast(r.text);
       afterAction();
     },
-    buy(d) { const r = Game.buy(UI.s, d.k, 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    buy(d) { const r = Game.buy(UI.s, d.k, Number(d.n) || 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    doN(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      const r = Game.act(UI.s, Object.assign({}, a, { qty: Number(d.n) }));
+      if (!r.ok) { toast('✗ ' + r.error); return; }
+      if (r.text) toast(r.text);
+      afterAction();
+    },
+    autoPill(d) { Game.setOption(UI.s, 'autoPill', d.v === '1'); toast(d.v === '1' ? '闭关时会自动续服' : '不再自动服用'); afterAction(); },
     sell(d) { const r = Game.sell(UI.s, d.k, Number(d.n)); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
     choose(d) {
       const r = Game.choose(UI.s, d.i, d.o);

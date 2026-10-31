@@ -14,6 +14,13 @@
     act: (s, a) => FX.Act.run(s, a),
     buy: (s, item, qty) => FX.Act.run(s, { type: 'buy', item, qty }),
     sell: (s, item, qty) => FX.Act.run(s, { type: 'sell', item, qty }),
+    // 玩家偏好（白名单内的开关，不影响规则校验）
+    setOption: (s, key, val) => {
+      const OPTS = { autoPill: 'bool' };
+      if (!OPTS[key]) return { ok: false, error: '没有这个选项' };
+      s.player[key] = !!val;
+      return { ok: true };
+    },
     pendingEvents: (s) => s.pending.map((i) => FX.Ev.view(s, i)),
     choose: (s, instId, optId) => {
       if (s.ended) return { ok: false, error: '这一生已经结束' };
@@ -93,6 +100,8 @@
             library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech })),
             store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
             submit: cf.house.submit,
+            post: Sect.post(s, f, p), postName: Sect.postName(s, f, p),
+            leader: f.leaderId && s.people[f.leaderId] ? s.people[f.leaderId] : null,
           };
         }
         return {
@@ -104,6 +113,8 @@
           }),
         };
       },
+      // 天下大事：已有风声或正在进行的
+      sagas: (s) => FX.Saga.view(s),
       feed: (s, n) => FX.H.feed(s, n),
       rating: (s) => FX.Sim.rating(s),
       historyText: (e) => FX.H.text(e),

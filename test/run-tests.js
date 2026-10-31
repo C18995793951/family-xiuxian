@@ -297,7 +297,7 @@ check('12', '宗门渠道：拜入、请授、道功兑换、上交、符诏、�
   // 俸禄按境界发
   const st0 = s.player.stone;
   FX.Sect.payStipend(s);
-  assert(s.player.stone - st0 === CF.house.stipend.sect.stone[3], '俸禄没有按境界发放');
+  assert(s.player.stone - st0 === Math.round(CF.house.stipend.sect.stone[3] * CF.house.posts.stipendMult[1]), '俸禄没有按境界、职位发放');
   // 符诏：生成一件除妖事件，打赢记道功
   const s3 = FX.Game.newGame({ origin: 'sect', seed: 'mission' });
   r = FX.Game.act(s3, { type: 'mission', days: CF.house.mission.days });
@@ -367,6 +367,139 @@ check('13', '推进不只靠运气：每道关卡要的东西都有稳定来路'
   FX.Sim.passDays(s, CF.market.order.slowDays.ningdan + 30, 'rest');
   assert(s.pending.length || s.player.inv.ningdan === 1, '代寻的凝丹大药没有送到');
   return `${needs.length} 种冲关外药、练炁术、开府真法都有稳定来路（墟市常备或代寻、宗门库藏）；墟市常备货 30 年不断；代寻按期送到`;
+});
+
+check('14', '后期：天下大事、校考、地渊、撷芳宴、洞府、推举、仇家、自动服丹、v4 存档迁移', () => {
+  const CF = FX.CONFIG, SG = CF.saga;
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  const pass = (s, years) => { for (let y = 0; y < years && !s.ended; y++) { FX.Sim.passDays(s, CF.daysPerYear, 'rest'); while (s.pending.length && !s.ended) choose(s); } };
+  // 1. 排期由种子定：同种子同日子；每次开启前三年先有风声
+  const a = FX.Game.newGame({ origin: 'sect', seed: 'saga' }), b = FX.Game.newGame({ origin: 'sect', seed: 'saga' });
+  assert(JSON.stringify(a.saga) === JSON.stringify(b.saga), '同种子大事日子不同');
+  const s = FX.Game.newGame({ origin: 'loose', seed: 'saga-run' });
+  FX.P.player(s).lifespanBonus = 400; // 只看排期，不让主角老死
+  const p0 = FX.P.player(s); p0.realm = { major: 3, stage: 1 };
+  pass(s, 120);
+  const opens = s.history.filter((e) => /^saga_open_/.test(e.key));
+  const notices = s.history.filter((e) => e.key === 'saga_notice');
+  const T = (e) => Math.floor(e.t / CF.daysPerYear);
+  const kinds = {};
+  for (const e of opens) {
+    const k = e.key.slice(10);
+    kinds[k] = (kinds[k] || 0) + 1;
+    const y = T(e);
+    assert(notices.some((n) => n.params.what === SG[k].name && T(n) === y - SG.notice), SG[k].name + ' 在 ' + y + ' 年开启前三年没有风声');
+  }
+  assert(kinds.diyuan >= 5 && kinds.xiefang >= 3 && kinds.jiaokao >= 3, '120 年里大事太少：' + JSON.stringify(kinds));
+  // 2. 道脉校考：评定是确定的；上考听讲涨修为、得下赐
+  const j = FX.Game.newGame({ origin: 'sect', seed: 'jiaokao' });
+  const jp = FX.P.player(j);
+  jp.realm = { major: 3, stage: 1 }; jp.progress = 0;
+  const g1 = FX.Saga.grade(j), g2 = FX.Saga.grade(j);
+  assert(g1.g === g2.g, '校考评定不确定');
+  j.saga.jiaokao.next = j.year; j.saga.jiaokao.open = { from: j.year, until: j.year };
+  const ja = FX.Game.actions(j).find((x) => x.type === 'jiaokao');
+  assert(ja && ja.ok, '校考之年在山门却应不了考');
+  const m0 = j.player.merit, pr0 = jp.progress, man0 = j.player.manuals.length;
+  assert(FX.Game.act(j, ja).ok, '应考失败');
+  while (j.pending.length) choose(j);
+  if (g1.g === 3) assert(jp.progress > pr0 && j.player.manuals.length > man0, '上考没有听讲、下赐');
+  if (g1.g >= 2) assert(j.player.merit > m0, '中考以上没有记道功');
+  assert(!FX.Game.actions(j).some((x) => x.type === 'jiaokao' && x.ok), '一回校考能应两次');
+  // 3. 地渊：外围采药是稳的，一定有人面芝
+  let herbs = 0, hurt = 0;
+  for (let i = 0; i < 20; i++) {
+    const d = FX.Game.newGame({ origin: 'sect', seed: 'dy' + i });
+    const dp = FX.P.player(d); dp.realm = { major: 3, stage: 1 };
+    const pit = Object.values(d.places).find((x) => x.name === SG.diyuan.place);
+    dp.locationId = pit.id;
+    d.saga.diyuan.open = { from: d.year, until: d.year };
+    const da = FX.Game.actions(d).find((x) => x.type === 'diyuan');
+    assert(da && da.ok, '地渊开启时进不去');
+    FX.Game.act(d, da);
+    if (!d.pending.length || d.pending[0].defId !== 'DIYUAN') continue; // 路上出了变故
+    const h0 = d.player.inv.rareHerb || 0, mer0 = d.player.merit;
+    const v = FX.Game.pendingEvents(d)[0];
+    FX.Game.choose(d, v.id, 'outer');
+    assert((d.player.inv.rareHerb || 0) - h0 >= SG.diyuan.outerHerb[0], '外围采药空手而回');
+    assert(d.player.merit > mer0, '带地渊符诏却没记道功');
+    herbs++; if (dp.health.state !== 'healthy') hurt++;
+    assert(!FX.Game.actions(d).some((x) => x.type === 'diyuan' && x.ok), '一回地渊能进两次');
+  }
+  assert(herbs >= 15, '进地渊多半出了变故');
+  // 4. 撷芳宴：散修连胜三场就拜入花神府；输一场就作罢
+  let xfJoined = 0, xfTried = 0;
+  for (let i = 0; i < 12; i++) {
+    const x = FX.Game.newGame({ origin: 'loose', seed: 'xiefang' + i });
+    const xp = FX.P.player(x);
+    xp.realm = { major: 4, stage: 3 }; x.player.stone = 5000; x.player.inv.fuqi2 = 1;
+    const hs = Object.values(x.factions).find((f) => f.key === 'huashen');
+    xp.locationId = hs.seatId;
+    x.saga.xiefang.open = { from: x.year, until: x.year };
+    const xa = FX.Game.actions(x).find((y) => y.type === 'xiefang');
+    assert(xa && xa.ok && xa.cost === FX.Saga.xiefangFee(xp), '撷芳宴赴不了');
+    FX.Game.act(x, xa);
+    let rounds = 0, won = 0;
+    while (x.pending.length && !x.ended && rounds < 10) {
+      const v = FX.Game.pendingEvents(x)[0];
+      if (v.defId !== 'XIEFANG') { choose(x); continue; }
+      rounds++;
+      const res = FX.Game.choose(x, v.id, 'fight');
+      if (/胜了|连胜/.test(res.result || '')) won++;
+    }
+    if (rounds) xfTried++;
+    assert((xp.factionId === hs.id) === (won === SG.xiefang.rounds), '撷芳宴胜 ' + won + ' 场，拜入与否不对');
+    if (xp.factionId === hs.id) xfJoined++;
+    assert(!FX.Game.actions(x).some((y) => y.type === 'xiefang' && y.ok), '一回撷芳宴能赴两次');
+  }
+  assert(xfJoined >= 1, '撷芳宴十二回没一回连胜');
+  // 5. 洞府：灵机 +1，打扰少
+  const d = FX.Game.newGame({ origin: 'loose', seed: 'dongfu' });
+  const dp = FX.P.player(d);
+  dp.realm = { major: 3, stage: 1 }; d.player.stone = 50000;
+  const spot = Object.values(d.places).find((y) => (y.type === 'wild' || y.type === 'danger') && y.qi >= CF.dongfu.minQi && y.qi < 5 && !y.factionId);
+  assert(spot, '地图上没有能开洞府的地方');
+  dp.locationId = spot.id;
+  const qi0 = FX.CU.qiFor(d, dp);
+  const da2 = FX.Game.actions(d).find((y) => y.type === 'dongfu');
+  assert(da2 && da2.ok && FX.Game.act(d, da2).ok && d.player.dongfu === spot.id, '开不了洞府');
+  assert(FX.CU.qiFor(d, dp) === qi0 + CF.dongfu.qiBonus, '洞府里灵机没有提升');
+  // 6. 推举：紫府弟子远超掌门，门中推举接任
+  const k = FX.Game.newGame({ origin: 'sect', seed: 'tuiju' });
+  const kp = FX.P.player(k), kf = k.factions[kp.factionId], lead = k.people[kf.leaderId];
+  lead.realm = { major: 3, stage: 1 }; kp.realm = { major: 4, stage: 3 };
+  FX.Sect.tuijuYear(k);
+  assert(k.player.post === 2, '紫府弟子没有升长老');
+  assert(k.pending.length && k.pending[0].defId === 'TUIJU', '修为远超掌门却没人推举');
+  FX.Game.choose(k, FX.Game.pendingEvents(k)[0].id, 'accept');
+  FX.Sect.tuijuYear(k);
+  assert(kf.leaderId === kp.id && k.player.post === 3 && FX.Sect.stipend(k, kf).stone > 0, '接任掌门失败');
+  // 7. 仇家：结了仇的劫修日后找上门
+  const r = FX.Game.newGame({ origin: 'loose', seed: 'revenge' });
+  const rp = FX.P.player(r);
+  rp.realm = { major: 3, stage: 1 };
+  const foe = FX.World.spawnNpc(r, { realm: { major: 3, stage: 1 }, locationId: Object.values(r.places)[0].id, kind: 'loose' });
+  FX.P.adjustRelation(r, rp.id, foe.id, CF.relations.feudThreshold - 10, '交手');
+  let came = 0;
+  for (let i = 0; i < 200 && !came; i++) { FX.Saga.revengeYear(r); if (r.pending.length) { came = i + 1; } }
+  assert(came && r.pending[0].defId === 'REVENGE', '两百年仇家都没来');
+  // 8. 自动服丹：开着就一颗接一颗，关了就不服
+  const q = FX.Game.newGame({ origin: 'sect', seed: 'pill' });
+  const qp = FX.P.player(q); qp.realm = { major: 2, stage: 3 }; q.player.inv.qiju = 10;
+  const rr = FX.Sim.passDays(q, 360, 'cultivate');
+  assert(rr.pills >= 3 && q.player.inv.qiju <= 10 - rr.pills + CF.house.stipend.sect.qiju, '闭关一年没有自动续服：' + rr.pills);
+  assert(FX.Game.setOption(q, 'autoPill', false).ok && !FX.Game.setOption(q, 'stone', 1).ok, '选项白名单不对');
+  const n0 = q.player.inv.qiju;
+  FX.Sim.passDays(q, 360, 'cultivate');
+  assert(q.player.inv.qiju >= n0, '关了自动服丹还在服');
+  // 9. v4 存档迁移到 v5
+  const t4 = JSON.parse(FX.Save.serialize(FX.Game.newGame({ origin: 'sect', seed: 'mig5' })));
+  t4.schemaVersion = 4; t4.state.schemaVersion = 4;
+  for (const kk of ['autoPill', 'dongfu', 'post', 'tuijuDeclined']) delete t4.state.player[kk];
+  delete t4.state.saga; delete t4.checksum;
+  const m = FX.Save.deserialize(t4);
+  assert(m.ok && m.state.saga && m.state.saga.diyuan.next > m.state.year && m.state.player.autoPill === true, 'v4 存档迁移失败：' + m.error);
+  return `120 年里地渊 ${kinds.diyuan} 回、撷芳宴 ${kinds.xiefang} 回、校考 ${kinds.jiaokao} 回，每回都提前 ${SG.notice} 年有风声；校考评${g1.name}；地渊外围 ${herbs} 回都有收获（${hurt} 回受轻伤）；撷芳宴 ${xfTried} 回里 ${xfJoined} 回连胜拜入花神府；洞府、推举、仇家、自动服丹、v4 迁移均正常`;
 });
 
 const failed = results.filter((r) => !r.ok);

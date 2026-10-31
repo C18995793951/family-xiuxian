@@ -54,7 +54,12 @@ aside.right { background: var(--panel); border-left: 1px solid var(--line-soft);
 .stat { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line-soft); padding: .2em 0; gap: .5em; }
 .stat:last-child { border-bottom: none; }
 .stat b { font-weight: 600; }
-.stat > .row { flex-shrink: 0; justify-content: flex-end; }
+.stat > .row { flex: 0 1 auto; max-width: 64%; justify-content: flex-end; }
+.stat > :first-child { min-width: 34%; }
+.stat > span:first-child { flex: 1 1 auto; }
+.saga { border-bottom: 1px dashed var(--line-soft); padding: .3em 0; }
+.saga:last-child { border-bottom: none; }
+.saga .muted { font-size: .9em; }
 .stat > .row button { white-space: nowrap; }
 .big { font-size: 1.6em; font-family: var(--title-font); color: var(--accent); }
 .bar { height: 8px; background: #120f0b; border-radius: 4px; overflow: hidden; border: 1px solid var(--line-soft); }

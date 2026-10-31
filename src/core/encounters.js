@@ -181,6 +181,8 @@
     ],
   };
 
+  // 供 saga.js 等处的事件复用
+  Object.assign(Combat, { fightOpt, fleeOpt, npcFoe, lootBeast });
   FX.EVENTS = EV;
   FX.Combat = Combat;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

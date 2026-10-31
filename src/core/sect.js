@@ -38,13 +38,39 @@
     return Math.floor(C().techniques[tech].price / HS().manualRate);
   };
 
-  // 每年的俸禄
+  // 门中职位：掌门（家主）看 leaderId，其余按境界自然升任
+  Sect.post = (s, f, p) => {
+    if (f.leaderId === p.id) return 3;
+    const mm = HS().posts.minMajor;
+    let i = 0;
+    while (i + 1 < mm.length && p.realm.major >= mm[i + 1]) i++;
+    return i;
+  };
+  Sect.postName = (s, f, p) => (HS().posts[f.type] || HS().posts.sect)[Sect.post(s, f, p)];
+
+  // 每年的俸禄（按境界，再按宗门品级、门中职位加成）
   Sect.stipend = (s, f) => {
     const p = me(s);
     const st = HS().stipend[f.type];
     if (!st) return { stone: 0, qiju: 0 };
-    const stone = Math.round((st.stone[p.realm.major] || 0) * (st.tierMult ? st.tierMult[f.tier] || 1 : 1));
+    const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)];
+    const stone = Math.round((st.stone[p.realm.major] || 0) * mult);
     return { stone, qiju: p.realm.major >= 2 ? st.qiju || 0 : 0 };
+  };
+
+  // 每年：职位升了写一笔；修为远超掌门时，门中推举你接任
+  Sect.tuijuYear = (s) => {
+    const p = me(s), f = Sect.mine(s);
+    if (!f || !P().alive(p)) return;
+    const post = Sect.post(s, f, p);
+    if (post > (s.player.post || 0)) H().add(s, { type: 'post', tags: ['宗门'], actors: [p.id], factions: [f.id], key: post === 3 ? 'post_leader' : 'post_up', pov: true, severity: post === 3 ? 4 : 2, params: { name: p.name, faction: f.name, post: Sect.postName(s, f, p) } });
+    s.player.post = post;
+    if (post === 3 || s.pending.length) return;
+    const lead = s.people[f.leaderId];
+    if (!lead || !P().alive(lead)) return;
+    if (p.realm.major < HS().tuijuMinMajor || P().realmRank(p) < P().realmRank(lead) + HS().tuijuGap) return;
+    if (s.player.tuijuDeclined !== null && s.year - s.player.tuijuDeclined < HS().tuijuAgain) return;
+    FX.Ev.spawn(s, 'TUIJU', { faction: f.id, place: f.seatId, lead: lead.id }, []);
   };
   Sect.payStipend = (s) => {
     const p = me(s), f = Sect.mine(s);
@@ -164,11 +190,12 @@
   };
 
   DO.redeem = (s, a) => {
-    const p = me(s), f = Sect.mine(s);
-    s.player.merit -= a.cost;
-    s.player.inv[a.item] = (s.player.inv[a.item] || 0) + 1;
-    H().add(s, { type: 'redeem', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'redeem', pov: true, severity: 1, params: { name: p.name, faction: f.name, item: C().items[a.item].name, cost: a.cost, merit: M() } });
-    return { text: '换得' + C().items[a.item].name };
+    const p = me(s), f = Sect.mine(s), n = a.qty || 1;
+    s.player.merit -= a.cost * n;
+    s.player.inv[a.item] = (s.player.inv[a.item] || 0) + n;
+    const item = C().items[a.item].name + (n > 1 ? '×' + n : '');
+    H().add(s, { type: 'redeem', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'redeem', pov: true, severity: 1, params: { name: p.name, faction: f.name, item, cost: a.cost * n, merit: M() } });
+    return { text: '换得' + item };
   };
 
   DO.submit = (s, a) => {
@@ -202,5 +229,27 @@
   };
 
   Sect.DO = DO;
+
+  FX.EVENTS.TUIJU = {
+    name: '推举掌门', category: '宗门', severity: 4,
+    text: (s, b, n) => { const q = s.people[b.lead]; return `${n.faction}的${n.lead}（${P().realmName(q)}）执掌门户多年，可如今你已是${P().realmName(me(s))}，修为远在其上。门中长老商议，要推举你接任${s.factions[b.faction].type === 'clan' ? '家主' : '掌门'}。`; },
+    options: [
+      {
+        id: 'accept', label: '接任',
+        cost: () => '往后要担起门户', risk: () => '无', outcome: (s, b) => '成为' + s.factions[b.faction].name + (s.factions[b.faction].type === 'clan' ? '家主' : '掌门') + '，俸禄按'+(s.factions[b.faction].type === 'clan' ? '家主' : '掌门')+'的份例发',
+        apply(s, b) {
+          const f = s.factions[b.faction], p = me(s), q = s.people[b.lead];
+          f.leaderId = p.id; p.role = 'leader'; q.role = 'elder';
+          P().adjustRelation(s, p.id, q.id, -5, '让位');
+          return { text: '接任' + f.name + (f.type === 'clan' ? '家主' : '掌门') };
+        },
+      },
+      {
+        id: 'decline', label: '推辞',
+        cost: () => '无', risk: () => '无', outcome: () => '照旧做长老，专心修行；' + HS().tuijuAgain + ' 年内不再提',
+        apply(s, b) { s.player.tuijuDeclined = s.year; P().adjustRelation(s, me(s).id, b.lead, 5, '推辞'); return { text: '推辞了掌门之位' }; },
+      },
+    ],
+  };
   FX.Sect = Sect;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

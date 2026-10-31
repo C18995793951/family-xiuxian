@@ -52,6 +52,7 @@
     W().genPlaces(s, { clanSurname: origin === 'clan' ? surname : null });
     W().genFactions(s);
     W().genPeople(s);
+    FX.Saga.init(s);
 
     // 主角
     let place, faction = null;
@@ -79,6 +80,10 @@
       joinTried: {},   // 各宗门今年是否已求过
       submitted: [],   // 献过抄本的功法
       orders: [],      // 托墟市代寻、尚未送到的货
+      autoPill: true,  // 修炼时自动续服中孚丹
+      dongfu: null,    // 洞府所在地点
+      post: 0,         // 已告知过的门中职位
+      tuijuDeclined: null,
       stats: { cultivateDays: 0, explores: 0, exploreNothing: 0, fights: 0, wins: 0, seek: 0, seekNoGain: 0, fortunes: 0, actions: 0 },
     };
     if (faction) {
@@ -107,7 +112,7 @@
     const p = P().player(s);
     const cf = C();
     let left = Math.max(0, Math.floor(days));
-    let used = 0, gained = 0, interrupted = false;
+    let used = 0, gained = 0, interrupted = false, pills = 0;
     while (left > 0 && P().alive(p) && !s.pending.length && !s.ended) {
       const toMonthEnd = cf.daysPerMonth - (s.t % cf.daysPerMonth);
       const step = Math.min(left, toMonthEnd);
@@ -115,6 +120,12 @@
       const healMult = mode === 'rest' ? cf.life.restHealMult : 1;
       if (P().heal(p, step * healMult)) H().add(s, { type: 'health', tags: ['伤愈'], actors: [p.id], key: 'injury_heal', pov: true, params: { name: p.name }, severity: 1 });
       if (mode === 'cultivate') {
+        // 药力过了就自动续服一颗中孚丹（行囊里可以关掉）
+        if (s.player.autoPill !== false && p.realm.major >= 2 && s.player.qijuUntil <= s.t && (s.player.inv.qiju || 0) > 0) {
+          s.player.inv.qiju--;
+          s.player.qijuUntil = s.t + cf.cultivation.qijuDays;
+          pills++;
+        }
         const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t, coin: !!opts.coin }).total;
         if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
@@ -129,7 +140,7 @@
       if (interrupted) break;
     }
     S.checkEnd(s);
-    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length) };
+    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length), pills };
   };
 
   // 月末：主角的重伤风险、闭关被打扰。返回是否打断当前行动
@@ -145,7 +156,8 @@
     if (s.pending.length) return true;
     if (mode === 'cultivate' && opts.interruptible) {
       const place = s.places[p.locationId];
-      if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5))) {
+      const df = FX.Saga.isDongfu(s, p, place.id) ? cf.dongfu.disturbMult : 1; // 自家洞府有禁制护着
+      if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5) * df)) {
         FX.Act.disturb(s, place);
         return true;
       }
@@ -160,6 +172,7 @@
     // 主角：寿元、俸禄
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
     FX.Sect.payStipend(s);
+    FX.Saga.yearly(s);
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
     const npcs = P().living(s).filter((p) => p.id !== pl.id).sort((a, b) => (Number(a.id.slice(1)) - Number(b.id.slice(1))));
     for (const p of npcs) {

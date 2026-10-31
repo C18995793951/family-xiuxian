@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 4,
-    gameVersion: '0.3.1-xianye2',
+    schemaVersion: 5,
+    gameVersion: '0.3.2-xianye3',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -285,12 +285,40 @@
         { item: 'wujing', merit: 160, minMajor: 4 },
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
       ],
+      // 门中职位：按境界自然升任，掌门另由推举或接任。俸禄按职位加成
+      posts: { sect: ['弟子', '执事', '长老', '掌门'], clan: ['族人', '管事', '族老', '家主'], minMajor: [0, 3, 4], stipendMult: [1, 1.5, 2.5, 4] },
+      // 修为远超掌门时，门中推举你接任：至少紫府，且高出掌门 tuijuGap 个小境界；推辞后 tuijuAgain 年内不再提
+      tuijuMinMajor: 4, tuijuGap: 3, tuijuAgain: 20,
       // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁以上另发中孚丹
       stipend: {
         sect: { stone: [0, 6, 24, 60, 200, 500, 1200], tierMult: [0, 1, 1.5], qiju: 2 },
         clan: { stone: [0, 6, 18, 45, 150, 400, 1000], qiju: 1 },
       },
     },
+
+    /* ---------- 天下大事 ----------
+     * 日期开局就由种子排好，提前几年就有风声，玩家可以预先准备，不是只靠撞上。
+     * 地渊开启：玄真派奉事房发地渊符诏，人人都可进去，越深越险、所得越好。
+     * 撷芳宴：花神府招收散修，交了供奉连斗三场，活到最后的拜入花神府。
+     * 道脉校考：玉宸派每三十年派巡照道人来查校道脉；玄真派弟子按同辈排名得上、中、下考，上考荐入玉宸派听讲。 */
+    saga: {
+      notice: 3,
+      diyuan: { name: '地渊开启', every: [12, 20], first: [4, 8], years: 1, place: '地渊', days: 90, minMajor: 2,
+        outerHerb: [2, 4], outerHurt: 0.3, midSwing: [0.6, 1.0], deepSwing: [1.0, 1.6], merit: { outer: 3, middle: 6, deep: 10 }, npcDeaths: [0, 3] },
+      xiefang: { name: '花神府撷芳宴', every: [18, 30], first: [5, 12], years: 1, faction: 'huashen', minMajor: 2, rounds: 3, days: 30,
+        fee: { base: 300, perRank: 60 }, foeRank: [-2, 0], loserDies: 0.5 },
+      jiaokao: { name: '玉宸派道脉校考', every: [30, 30], first: [10, 16], years: 1, faction: 'xuanzhen', days: 30, peerAge: 25,
+        tingjiangDays: 1080, tingjiangGain: 0.25, upperMerit: 20, midMerit: 10, midQiju: 4,
+        // 上考的下赐按境界：练炁得可筑上品道基的练炁术，筑基得上乘开府真法，紫府得玉髓，洞玄得先天五行之精。
+        // 凝丹大药不白给：玄真派弟子要托金谷墟市代寻，或下地渊深处去取
+        upperGift: { 1: 'tech:handou', 2: 'tech:handou', 3: 'tech:kaifu_high', 4: 'yusui', 5: 'wujing', 6: 'wujing' } },
+      // 打退过的劫修记了仇，修为跟得上时每年有这个概率找上门
+      revenge: { chance: 0.04, rankGap: 4 },
+    },
+
+    /* ---------- 洞府 ----------
+     * 筑基以后可在荒野、险地开辟洞府：在自家洞府里灵机高一级（至多 5 级），闭关被打扰的机会只剩两成。只能有一处。 */
+    dongfu: { minMajor: 3, minQi: 3, cost: { 3: 3000, 4: 8000, 5: 20000 }, qiBonus: 1, disturbMult: 0.2 },
 
     /* ---------- 出身 ---------- */
     origins: {
@@ -322,9 +350,9 @@
       heal: { name: '小白阳丹', price: 20, desc: '护住内腑、调理伤势，加快伤势恢复' },
       zhuji: { name: '大造元珠', price: 420, desc: '补益元炁的外药，冲击筑基时服下，成功率 +25%', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
       danmusha: { name: '丹母砂', price: 900, desc: '全真外药。筑基二重修到三重「龟蛇相抱」时必须用上一枚', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
-      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
-      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
-      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '五光宗、花神府弟子可用道功换；墟市、山门货架偶尔有' },
+      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
+      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
+      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '在浮玉泊托金谷墟市代寻，约三年一定送到；五光宗、花神府弟子可用道功换；货架上偶尔也有' },
       yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
       fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
       fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },

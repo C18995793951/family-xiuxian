@@ -26,9 +26,9 @@
   // 文本模板（config 区块）：同一键可有多个变体，按记录 id 轮换，不消耗随机数
   const TX = (FX.CONFIG.text = {
     start: ['{name}，{origin}，{age} 岁，{realm}。这一年，{name}站在{place}，仙路从此开始。'],
-    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}。'],
+    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}{pills}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}{pills}。'],
     cultivate_idle: ['{name}在{place}{verb} {dur}，{what}已到头，未见增长。'],
-    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}。'],
+    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}{pills}。'],
     realm_up: ['{name}修为精进，晋入{realm}。'],
     lianqi_start: ['{name}胎息壮大到头，依《{tech}》采气炼炁，踏入练炁境界，从此可称羽士。'],
     taixi_ok: ['{name}静坐中忽有所感，证得胎息气感（成功率 {chance}%），从此脱离凡身，寿元上限增至 {life}。', '{name}悟得那一点先天真阳（成功率 {chance}%），成就胎息。'],
@@ -62,6 +62,16 @@
     sect_learn_merit: ['{name}以 {cost} {merit}向{faction}换得《{tech}》。'],
     redeem: ['{name}以 {cost} {merit}从{faction}库藏换得{item}。'],
     submit: ['{name}向{faction}上交{what}，记 {gain} {merit}。'],
+    saga_notice: ['南域传开了风声：{year} 年将有「{what}」。{hint}。'],
+    saga_open_diyuan: ['「{what}」：地渊开了，玄真派奉事房发下地渊符诏，各路散修也往那里去。{hint}。'],
+    saga_open_xiefang: ['「{what}」：花神府开宴，广招散修。{hint}。'],
+    saga_open_jiaokao: ['「{what}」：玉宸派的巡照道人到了南域，查校各家道脉。{hint}。'],
+    xiefang_enter: ['{name}交了 {fee} 符钱供奉，赴花神府撷芳宴。'],
+    xiefang_win: ['{name}在撷芳宴上连胜三场，拜入{faction}门下。'],
+    jiaokao: ['{name}应玉宸派道脉校考，{what}。'],
+    dongfu: ['{name}花了 {cost} 符钱，在{place}{how}。'],
+    post_up: ['{name}在{faction}升任{post}。'],
+    post_leader: ['{name}成为{faction}的{post}。'],
     order: ['{name}在{place}付了 {cost} 符钱，托人代寻{item}，约 {dur}后送到。'],
     order_arrive: ['{place}托人代寻的{item}送到了{name}手上。'],
     rest: ['{name}在{place}静养 {dur}，{state}。'],
@@ -70,7 +80,7 @@
     use_item: ['{name}服下{item}，{effect}。'],
     learn: ['{name}改修《{tech}》{loss}。'],
     learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
-    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}。'],
+    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}{pills}。'],
     injury_heal: ['{name}伤势痊愈。'],
     disturb: ['{name}闭关时，{what}。'],
     npc_break: ['传闻：{name}（{faction}）成就{target}。'],
@@ -128,7 +138,8 @@
     const vs = TX[entry.key] || ['{key}'];
     const n = parseInt(entry.id.slice(1), 10) || 0;
     const tpl = vs[n % vs.length];
-    return U.fill(tpl, Object.assign({ key: entry.key }, entry.params));
+    // 旧存档里的条目可能没有后来加的可选参数，按空串补上
+    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '' }, entry.params));
   };
 
   H.markFirst = (s, key, hid) => {

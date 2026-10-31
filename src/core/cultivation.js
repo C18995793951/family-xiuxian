@@ -37,6 +37,7 @@
     if (!place) return 1;
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
+    if (FX.Saga.isDongfu(s, p, place.id)) return Math.min(5, place.qi + C().dongfu.qiBonus);
     return place.qi;
   };
 

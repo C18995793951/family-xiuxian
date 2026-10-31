@@ -75,6 +75,8 @@
     for (const o of Act.orderable(s)) add({ type: 'order', item: o.item, days: 0, cost: o.cost, label: '托人代寻' + W().itemName(o.item) + '（' + o.cost + ' 符钱，约 ' + T().dur(o.days) + '后送到）', group: '坊市', ok: s.player.stone >= o.cost, reason: s.player.stone >= o.cost ? '' : '符钱不够（需 ' + o.cost + '）' });
     // 宗门、家族：拜入、符诏、请授、兑换、上交（见 sect.js）
     FX.Sect.list(s, add);
+    // 天下大事与洞府（见 saga.js）
+    FX.Saga.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -107,7 +109,13 @@
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
     s.player.stats.actions++;
-    const r = (Act.DO[item.type] || FX.Sect.DO[item.type])(s, item);
+    // 兑换可以一次换多份
+    const req = Object.assign({}, item);
+    if (item.type === 'redeem' && a.qty > 1) {
+      req.qty = Math.floor(a.qty);
+      if (item.cost * req.qty > s.player.merit) return { ok: false, error: C().house.meritName + '不够（需 ' + item.cost * req.qty + '）' };
+    }
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type])(s, req);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
   };
@@ -126,8 +134,9 @@
     else if (r.gained <= 0) key = 'cultivate_idle';
     const what = ['气感', '胎息'][p.realm.major] || '修为';
     const verb = ['静坐', '温养胎息'][p.realm.major] || (a.days >= 360 ? '闭关' : '修炼');
-    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb } });
-    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}`, interrupted: r.interrupted };
+    const pills = r.pills ? '，其间服下' + C().items.qiju.name + ' ' + r.pills + ' 颗' : '';
+    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb, pills } });
+    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}${pills}`, interrupted: r.interrupted };
   };
 
   Act.DO.breakthrough = (s, a) => {

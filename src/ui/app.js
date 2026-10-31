@@ -141,6 +141,19 @@
 
   /* ---------- 此刻 ---------- */
   const PAGE = {};
+  const autoPillBtn = () => {
+    const on = UI.s.player.autoPill !== false;
+    return `<button class="link" data-act="autoPill" data-v="${on ? 0 : 1}" title="闭关、修炼时药力一尽就从行囊里续服一颗；点一下切换">${on ? '自动续服（开）' : '自动续服（关）'}</button>`;
+  };
+  // 天下大事：日期开局就排好，提前几年有风声；正在进行的高亮
+  const sagaCard = (s) => {
+    const list = Game.view.sagas(s).filter((x) => x.known);
+    if (!list.length) return '';
+    return `<div class="card"><h3>天下大事</h3>${list.map((x) => {
+      const when = x.open ? (x.done ? '<span class="muted">这回你已经去过了</span>' : `<span class="good">正在进行</span>，到 ${x.until} 年为止`) : x.year === s.year ? '今年' : `${x.year} 年（还有 ${x.year - s.year} 年）`;
+      return `<div class="saga"><div class="row between"><b>${esc(x.name)}</b><span>${when}</span></div><div class="muted">${esc(x.hint)}</div></div>`;
+    }).join('')}</div>`;
+  };
   PAGE.now = (ov) => {
     const s = UI.s, me = ov.me;
     const A = Game.actions(s);
@@ -170,14 +183,15 @@
           <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
           ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
           <div class="stat"><span>符钱</span><b>${n0(ov.stone)}</b></div>
-          ${ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan') ? `<div class="stat"><span>${esc(CF.house.meritName)}</span><b>${n0(ov.merit)} <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中库藏' : '长老房'}</button></b></div>` : ''}
-          ${ov.pillUntil ? `<div class="stat"><span>${esc(CF.items.qiju.name)}药力</span><b>至 ${T.fmt(ov.pillUntil)}</b></div>` : ''}
+          ${ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan') ? `<div class="stat"><span>${esc(CF.house.meritName)}</span><b>${n0(ov.merit)} <span class="tag">${esc(FX.Sect.postName(s, ov.faction, me))}</span> <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中库藏' : '长老房'}</button></b></div>` : ''}
+          ${ov.pillUntil || (me.realm.major >= 2 && s.player.inv.qiju) ? `<div class="stat"><span>${esc(CF.items.qiju.name)}</span><b>${ov.pillUntil ? '药力至 ' + T.fmt(ov.pillUntil) + ' · ' : ''}${autoPillBtn()}</b></div>` : ''}
           <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         </div>
         <div class="card">
           <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc(pv.typeName)}</span></div>
           <div class="stat"><span>灵机</span><b>${stars(place.qi)} ${QI[place.qi]} · 属「${esc(place.attr)}」${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
           <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(place.danger)} ${DANGER[place.danger]}</b></div>
+          ${s.player.dongfu ? `<div class="stat"><span>洞府</span><b>${s.player.dongfu === place.id ? '<span class="good">就在此地</span> <span class="muted">（灵机 +' + CF.dongfu.qiBonus + '，闭关少受打扰）</span>' : placeLink(s.player.dongfu)}</b></div>` : ''}
           <div class="stat"><span>势力</span><b>${pv.faction ? esc(pv.faction.name) : '无人管辖'}</b></div>
           <div class="stat"><span>此地的人</span><b>${pv.people.length} 人 <button class="link" data-act="page" data-p="people">看看</button></b></div>
           ${pv.market ? `<div class="stat"><span>${place.type === 'city' ? '集市' : '货架'}</span><b><button class="link" data-act="page" data-p="bag">去逛逛</button></b></div>` : ''}
@@ -189,8 +203,9 @@
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
         ${reqList(ov.reqs)}
         ${bt.can.ok ? '' : `<p class="bad">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}</div>` : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : ''}
+      ${sagaCard(s)}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
-        ${['修炼', '外出', '营生', '宗门', '物品'].map((g) => { const list = grp(g).filter((a) => g !== '宗门' || a.ok || !/^要回到/.test(a.reason)); return list.length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${list.map(btn).join('')}</div></div>` : ''; }).join('')}
+        ${['大事', '修炼', '外出', '营生', '宗门', '物品'].map((g) => { const list = grp(g).filter((a) => g !== '宗门' || a.ok || !/^要回到/.test(a.reason)); return list.length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${list.map(btn).join('')}</div></div>` : ''; }).join('')}
         <p class="muted" style="margin-bottom:0">闭关一年以上可能被打扰；游历多半一无所获，偶有遭遇。练炁以后可以把符钱炼进去修行，奢费但不挑地方。时间一过就回不来。</p>
       </div>`;
   };
@@ -244,7 +259,12 @@
     const s = UI.s;
     const A = Game.actions(s);
     const inv = Object.entries(ov.inv).filter(([, n]) => n > 0);
-    const useBtn = (k) => { const a = A.find((x) => x.type === 'use' && x.item === k); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">服用</button>` : ''; };
+    const useBtn = (k) => { const a = A.find((x) => x.type === 'use' && x.item === k); return (a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">服用</button>` : '') ; };
+    const buyBtns = (x) => {
+      const can = Math.min(x.qty, Math.floor(ov.stone / x.price));
+      if (x.item.startsWith('tech:')) return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买下</button>`;
+      return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买 1</button>${x.qty >= 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="5" ${can >= 5 ? '' : 'disabled'}>买 5</button>` : ''}${can > 1 && can !== 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="${can}">${can === x.qty ? '全买' : '买得起的全买'}（${can}）</button>` : ''}`;
+    };
     const m = s.markets[ov.place.id];
     const sellable = inv.filter(([k]) => CF.items[k]);
     const learn = A.filter((a) => a.type === 'learn');
@@ -257,10 +277,11 @@
     return `<h2>行囊</h2>
       <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
+        ${ov.me.realm.major >= 2 && s.player.inv.qiju ? `<p class="muted" style="margin:.4em 0 0">闭关、修炼时${esc(CF.items.qiju.name)}药力一尽就从行囊里续服一颗 · ${autoPillBtn()}</p>` : ''}
         <h3>法门</h3>${ov.manuals.length ? ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
       </div>
       ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
-        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b><button data-act="buy" data-k="${esc(x.item)}" ${x.qty > 0 && ov.stone >= x.price ? '' : 'disabled'}>买 1</button></span></div>`).join('')}
+        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b>${buyBtns(x)}</span></div>`).join('')}
         ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}
       ${orderCard}`;
   };
@@ -290,7 +311,8 @@
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
-      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted">（已有 ' + e.have + '）</span>' : ''} <span class="muted">${esc(e.it.desc)}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才换' : ''}</span></span><span class="row">${btn(a, e.merit + ' ' + M, true)}</span></div>`;
+      const many = a && a.ok && e.merit * 5 <= v.merit && ['qiju', 'heal'].includes(e.item) ? `<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5 份（${e.merit * 5}）</button>` : '';
+      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted">（已有 ' + e.have + '）</span>' : ''} <span class="muted">${esc(e.it.desc)}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才换' : ''}</span></span><span class="row">${btn(a, e.merit + ' ' + M, true)}${many}</span></div>`;
     }).join('');
     const subs = A.filter((x) => x.type === 'submit');
     const work = A.find((x) => x.type === 'work');
@@ -298,6 +320,7 @@
     return `<h2>${clan ? '家族' : '宗门'} <span class="muted">${esc(f.name)}</span></h2>
       <div class="card hl">
         <div class="stat"><span>${esc(M)}</span><b class="big">${n0(v.merit)}</b></div>
+        <div class="stat"><span>职位</span><b>${esc(v.postName)}${v.leader && v.post < 3 ? ' <span class="muted">· ' + (clan ? '家主' : '掌门') + '是' + esc(v.leader.name) + '（' + esc(P.realmName(v.leader)) + '）</span>' : ''}</b></div>
         <div class="stat"><span>每年俸禄（按你如今的境界）</span><b>符钱 ${v.stipend.stone}${v.stipend.qiju ? '、' + esc(CF.items.qiju.name) + '×' + v.stipend.qiju : ''}</b></div>
         <div class="stat"><span>${clan ? '族中' : '山门'}</span><b>${placeLink(v.seat.id)}${v.atSeat ? ' <span class="good">（你在这里）</span>' : ' <span class="muted">（请授、兑换、上交、领差事都要回来办）</span>'}</b></div>
         <p class="muted" style="margin-bottom:0">${clan ? '族里' : '奉事房'}的差事每月记 ${v.taskMerit} ${esc(M)}，另给符钱；${clan ? '替家族除妖' : '领符诏除妖'}打赢了记 ${v.missionMerit} ${esc(M)}，逃了就算没办成。</p>
@@ -324,7 +347,7 @@
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，以及后期的天下大事（地渊开启、撷芳宴、道脉校考）、职位与推举、洞府、仇家都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -446,7 +469,16 @@
       if (r.text) toast(r.text);
       afterAction();
     },
-    buy(d) { const r = Game.buy(UI.s, d.k, 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    buy(d) { const r = Game.buy(UI.s, d.k, Number(d.n) || 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    doN(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      const r = Game.act(UI.s, Object.assign({}, a, { qty: Number(d.n) }));
+      if (!r.ok) { toast('✗ ' + r.error); return; }
+      if (r.text) toast(r.text);
+      afterAction();
+    },
+    autoPill(d) { Game.setOption(UI.s, 'autoPill', d.v === '1'); toast(d.v === '1' ? '闭关时会自动续服' : '不再自动服用'); afterAction(); },
     sell(d) { const r = Game.sell(UI.s, d.k, Number(d.n)); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
     choose(d) {
       const r = Game.choose(UI.s, d.i, d.o);
