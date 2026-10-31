@@ -256,6 +256,7 @@
     const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${feedHtml(recent)}</div>` : '';
     // 冲关：成功率、要什么、按钮放在一处
     const btActs = A.filter((a) => a.type === 'breakthrough' && !a.path);
+    const failInfo = bt ? FX.CU.failInfo(s, P.player(s)) : null;
     // 冲关不只看运气：把还能稳稳添上的几分把握点出来
     const upTips = [];
     if (bt && !['minor', 'taixi', 'zhangguan'].includes(bt.kind) && bt.chance < bt.max) {
@@ -272,6 +273,7 @@
     }
     const btCard = bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : esc(bt.verb + bt.target)}</h3>
         <p style="margin:.2em 0">成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.kind === 'mizhang' ? '（失道之祸）' : bt.tianfa ? '（天罚）' : ''}</span>` : bt.kind === 'zhangguan' ? ' · <span class="good">没破开也无祸患</span>' : ''} · 需 ${T.dur(bt.days)}</p>
+        ${bt.kind !== 'fanxu' && failInfo ? `<p class="small muted" style="margin:.1em 0 .4em">失败的代价：${esc(failInfo.join('；'))}</p>` : ''}
         ${btActs.length ? `<div class="row">${btActs.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div>` : ''}
         ${bt.kind === 'fanxu' ? fanxuPaths(A) : ''}
         ${reqList(ov.reqs)}

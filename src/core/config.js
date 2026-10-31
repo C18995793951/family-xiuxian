@@ -298,7 +298,9 @@
       qiBonusMin: 4,
       accumPerYear: 2,
       accumMax: 10,
-      failPenalty: 5,
+      // 冲关屡败渐有心得（各关一样）：每败一次 +4，至多 +20；悟胎息、障关等另设的照各自的
+      failBonus: 4,
+      failBonusCap: 20,
       restYears: 3,
       min: 5,
       max: 90,

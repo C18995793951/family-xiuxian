@@ -374,8 +374,9 @@
     }
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
-    if (p.failCount > 0 && cfg.failBonus) parts.push({ label: '此前参悟 ' + p.failCount + ' 次，渐有心得', value: Math.min(cfg.failBonusCap, p.failCount * cfg.failBonus) });
-    else if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
+    // 屡败渐有心得：每一关都一样，失败一次添一点把握，有上限
+    const fb = cfg.failBonus !== undefined ? cfg.failBonus : B.failBonus, fcap = cfg.failBonusCap || B.failBonusCap;
+    if (p.failCount > 0 && fb) parts.push({ label: (k === 'taixi' ? '此前参悟 ' : '此前失败 ') + p.failCount + ' 次，渐有心得', value: Math.min(fcap, p.failCount * fb) });
     const aux = FX.Ars.breakPart(s, p, k);
     if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
@@ -387,6 +388,35 @@
     if (site) death = fp.death * site.mult;
     if ((k === 'chunyang' || k === 'sanzai') && p.realm.major >= 8) death *= fp.zaiDeath;
     return { kind: k, target: CU.targetName(p, opts && opts.path), verb: VERB[k] || '冲击', path, chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, usesShen: hasShen, usesXudu: hasXudu, usesTiangu: !!(site && site.tiangu), kaifu, days: cfg.days };
+  };
+
+  // 冲关失败的代价，照 attempt 里实际怎么结算写出来（界面冲关卡片用）
+  CU.failInfo = (s, p, opts) => {
+    const B = C().breakthrough, ch = CU.chance(s, p, opts);
+    if (!ch) return null;
+    const k = ch.kind, cfg = k === 'minor' ? B.minor : B[k] || {};
+    const pct = (a, b) => ' ' + Math.round(a * 100) + (b !== undefined && b !== a ? '–' + Math.round(b * 100) : '') + '%';
+    const out = [];
+    if (k === 'minor') out.push('修为跌一成');
+    else if (k === 'taixi') out.push('气感散去' + pct(cfg.failLossMin, cfg.failLossMax));
+    else if (k === 'zhangguan') out.push('感悟少' + pct(cfg.failLossMin, cfg.failLossMax) + '，没有祸患');
+    else if (k === 'mizhang') out.push('走火入魔：修为丧失' + pct(cfg.failLossMin, cfg.failLossMax) + '，身受重伤');
+    else out.push('修为跌' + pct(cfg.failLossMin, cfg.failLossMax) + '，身受重伤');
+    out.push('歇 ' + (cfg.restYears || B.restYears) + ' 年才能再冲');
+    // 成败都耗掉的东西
+    const used = [];
+    const need = CU.minorNeed(p);
+    if (need) used.push(C().items[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''));
+    if (ch.usesPill) used.push(C().items.zhuji.name);
+    if (k === 'jindan') used.push(C().items.ningdan.name + '和采得的外药');
+    if (ch.usesShen) used.push(C().items.dingshen.name);
+    if (ch.usesXudu) used.push(C().items.xudu.name);
+    if (ch.usesTiangu) used.push(C().items.tiangu.name);
+    if (used.length) out.push(used.join('、') + '成败都耗掉');
+    if (ch.death) out.push('约 ' + ch.death + '% 身死' + (k === 'mizhang' ? '（失道之祸）' : ch.tianfa ? '（天罚）' : ''));
+    const fb = cfg.failBonus !== undefined ? cfg.failBonus : B.failBonus;
+    if (fb) out.push('下回把握 +' + fb + '%（至多 +' + (cfg.failBonusCap || B.failBonusCap) + '%）');
+    return out;
   };
 
   CU.attempt = (s, p, opts) => {

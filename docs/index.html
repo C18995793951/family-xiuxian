@@ -567,7 +567,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
       qiBonusMin: 4,
       accumPerYear: 2,
       accumMax: 10,
-      failPenalty: 5,
+      // 冲关屡败渐有心得（各关一样）：每败一次 +4，至多 +20；悟胎息、障关等另设的照各自的
+      failBonus: 4,
+      failBonusCap: 20,
       restYears: 3,
       min: 5,
       max: 90,
@@ -2217,8 +2219,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
-    if (p.failCount > 0 && cfg.failBonus) parts.push({ label: '此前参悟 ' + p.failCount + ' 次，渐有心得', value: Math.min(cfg.failBonusCap, p.failCount * cfg.failBonus) });
-    else if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
+    // 屡败渐有心得：每一关都一样，失败一次添一点把握，有上限
+    const fb = cfg.failBonus !== undefined ? cfg.failBonus : B.failBonus, fcap = cfg.failBonusCap || B.failBonusCap;
+    if (p.failCount > 0 && fb) parts.push({ label: (k === 'taixi' ? '此前参悟 ' : '此前失败 ') + p.failCount + ' 次，渐有心得', value: Math.min(fcap, p.failCount * fb) });
     const aux = FX.Ars.breakPart(s, p, k);
     if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
@@ -2230,6 +2233,35 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (site) death = fp.death * site.mult;
     if ((k === 'chunyang' || k === 'sanzai') && p.realm.major >= 8) death *= fp.zaiDeath;
     return { kind: k, target: CU.targetName(p, opts && opts.path), verb: VERB[k] || '冲击', path, chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, usesShen: hasShen, usesXudu: hasXudu, usesTiangu: !!(site && site.tiangu), kaifu, days: cfg.days };
+  };
+
+  // 冲关失败的代价，照 attempt 里实际怎么结算写出来（界面冲关卡片用）
+  CU.failInfo = (s, p, opts) => {
+    const B = C().breakthrough, ch = CU.chance(s, p, opts);
+    if (!ch) return null;
+    const k = ch.kind, cfg = k === 'minor' ? B.minor : B[k] || {};
+    const pct = (a, b) => ' ' + Math.round(a * 100) + (b !== undefined && b !== a ? '–' + Math.round(b * 100) : '') + '%';
+    const out = [];
+    if (k === 'minor') out.push('修为跌一成');
+    else if (k === 'taixi') out.push('气感散去' + pct(cfg.failLossMin, cfg.failLossMax));
+    else if (k === 'zhangguan') out.push('感悟少' + pct(cfg.failLossMin, cfg.failLossMax) + '，没有祸患');
+    else if (k === 'mizhang') out.push('走火入魔：修为丧失' + pct(cfg.failLossMin, cfg.failLossMax) + '，身受重伤');
+    else out.push('修为跌' + pct(cfg.failLossMin, cfg.failLossMax) + '，身受重伤');
+    out.push('歇 ' + (cfg.restYears || B.restYears) + ' 年才能再冲');
+    // 成败都耗掉的东西
+    const used = [];
+    const need = CU.minorNeed(p);
+    if (need) used.push(C().items[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''));
+    if (ch.usesPill) used.push(C().items.zhuji.name);
+    if (k === 'jindan') used.push(C().items.ningdan.name + '和采得的外药');
+    if (ch.usesShen) used.push(C().items.dingshen.name);
+    if (ch.usesXudu) used.push(C().items.xudu.name);
+    if (ch.usesTiangu) used.push(C().items.tiangu.name);
+    if (used.length) out.push(used.join('、') + '成败都耗掉');
+    if (ch.death) out.push('约 ' + ch.death + '% 身死' + (k === 'mizhang' ? '（失道之祸）' : ch.tianfa ? '（天罚）' : ''));
+    const fb = cfg.failBonus !== undefined ? cfg.failBonus : B.failBonus;
+    if (fb) out.push('下回把握 +' + fb + '%（至多 +' + (cfg.failBonusCap || B.failBonusCap) + '%）');
+    return out;
   };
 
   CU.attempt = (s, p, opts) => {
@@ -6445,6 +6477,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${feedHtml(recent)}</div>` : '';
     // 冲关：成功率、要什么、按钮放在一处
     const btActs = A.filter((a) => a.type === 'breakthrough' && !a.path);
+    const failInfo = bt ? FX.CU.failInfo(s, P.player(s)) : null;
     // 冲关不只看运气：把还能稳稳添上的几分把握点出来
     const upTips = [];
     if (bt && !['minor', 'taixi', 'zhangguan'].includes(bt.kind) && bt.chance < bt.max) {
@@ -6461,6 +6494,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     const btCard = bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : esc(bt.verb + bt.target)}</h3>
         <p style="margin:.2em 0">成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.kind === 'mizhang' ? '（失道之祸）' : bt.tianfa ? '（天罚）' : ''}</span>` : bt.kind === 'zhangguan' ? ' · <span class="good">没破开也无祸患</span>' : ''} · 需 ${T.dur(bt.days)}</p>
+        ${bt.kind !== 'fanxu' && failInfo ? `<p class="small muted" style="margin:.1em 0 .4em">失败的代价：${esc(failInfo.join('；'))}</p>` : ''}
         ${btActs.length ? `<div class="row">${btActs.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div>` : ''}
         ${bt.kind === 'fanxu' ? fanxuPaths(A) : ''}
         ${reqList(ov.reqs)}

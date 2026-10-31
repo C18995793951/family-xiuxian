@@ -1456,6 +1456,34 @@ check('25', '卡关有“下一步”：凡人缺练炁术、筑基二重缺丹�
   return `${n} 回照着提示走，${ok} 回拿到了（凡人的练炁术、散修和弟子的丹母砂、散修和家族子弟的开府真法），每一步都有下一步；凡人开局就提醒练炁术有 ${g0.ways.length} 条来路`;
 });
 
+check('26', '冲关失败一致：每一关都“屡败渐有心得”（失败一次添把握、有上限），冲关卡片写全失败代价（跌多少修为、伤、歇几年、耗掉什么、身死几率）', () => {
+  const P = FX.P, CU = FX.CU, B = FX.CONFIG.breakthrough;
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'fail-same' });
+  const p = P.player(s); s.pending = []; p.lifespanMax = 100000; p.health = { state: 'healthy', days: 0 };
+  const gates = [['筑基小境界', { major: 3, stage: 1 }], ['筑基', { major: 2, stage: 9 }], ['紫府', { major: 3, stage: 3 }], ['洞玄', { major: 4, stage: 3 }], ['金丹', { major: 5, stage: 3 }], ['元神', { major: 6, stage: 3 }]];
+  const rows = [];
+  for (const [name, realm] of gates) {
+    p.realm = realm; p.progress = P.need(p);
+    p.failCount = 0; const c0 = CU.chance(s, p).chance;
+    p.failCount = 2; const c2 = CU.chance(s, p).chance;
+    p.failCount = 50; const c50 = CU.chance(s, p);
+    assert(c2 > c0 || c0 >= c50.max, name + '失败两回反而更难：' + c0 + '→' + c2);
+    const fb = c50.parts.find((x) => /渐有心得/.test(x.label));
+    assert(fb && fb.value > 0 && fb.value <= 30, name + '屡败心得没有上限：' + (fb && fb.value));
+    p.failCount = 0;
+    const info = CU.failInfo(s, p).join('；');
+    assert(/歇 \d+ 年/.test(info) && /下回把握/.test(info), name + '失败代价没写全：' + info);
+    if (name !== '筑基小境界') assert(/修为跌/.test(info) && /重伤/.test(info), name + '失败代价没写修为与伤：' + info);
+    rows.push(name + ' ' + c0 + '→' + c2 + '%');
+  }
+  // 金丹写明凝丹大药成败都耗
+  p.realm = { major: 5, stage: 3 }; p.progress = P.need(p);
+  assert(/凝丹大药.*成败都耗/.test(CU.failInfo(s, p).join('；')), '冲金丹没写明凝丹大药成败都耗');
+  p.realm = { major: 3, stage: 2 }; p.progress = P.need(p); s.player.inv.danmusha = 1;
+  assert(/丹母砂成败都耗/.test(CU.failInfo(s, p).join('；')), '筑基三重没写明丹母砂成败都耗');
+  return '失败两回后：' + rows.join('，') + '；屡败心得封顶；代价写明跌多少修为、重伤、歇几年、耗掉的外药、身死几率';
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
