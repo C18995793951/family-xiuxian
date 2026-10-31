@@ -55,7 +55,7 @@
   P.jinhongName = (p) => (p.jinhong ? C().realms.jinhongNames[p.jinhong] : '');
   P.xiangName = (p) => (p.xiang ? C().realms.xiangNames[p.xiang] : '');
   // 一路下来的根底成色：道基、紫府异象、先天金汞、金丹品第、元神法相
-  P.rootNames = (p) => [p.daoji ? C().daojiNames[p.daoji] : '', p.yixiang ? C().yixiangNames[p.yixiang] : '', P.jinhongName(p), P.danPinName(p), P.xiangName(p)].filter(Boolean);
+  P.rootNames = (p) => [p.realm.major >= 3 && P.lianqiOf(p) ? P.qiLabel(P.lianqiOf(p)) : '', p.daoji ? C().daojiNames[p.daoji] : '', p.yixiang ? C().yixiangNames[p.yixiang] : '', P.jinhongName(p), P.danPinName(p), P.xiangName(p)].filter(Boolean);
   // 名位：羽士、高功、炼师、真人
   // 以天考之法（玄中三限）证就返虚的，又称御极子
   P.title = (p) => (p.fanxuPath === 'sanxian' && (p.realm.major === 9 || (p.realm.major === 8 && p.realm.stage === C().realms.maxStage[8])) ? '御极子' : C().realms.titles[p.realm.major] || '');
@@ -103,6 +103,12 @@
     return P.lianqiOf(p) || NO_TECH;
   };
   P.daojiOf = (tier) => (tier >= C().daojiTiers[1] ? 3 : tier >= C().daojiTiers[0] ? 2 : 1);
+  // 真炁：九阶三十六品。rank 1（一阶下品）到 36（九阶至品）
+  P.qiRank = (t) => (t && t.tier ? (t.tier - 1) * 4 + (t.pin || 0) + 1 : 0);
+  P.qiGrade = (t) => (t && t.tier ? C().tierNames[t.tier] + C().qiPinNames[t.pin || 0] : '');
+  P.qiLabel = (t) => (t && t.tier ? (t.qi || t.name) + '（' + P.qiGrade(t) + '）' : '');
+  // 此人的真炁：筑基时把一身胎息炼成真炁；练炁时只是沾染了几分性质，算“将成”
+  P.qiOf = (p) => (p.realm.major >= 2 ? P.lianqiOf(p) : null);
   P.factionName = (s, p) => (p.factionId && s.factions[p.factionId] ? s.factions[p.factionId].name : '散修');
 
   // 斗法战力
@@ -115,6 +121,9 @@
     const t = P.techOf(s, p);
     if (t.kind !== 'none') F.push({ label: '法门 ' + t.name, value: t.mult });
     if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
+    // 真炁品秩：每一品间都是天差地别，练炁、筑基斗法全凭它
+    const qp = C().qiPower, qw = qp.majors[p.realm.major], q = P.qiOf(p);
+    if (qw && q) F.push({ label: (q.qi || q.name) + ' ' + P.qiGrade(q), value: U.round1((1 + (P.qiRank(q) - qp.mid) * qp.per * qw) * 100) / 100 });
     if (p.realm.major >= 6 && p.danPin) F.push({ label: P.danPinName(p), value: U.round1((1 + (5 - p.danPin) * C().realms.danPinPower) * 100) / 100 });
     if (p.realm.major >= 7 && p.xiang) F.push({ label: P.xiangName(p), value: U.round1((1 + (p.xiang - 2) * C().realms.xiangPower) * 100) / 100 });
     // 随身法器与道术、神通（见 arsenal.js；主角与 NPC 同一套算法）

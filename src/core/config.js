@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 11,
-    gameVersion: '0.9.0-xianye9',
+    schemaVersion: 12,
+    gameVersion: '0.10.0-xianye10',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -154,16 +154,29 @@
     attrFit: { match: 1.25, neutral: 0.8, opp: 0.3, coin: 1.0, zifu: 1.0, jindan: 1.2 },
 
     /* ---------- 功法 ----------
-     * 练炁术：决定采气属相与真炁品阶；真炁七阶及以上才能筑上品道基，四至六阶中品，三阶及以下下品。
+     * 练炁术：决定采气属相与所成真炁。照原著，世间真炁分九阶三十六品，每阶又分下、中、上、至四品，
+     *   一阶下品最次、九阶至品最高；练炁时胎息只沾染几分真炁的性质，到冲筑基时才把一身胎息炼成真炁，此后再不能换。
+     *   真炁七阶及以上才能筑上品道基，四至六阶中品，三阶及以下下品。qi 是所成真炁的名目，pin 0–3 对应下、中、上、至品。
+     *   原著出处：锭金真炁（玄真派，三阶中品）、赤鬽真炁（血莲宗，五阶中品）、景翼真炁（六阶下品）、洞灵元煞（八阶上品）、
+     *   奇殃母精（怙照宗，九阶下品）、大无相常融真炁（颜熙留在南域的天外道藏，九阶下品）、大洞玉真（天池姜氏，九阶中品）、
+     *   紫清真炁（上虞艾氏，九阶上品）、皇素玉真（赤明派，原著称世间真炁中的极品）。其余几门的名目是游戏拟的。
      * 开府真法：筑基三重圆满后开辟紫府的必需之物，品第决定紫府异象。 */
     techniques: {
-      linghe: { kind: 'lianqi', name: '灵鹤吐纳导引术', tier: 2, attrs: ['清', '柔'], opp: ['烈', '浊'], mult: 0.95, price: 60, desc: '散修手里最常见的劣等练炁术' },
-      guiyuan: { kind: 'lianqi', name: '归元子练炁要诀', tier: 3, attrs: ['清', '阳'], opp: ['阴', '浊'], mult: 1.0, price: 150, desc: '品秩不高，胜在中正平和' },
-      chiyang: { kind: 'lianqi', name: '赤阳炼炁诀', tier: 4, attrs: ['阳', '烈'], opp: ['寒', '阴'], mult: 1.05, price: 450, desc: '采阳烈之气' },
-      xuanshui: { kind: 'lianqi', name: '玄水真炁法', tier: 5, attrs: ['寒', '柔'], opp: ['烈', '阳'], mult: 1.05, price: 700, desc: '采寒柔之气' },
-      dingjin: { kind: 'lianqi', name: '三炁照神术', tier: 3, attrs: ['刚', '烈'], opp: ['寒', '浊'], mult: 1.0, price: 300, desc: '玄真派根本法门，可从练炁一直修到紫府；所生锭金真炁是三阶中品，采金锐之气' },
-      handou: { kind: 'lianqi', name: '寒斗真炁', tier: 7, attrs: ['寒', '阴'], opp: ['阳', '烈'], mult: 1.15, price: 2600, desc: '酷烈的高阶真炁，可筑上品道基' },
-      ziqing: { kind: 'lianqi', name: '紫清真炁', tier: 9, attrs: ['清', '阳'], opp: ['浊'], mult: 1.25, price: 8000, desc: '九阶上品真炁，玄门世族秘传，南域罕见' },
+      linghe: { kind: 'lianqi', name: '灵鹤吐纳导引术', tier: 2, pin: 0, qi: '鹤息真炁', attrs: ['清', '柔'], opp: ['烈', '浊'], mult: 0.95, price: 60, desc: '散修手里最常见的劣等练炁术' },
+      guiyuan: { kind: 'lianqi', name: '归元子练炁要诀', tier: 3, pin: 0, qi: '归元真炁', attrs: ['清', '阳'], opp: ['阴', '浊'], mult: 1.0, price: 150, desc: '品秩不高，胜在中正平和' },
+      chiyang: { kind: 'lianqi', name: '赤阳炼炁诀', tier: 4, pin: 1, qi: '赤阳真炁', attrs: ['阳', '烈'], opp: ['寒', '阴'], mult: 1.05, price: 450, desc: '采阳烈之气，五光宗的根本练炁法' },
+      xuanshui: { kind: 'lianqi', name: '玄水真炁法', tier: 5, pin: 0, qi: '玄水真炁', attrs: ['寒', '柔'], opp: ['烈', '阳'], mult: 1.05, price: 700, desc: '采寒柔之气，花神府的根本练炁法' },
+      dingjin: { kind: 'lianqi', name: '三炁照神术', tier: 3, pin: 1, qi: '锭金真炁', attrs: ['刚', '烈'], opp: ['寒', '浊'], mult: 1.0, price: 300, desc: '玄真派根本法门，可从练炁一直修到紫府；所成锭金真炁采金锐之气' },
+      chimei: { kind: 'lianqi', name: '赤鬽血炁法', tier: 5, pin: 1, qi: '赤鬽真炁', attrs: ['阴', '烈'], opp: ['清', '阳'], mult: 1.07, price: 1100, desc: '南域魔宗血莲宗的练炁法，有抄本流落在金谷墟市。真炁带着血煞之气，斗法凶狠' },
+      jingyi: { kind: 'lianqi', name: '景翼飞真法', tier: 6, pin: 0, qi: '景翼真炁', attrs: ['阳', '柔'], opp: ['阴', '浊'], mult: 1.1, price: 1600, desc: '正统仙道的练炁法，真炁轻灵。品秩只算中等，筑不成上品道基，将来丹品也难好' },
+      handou: { kind: 'lianqi', name: '寒斗真炁', tier: 7, pin: 1, qi: '寒斗真炁', attrs: ['寒', '阴'], opp: ['阳', '烈'], mult: 1.15, price: 2600, desc: '以酷烈著称的上品真炁，打进人体内如伏蛇潜藏、寒意噬心，可筑上品道基' },
+      dongling: { kind: 'lianqi', name: '洞灵元煞经', tier: 8, pin: 2, qi: '洞灵元煞', attrs: ['阴', '浊'], opp: ['清', '阳'], mult: 1.2, price: 5200, desc: '炼四方煞气入体的上品练炁法，成就筑基时引得煞气投体、半山落叶。南域极少见' },
+      ziqing: { kind: 'lianqi', name: '紫清真炁', tier: 9, pin: 2, qi: '紫清真炁', attrs: ['清', '阳'], opp: ['浊'], mult: 1.25, price: 8000, desc: '上虞艾氏的家传练炁法，所成胎息幽耽玄妙、五气灿然，少有真炁比得上。玄门世族秘传，南域罕见' },
+      // 下面几门只在腹地的世家、大派里流传（NPC 用；主角到腹地已是金丹，用不上了），大无相常融真炁另见颜熙道藏
+      qiyang: { kind: 'lianqi', name: '奇殃母精', tier: 9, pin: 0, qi: '奇殃母精', attrs: ['阴', '柔'], opp: ['阳', '烈'], mult: 1.22, price: 0, desc: '怙照宗长老传下的练炁法，真炁洞畅幽冥、分形散影，出入有无都是等闲小事' },
+      dadongyu: { kind: 'lianqi', name: '神烈飞决崇玄内法', tier: 9, pin: 1, qi: '大洞玉真', attrs: ['刚', '清'], opp: ['浊', '柔'], mult: 1.24, price: 0, desc: '天池姜氏的不传之秘，修出的大洞玉真名列前茅' },
+      huangsu: { kind: 'lianqi', name: '冲虚至德道君食神炁义解', tier: 9, pin: 3, qi: '皇素玉真', attrs: ['清', '阳'], opp: ['浊', '阴'], mult: 1.3, price: 0, desc: '赤明派冲虚至德道君亲传，所成皇素玉真是世间真炁中的极品，就是赤明弟子也少有得传的' },
+      wuxiang: { kind: 'lianqi', name: '大无相常融真炁', tier: 9, pin: 0, qi: '大无相常融真炁', attrs: [], opp: [], any: true, mult: 1.2, price: 0, desc: '空空道人观摩大自在天魔王作大变化时所创，千般变化、万种属相，什么灵气都采得，从不相冲。颜熙真人在天外得来，留在南域做了机缘。修成《散景敛形术》非它不可' },
       kaifu_low: { kind: 'kaifu', name: '玄关开府篇', grade: 1, mult: 1.0, price: 1600, desc: '下乘开府真法，开出的紫府异象下等' },
       kaifu_mid: { kind: 'kaifu', name: '三元开府真法', grade: 2, mult: 1.1, price: 4500, desc: '中乘开府真法，可开中等紫府异象' },
       kaifu_high: { kind: 'kaifu', name: '太清开府真经', grade: 3, mult: 1.25, price: 12000, desc: '上乘开府真法，可开上等紫府异象，向来只在大派世族间流转' },
@@ -186,7 +199,7 @@
       hufeng: { kind: 'shu', rank: 1, type: ['dun'], minMajor: 1, name: '小呼风唤雾术', price: 20, desc: '呼风唤雾，遮人耳目，逃遁时好用' },
       jinren: { kind: 'shu', rank: 1, type: ['dun', 'def'], minMajor: 1, name: '金人代形', price: 40, desc: '临危时化出一具金人替身挡灾，本体趁机脱身' },
       jiexing: { kind: 'shu', rank: 2, type: ['atk'], minMajor: 2, name: '解形遁变之术', price: 900, desc: '附在所驱之物上，可出幽入冥、形随影变、分化无穷，叫人防不胜防' },
-      sanjing: { kind: 'shu', rank: 2, type: ['dun'], minMajor: 2, name: '散景敛形术', price: 700, desc: '敛去自家形迹气机，还能拿一缕雾气仿出别人的气机来蒙骗对手' },
+      sanjing: { kind: 'shu', rank: 3, type: ['dun'], minMajor: 2, name: '散景敛形术', price: 0, needQi: 'wuxiang', desc: '劫仙之祖为补“大无相常融真炁”的不足而创，地阙金章隐沦部里排名前首的敛形之法：遮掩一身气机血气，洞玄炼师也难窥破行藏，功行足时连草木金石的气机都仿得出。不以大无相常融真炁为根基修不成' },
       dongjing: { kind: 'shu', rank: 2, type: ['xiu'], minMajor: 2, name: '动静雷音导引术', price: 1200, desc: '五光宗辅助练炁的导引法门。练炁时修炼速度 +12%（大成时）', xiu: { cult: { majors: [2], mult: 0.12 } } },
       dari: { kind: 'shu', rank: 3, type: ['atk', 'def'], minMajor: 2, name: '先天大日神光', price: 26000, desc: '能攻能守的上乘道术：放出去如一轮天日巡空，荡灭一切；收回来以神光裹住身躯，辟邪护命。无需外物引子，只是极难修持' },
       sishan: { kind: 'shu', rank: 3, type: ['xiu', 'atk'], minMajor: 3, name: '四山斗决', price: 20000, desc: '玉宸派长赢院弟子筑基三重时多选它来破紫府壁障：修到中成，神意可勘破虚空迷障。冲紫府成功率 +12（大成时），也是一门护道杀伐之术', xiu: { brk: { zifu: 12 } } },
@@ -205,11 +218,15 @@
       lianjian: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '炼剑成丝', price: 0, merge: 'jianqi', desc: '赤明派剑道的极境之一，剑炼成丝，无物不断。要先修过剑气雷音' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
+    qiPinNames: ['下品', '中品', '上品', '至品'],
+    // 真炁品秩（1–36）在斗法里的分量：练炁、筑基全凭真炁，紫府、洞玄减半，金丹诸气浑成后不再单算
+    qiPower: { mid: 14, per: 0.012, majors: { 2: 1, 3: 1, 4: 0.5, 5: 0.5 } },
     gradeNames: ['', '下乘', '中乘', '上乘', '玄门至典'],
     shuRankNames: ['', '下乘道术', '中乘道术', '上乘道术', '神通', '无上大神通'],
     daojiNames: ['', '下品道基', '中品道基', '上品道基'],
     yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
     daojiTiers: [4, 7], // 真炁阶数 ≥4 中品、≥7 上品
+    yanxiCang: 0.06, // 南域遗府破禁深入时，撞上颜熙真人天外道藏的机会（一生一回）
     switchLoss: 0.3, // 练炁途中改修别的练炁术，真炁性质不同，修为折三成
 
     /* ---------- 修炼 ---------- */
@@ -398,13 +415,13 @@
       },
       {
         key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人',
-        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'hufeng' }, { tech: 'sanjing', merit: 60, minMajor: 2 }],
+        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'hufeng' }, { tech: 'jinren', merit: 20 }],
         join: { closed: '花神府只在「撷芳宴」上收人，眼下没有开宴' },
       },
       { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易', leader: 'huaiwu' },
       // 八派六宗（tier 3）：只在东弥州腹地，金丹以后才见得到。掌门是元神真人，另有返虚、纯阳真君与道君闭关不出
       {
-        key: 'yuchen', name: '玉宸派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
+        key: 'yuchen', name: '玉宸派', type: 'sect', tier: 3, outer: true, tech: 'ziqing', techs: { ziqing: 2, dadongyu: 2, dongling: 2, handou: 3 },
         blurb: '玄门八派之一。本宗占着东域宵明大泽这口灵窟，设九殿；另有青阳、长赢、白商、玄英四大下院教导弟子。玄真派这样的小宗只是它下辖的数百道脉之一，道脉出身的金丹真人可凭道脉符书改投',
         transferNote: '落籍白商院（四大下院里最不看出身的一院）',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
@@ -416,7 +433,7 @@
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
-        key: 'chiming', name: '赤明派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
+        key: 'chiming', name: '赤明派', type: 'sect', tier: 3, outer: true, tech: 'ziqing', techs: { ziqing: 3, huangsu: 0.3, dongling: 2, handou: 3 },
         blurb: '玄门八派之一，据北域鹿台山，北域诸国都在它治下。真传多出自玄门世族，收外人只看金丹品第',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
           { tech: 'shenlie', merit: 1500 }, { tech: 'dari', merit: 2500 }, { tech: 'jianqi', merit: 7000, minMajor: 6, needTech: 'shenlie' },
@@ -424,7 +441,7 @@
         join: { minMajor: 6, base: 15, pin: 8 },
       },
       {
-        key: 'huzhao', name: '怙照宗', type: 'sect', tier: 3, outer: true, tech: 'handou',
+        key: 'huzhao', name: '怙照宗', type: 'sect', tier: 3, outer: true, tech: 'qiyang', techs: { qiyang: 3, dongling: 3, handou: 2 },
         blurb: '魔道六宗之一，山门在西域极西处，与玉宸、赤明「二玄」在东弥州维持着玄魔平衡。行事酷烈，当年南域的万宝楼错卖了它一门神通，一夜之间满楼覆灭。收人不问出身，只是正直之人入不了它的门',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 },
           { tech: 'jiguang', merit: 1500 }, { tech: 'xiaoyuanci', merit: 2500, minMajor: 5 }, { tech: 'wuyin', merit: 7000, minMajor: 6 }],
@@ -438,7 +455,7 @@
      * realm 为 [大境界, 重数]；faction 为势力键；role 为 leader 时接任该势力之主。 */
     notables: [
       { key: 'huaiwu', name: '怀悟洞主', sex: 'M', realm: [5, 3], age: 330, faction: 'jingu', role: 'leader', daoji: 2, yixiang: 2, jinhong: 2,
-        gear: [{ name: '怀悟洞', slot: 'def', grade: 4, jin: 33 }, { name: '飞剑', slot: 'atk', grade: 3, jin: 28 }], arts: { jiexing: 4, sanjing: 3 },
+        gear: [{ name: '怀悟洞', slot: 'def', grade: 4, jin: 33 }, { name: '飞剑', slot: 'atk', grade: 3, jin: 28 }], arts: { jiexing: 4, jinren: 3 },
         bio: '南域有名的散修炼师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
       { key: 'miaonan', name: '苗南老祖', sex: 'M', realm: [3, 3], age: 170, faction: 'miaonan', role: 'leader', traits: ['贪婪'],
         gear: [{ name: '五方升阳旗', slot: 'atk', grade: 5, jin: 42, ling: 40 }], arts: { xuejia: 4, hufeng: 4 },
@@ -764,12 +781,12 @@
           { item: 'fayi2', w: 0.8 },
           { item: 'suo2', w: 0.8 },
           { item: 'tech:jiexing', w: 0.6 },
-          { item: 'tech:sanjing', w: 0.6 },
           { item: 'tech:dari', w: 0.15 },
           { item: 'tech:chiyang', w: 1 },
           { item: 'tech:xuanshui', w: 1 },
           { item: 'ningdan', w: 0.4 },
           { item: 'tech:handou', w: 0.3 },
+          { item: 'tech:chimei', w: 0.5 }, { item: 'tech:jingyi', w: 0.4 }, { item: 'tech:dongling', w: 0.12 },
           { item: 'tech:kaifu_mid', w: 0.3 },
           { item: 'yunhua', w: 0.3 }, { item: 'tianyou', w: 0.4 }, { item: 'minghe', w: 0.4 },
           { item: 'xuanshi', w: 0.4 }, { item: 'qiming', w: 0.4 }, { item: 'laoxian', w: 0.4 },
@@ -804,7 +821,6 @@
           { item: 'suo2', qty: [1, 2] },
           { item: 'miluo', qty: [1, 2] },
           { item: 'tech:jiexing', qty: [1, 1] },
-          { item: 'tech:sanjing', qty: [1, 1] },
           { item: 'tech:dongjing', qty: [1, 1] },
           { item: 'ningdan', qty: [1, 2] },
           { item: 'wujing', qty: [3, 6] },

@@ -26,6 +26,7 @@
     const t = P().lianqiOf(p);
     if (!t) return { value: 0, label: '没有练炁术，炼化不了灵气', short: '无练炁术' };
     const a = place ? place.attr : null;
+    if (t.any) return { value: F.match, label: '《' + t.name + '》千般变化、万种属相，此地「' + a + '」气也采得', short: '「' + a + '」气相合' };
     if (t.attrs.includes(a)) return { value: F.match, label: '此地灵气属「' + a + '」，与《' + t.name + '》相合', short: '「' + a + '」气相合' };
     if (t.opp.includes(a)) return { value: F.opp, label: '此地灵气属「' + a + '」，与《' + t.name + '》相冲', short: '「' + a + '」气相冲' };
     return { value: F.neutral, label: '此地灵气属「' + a + '」，与《' + t.name + '》不相合', short: '「' + a + '」气不相合' };
@@ -332,8 +333,8 @@
     let hasPill = false, kaifu = null;
     if (k === 'zhuji') {
       const t = P().lianqiOf(p);
-      const tier = t ? t.tier : 1;
-      parts.push({ label: '真炁' + C().tierNames[tier], value: (tier - 4) * 2 });
+      const q = t || { tier: 1, pin: 0 };
+      parts.push({ label: '真炁' + P().qiGrade(q), value: Math.round((P().qiRank(q) - 14) / 2) });
       hasPill = isPlayer ? inv(s, p).zhuji > 0 : !!(opts && opts.pill);
       if (hasPill) parts.push({ label: '服用' + C().items.zhuji.name, value: cfg.pill });
     }

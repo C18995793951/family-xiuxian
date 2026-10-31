@@ -170,6 +170,14 @@
         // 结算后由 api 再推进 10 天
         apply(s, b, ctx) {
           if (R.chance(s.rng, 0.4)) { const h = Combat.hurt(s, pl(s), P().power(s, pl(s)) * 1.2, '洞府禁制', [ctx.hid]); return { text: '触动禁制，' + h.text, days: 10 }; }
+          // 颜熙真人留在南域的天外道藏：空空道人的大无相常融真炁修行法，连同劫仙之祖为它创的散景敛形术（一生只碰得上一回）
+          const me = pl(s), pc = s.places[b.place];
+          if (pc && pc.region === '南域' && !me.flags.includes('yanxi_cang') && R.chance(s.rng, C().yanxiCang)) {
+            me.flags.push('yanxi_cang');
+            for (const k of ['wuxiang', 'sanjing']) if (!s.player.manuals.includes(k)) s.player.manuals.push(k);
+            H().add(s, { type: 'explore', tags: ['机缘', '功法'], actors: [me.id], places: [b.place], key: 'yanxi_cang', pov: true, severity: 4, params: { name: me.name, place: pc.name } });
+            return { text: '深处竟是颜熙真人留在南域的一处天外道藏：得《大无相常融真炁》修行法与《散景敛形术》', gain: true, days: 10 };
+          }
           const roll = R.next(s.rng);
           if (roll < 0.35) return { text: '深处早被人搬空，只剩几只空玉瓶', days: 10 };
           if (roll < 0.65) { const q = R.int(s.rng, 2, 4); giveItem(s, 'qiju', q); return { text: `寻得${C().items.qiju.name}×${q}`, gain: true, days: 10 }; }
@@ -177,12 +185,13 @@
           if (roll < 0.86) { const k = R.pick(s.rng, ['fuqi1', 'fayi1', 'suo1']); giveItem(s, k, 1); return { text: `寻得一件${C().items[k].name}`, gain: true, days: 10 }; }
           if (roll < 0.93) {
             // 前人留下的道术玉简：多是中下乘，偶尔是上乘
-            const arts = ['gengjin', 'xuejia', 'jinren', 'jiexing', 'sanjing', 'dari', 'xiaoyuanci'];
-            const t = R.weighted(s.rng, arts, (k) => ({ gengjin: 3, xuejia: 3, jinren: 3, jiexing: 2, sanjing: 2, dari: 0.4, xiaoyuanci: 0.2 }[k]));
+            const arts = ['gengjin', 'xuejia', 'jinren', 'jiexing', 'hufeng', 'dari', 'xiaoyuanci'];
+            const t = R.weighted(s.rng, arts, (k) => ({ gengjin: 3, xuejia: 3, jinren: 3, jiexing: 2, hufeng: 2, dari: 0.4, xiaoyuanci: 0.2 }[k]));
             if (!s.player.manuals.includes(t)) { s.player.manuals.push(t); return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 }; }
             const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得一卷你已会的道术玉简，另有符钱 ${st}`, gain: true, days: 10 };
           }
-          const t = R.weighted(s.rng, ['guiyuan', 'chiyang', 'xuanshui', 'handou', 'kaifu_low'], (k) => ({ guiyuan: 3, chiyang: 3, xuanshui: 3, handou: 1, kaifu_low: 1 }[k]));
+          const t = R.weighted(s.rng, ['guiyuan', 'chiyang', 'xuanshui', 'chimei', 'jingyi', 'handou', 'dongling', 'kaifu_low'],
+            (k) => ({ guiyuan: 3, chiyang: 3, xuanshui: 3, chimei: 1, jingyi: 1, handou: 1, dongling: 0.3, kaifu_low: 1 }[k]));
           if (!s.player.manuals.includes(t)) s.player.manuals.push(t);
           return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 };
         },

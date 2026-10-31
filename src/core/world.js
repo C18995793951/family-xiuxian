@@ -264,8 +264,10 @@
   };
   W.rollRealm = (r, kind) => (ROLL[kind] || ROLL.loose)(r);
 
-  // NPC 的练炁术：本门传承或散修常见货色
+  // NPC 的练炁术：本门传承或散修常见货色。腹地大派门人出身各异，带进来的真炁也不一样（techs 按权重抽）
   W.npcTech = (r, f, role) => {
+    const d = f && f.key && f.type === 'sect' ? C().factionDefs.find((x) => x.key === f.key) : null;
+    if (d && d.techs) { const ks = Object.keys(d.techs); return R.weighted(r, ks, (k) => d.techs[k]); }
     if (f && f.tech && (f.type === 'sect' && (role !== 'member' || R.chance(r, 0.7)))) return f.tech;
     return R.weighted(r, ['linghe', 'guiyuan', 'chiyang', 'xuanshui', 'handou'], (k) => ({ linghe: 5, guiyuan: 4, chiyang: 2, xuanshui: 2, handou: 0.3 }[k]));
   };

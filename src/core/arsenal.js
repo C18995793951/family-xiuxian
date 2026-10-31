@@ -177,6 +177,7 @@
       const started = p.arts[k] !== undefined;
       const why = p.realm.major < t.minMajor ? '要到' + majorName(t.minMajor) + '才练得动'
         : t.need && !started && !(inv[t.need] > 0) ? '入门要一块' + cf.items[t.need].name + '作引子'
+        : t.needQi && !started && p.techniqueId !== t.needQi ? '要以' + cf.techniques[t.needQi].qi + '为根基才修得成'
         : p.health.state === 'heavy' ? '重伤未愈' : '';
       for (const d of AC().practiceDays) add({ type: 'practice', tech: k, days: d, label: '参习《' + t.name + '》' + T().dur(d), group: '道术', ok: !why, reason: why });
     }
@@ -348,7 +349,7 @@
     const top = big ? at[2] : at[1];
     const pool = Object.keys(C().techniques).filter((k) => {
       const t = TQ(k);
-      if (t.kind !== 'shu' || t.minMajor > m || t.merge || t.need) return false;
+      if (t.kind !== 'shu' || t.minMajor > m || t.merge || t.need || (t.needQi && p.techniqueId !== t.needQi)) return false;
       if (only[k]) return big && lib.includes(k) && t.rank <= top;
       return t.rank <= Math.min(top, 3);
     });

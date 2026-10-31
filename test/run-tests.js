@@ -755,7 +755,8 @@ check('17', '法器与道术、神通：炼形与禁制、器灵炼化、宝材�
   const staples = new Set(); for (const k in CF.market) if (CF.market[k].staples) for (const x of CF.market[k].staples) staples.add(x.item);
   const libs = new Set(); for (const d of CF.factionDefs.concat(Object.values(CF.factionTypes))) for (const e of d.library || []) libs.add(e.tech);
   const store = new Set(CF.house.store.map((e) => e.item));
-  const arts = Object.keys(CF.techniques).filter((k) => CF.techniques[k].kind === 'shu');
+  // 要特定真炁作根基的（散景敛形术非大无相常融真炁不可）跟着那门真炁走，是可有可无的机缘，不算推进所需
+  const arts = Object.keys(CF.techniques).filter((k) => CF.techniques[k].kind === 'shu' && !CF.techniques[k].needQi);
   for (const k of arts) assert(staples.has('tech:' + k) || libs.has(k), '道术没有稳定来路：' + CF.techniques[k].name);
   for (const k of Object.keys(CF.items).filter((x) => CF.items[x].gear)) assert(staples.has(k) || store.has(k), '法器没有稳定来路：' + CF.items[k].name);
   for (const k of ['miluo', 'ganyin', 'lingtian']) assert(staples.has(k) || store.has(k), '宝材没有稳定来路：' + k);
@@ -1164,6 +1165,82 @@ check('20', '玉宸九殿四院：四院大比（十大弟子、魁首得道录�
   const mg = FX.Save.deserialize(t10);
   assert(mg.ok && mg.state.saga.dabi && mg.state.saga.dabi.next > mg.state.year, 'v10 迁移没补上大比排期');
   return `五场连胜夺魁、入十大弟子成上宗真传；凭道录殿符诏取了《${CF.techniques.xuanzhongjing.name}》；元神入周行殿任长老；九百岁的不收；v10 迁移正常`;
+});
+
+check('21', '真炁九阶三十六品：品秩定名、筑基与斗法看真炁、筑基后不能换、大无相常融真炁诸气皆采、散景敛形术要它作根基、颜熙天外道藏、腹地大派门人真炁、v11 存档迁移', () => {
+  const CF = FX.CONFIG, CU = FX.CU, P = FX.P, T = CF.techniques;
+  // 1. 品秩：每阶下中上至四品，一阶下品为 1、九阶至品为 36；原著里有名有姓的几门照原著定阶
+  const lq = Object.keys(T).filter((k) => T[k].kind === 'lianqi');
+  assert(lq.every((k) => T[k].tier >= 1 && T[k].tier <= 9 && T[k].pin >= 0 && T[k].pin <= 3 && T[k].qi), '有练炁术没定真炁品秩');
+  assert(P.qiRank({ tier: 1, pin: 0 }) === 1 && P.qiRank({ tier: 9, pin: 3 }) === 36, '品秩不是 1–36');
+  const want = { dingjin: '三阶中品', chimei: '五阶中品', jingyi: '六阶下品', dongling: '八阶上品', qiyang: '九阶下品', wuxiang: '九阶下品', dadongyu: '九阶中品', ziqing: '九阶上品' };
+  for (const k in want) assert(P.qiGrade(T[k]) === want[k], T[k].qi + ' 不是' + want[k] + '：' + P.qiGrade(T[k]));
+  // 2. 筑基成功率、斗法都看真炁品秩；同阶不同品也分高下
+  const s = FX.Game.newGame({ origin: 'loose', seed: 'zhenqi' });
+  const p = P.player(s);
+  p.realm = { major: 2, stage: 9 }; p.progress = P.need(p); p.aptitude = 60; p.health = { state: 'healthy', days: 0 };
+  const ch = (k) => { p.techniqueId = k; return CU.chance(s, p).chance; };
+  const pw = (k) => { p.techniqueId = k; return P.power(s, p); };
+  assert(ch('ziqing') > ch('handou') && ch('handou') > ch('dingjin') && ch('dingjin') > ch('linghe'), '筑基成功率不随真炁品秩');
+  const sum = `筑基成功率 紫清 ${ch('ziqing')}% / 锭金 ${ch('dingjin')}% / 鹤息 ${ch('linghe')}%；练炁九层斗法 紫清 ${pw('ziqing')} / 锭金 ${pw('dingjin')}`;
+  p.techniqueId = 'dingjin';
+  assert(CU.chance(s, p).parts.some((x) => x.label === '真炁三阶中品'), '筑基清单没写真炁品秩');
+  assert(pw('ziqing') > pw('dongling') && pw('guiyuan') < pw('dingjin'), '练炁斗法不看真炁：' + pw('guiyuan') + ' / ' + pw('dingjin'));
+  const pf = (k) => { p.techniqueId = k; return P.powerBreakdown(s, p).factors.find((f) => f.label === T[k].qi + ' ' + P.qiGrade(T[k])); };
+  assert(pf('ziqing') && pf('ziqing').value > 1 && pf('linghe').value < 1, '战力分解里没有真炁一项');
+  p.realm = { major: 6, stage: 1 };
+  assert(!pf('ziqing'), '金丹诸气浑成，不该再单算真炁');
+  // 3. 筑基时定下真炁，之后不能换；根基里写着真炁
+  p.realm = { major: 3, stage: 1 }; p.techniqueId = 'dingjin'; s.player.manuals.push('ziqing');
+  const sw = FX.Game.actions(s).find((x) => x.type === 'learn' && x.tech === 'ziqing');
+  assert(sw && !sw.ok && /道基已成/.test(sw.reason), '筑基以后还能改修练炁术');
+  assert(P.rootNames(p)[0] === '锭金真炁（三阶中品）', '根基里没写真炁：' + P.rootNames(p).join(','));
+  // 4. 大无相常融真炁：千般变化、万种属相，哪里的灵气都采得
+  p.realm = { major: 2, stage: 3 }; p.techniqueId = 'wuxiang';
+  const attrs = new Set(Object.values(s.places).map((x) => x.attr));
+  for (const pl of Object.values(s.places)) assert(CU.attrFit(s, p, pl).value === CF.attrFit.match, '大无相常融真炁采不了「' + pl.attr + '」气');
+  // 5. 散景敛形术：不以大无相常融真炁为根基修不成；坊市、宗门都不再卖
+  s.player.manuals.push('sanjing');
+  const prac = () => FX.Game.actions(s).find((x) => x.type === 'practice' && x.tech === 'sanjing');
+  p.techniqueId = 'dingjin';
+  assert(prac() && !prac().ok && /大无相常融真炁/.test(prac().reason), '没有大无相常融真炁也能修散景敛形术');
+  p.techniqueId = 'wuxiang';
+  assert(prac() && prac().ok, '有了大无相常融真炁还修不了散景敛形术：' + (prac() && prac().reason));
+  const sold = [];
+  for (const k in CF.market) for (const x of (CF.market[k].staples || []).concat(CF.market[k].rare || [])) if (x.item === 'tech:sanjing') sold.push(k);
+  for (const d of CF.factionDefs) for (const e of d.library || []) if (e.tech === 'sanjing') sold.push(d.key);
+  assert(!sold.length, '散景敛形术还在卖：' + sold.join(','));
+  // 6. 颜熙天外道藏：南域遗府破禁深入时偶尔撞上，一生只有一回
+  const g = FX.Game.newGame({ origin: 'loose', seed: 'yanxi' });
+  const q = P.player(g);
+  const wild = Object.values(g.places).find((x) => x.type === 'wild' && x.region === '南域');
+  const deep = FX.EVENTS.RUIN.options.find((o) => o.id === 'deep');
+  const keep = CF.yanxiCang; CF.yanxiCang = 1;
+  let got = null;
+  for (let i = 0; i < 40 && !got; i++) { q.health = { state: 'healthy', days: 0 }; const r = deep.apply(g, { place: wild.id }, { hid: null }); if (/颜熙/.test(r.text)) got = r; }
+  assert(got && g.player.manuals.includes('wuxiang') && g.player.manuals.includes('sanjing') && q.flags.includes('yanxi_cang'), '南域遗府里撞不上颜熙道藏');
+  let again = 0;
+  for (let i = 0; i < 30; i++) { q.health = { state: 'healthy', days: 0 }; if (/颜熙/.test(deep.apply(g, { place: wild.id }, { hid: null }).text)) again++; }
+  CF.yanxiCang = keep;
+  assert(!again, '颜熙道藏撞上了不止一回');
+  assert(g.history.some((e) => e.key === 'yanxi_cang'), '撞上颜熙道藏没记进生平');
+  // 7. 腹地大派门人出身各异，真炁按本门 techs 抽，都在七阶以上
+  const bigs = Object.values(s.factions).filter((f) => f.tier >= 3 && f.type === 'sect');
+  let n = 0;
+  for (const f of bigs) {
+    const d = CF.factionDefs.find((x) => x.key === f.key);
+    for (const m of Object.values(s.people).filter((x) => x.factionId === f.id && !x.notable)) { n++; assert(d.techs[m.techniqueId] && T[m.techniqueId].tier >= 7, f.name + '门人的真炁不对：' + m.techniqueId); }
+  }
+  assert(n > 0, '腹地大派没有门人');
+  // 8. v11 存档迁移：大派门人重抽真炁，版本升到 12
+  const t11 = JSON.parse(FX.Save.serialize(FX.Game.newGame({ origin: 'sect', seed: 'mig12' })));
+  const yc = Object.values(t11.state.factions).find((f) => f.key === 'yuchen');
+  for (const m of Object.values(t11.state.people)) if (m.factionId === yc.id && !m.notable) m.techniqueId = 'linghe';
+  t11.state.schemaVersion = 11; t11.schemaVersion = 11; delete t11.checksum;
+  const mg = FX.Save.deserialize(t11);
+  assert(mg.ok && mg.state.schemaVersion === CF.schemaVersion, 'v11 迁移失败：' + (mg.error || ''));
+  assert(Object.values(mg.state.people).filter((m) => m.factionId === yc.id && !m.notable && m.status === 'alive').every((m) => T[m.techniqueId].tier >= 7), 'v11 迁移没给大派门人重抽真炁');
+  return `${lq.length} 门练炁术定了真炁品秩（锭金三阶中品、紫清九阶上品、皇素玉真九阶至品）；${sum}；大无相常融真炁诸气皆采（${attrs.size} 种属相）；散景敛形术要它作根基；颜熙道藏一生一回；${n} 名大派门人真炁都在七阶以上；v11 迁移正常`;
 });
 
 const failed = results.filter((r) => !r.ok);

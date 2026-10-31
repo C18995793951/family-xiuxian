@@ -162,6 +162,18 @@
       st.schemaVersion = 11;
       return st;
     },
+    // v11 → v12：真炁九阶三十六品。腹地大派门人按出身重抽一门真炁（都是七阶以上，道基不变）；
+    // 坊市重新进货（散景敛形术不再上架，添了几门原著真炁）
+    11: (st) => {
+      for (const p of Object.values(st.people)) {
+        if (p.id === st.player.id || p.notable || p.status !== 'alive' || !p.factionId) continue;
+        const f = st.factions[p.factionId];
+        if (f && f.tier >= 3 && f.type === 'sect') p.techniqueId = FX.World.npcTech(st.rng, f, p.role);
+      }
+      for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
+      st.schemaVersion = 12;
+      return st;
+    },
   };
 
   const REQUIRED = {

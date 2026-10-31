@@ -41,6 +41,7 @@
     explore_herb: ['{name}在{place}采得{loot}。'],
     yao_found: ['{name}在{place}寻药{dur}，采得凝丹外药「{yao}」{hurt}。', '{name}在{place}踏遍深处，寻得一份{yao}{hurt}。'],
     yao_none: ['{name}在{place}寻药{dur}，一无所获{hurt}。', '{name}在{place}找了{dur}外药，空手而回{hurt}。'],
+    yanxi_cang: ['{name}在{place}破开前人遗府的残禁，深处竟是颜熙真人当年留在南域的一处天外道藏：一卷空空道人所传的《大无相常融真炁》修行法，一篇劫仙之祖为它创下的《散景敛形术》。'],
     neiyao: ['{name}在洞玄三重温养日久，身内凝成内药「{yao}」：{desc}。十三味大药已得 {n} 味。'],
     explore_rumor: ['{name}在{place}听闻：{rumor}'],
     explore_trouble: ['{name}在{place}{what}，损失符钱 {loss}。'],
