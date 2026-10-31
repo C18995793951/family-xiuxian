@@ -49,7 +49,7 @@ button.primary { background: #6b4a1f; border-color: var(--accent); color: #fff3d
 button.danger { border-color: var(--danger); color: #f0b2a6; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.link { background: none; border: none; color: var(--accent); padding: 0 .1em; min-height: 0; text-decoration: underline dotted; }
-select, input[type=text], input[type=number], textarea { background: #120f0b; border: 1px solid var(--line-soft); border-radius: 4px; padding: .35em .5em; min-height: 36px; }
+select, input[type=text], input[type=number], input[type=password], textarea { background: #120f0b; border: 1px solid var(--line-soft); border-radius: 4px; padding: .35em .5em; min-height: 36px; }
 textarea { width: 100%; min-height: 8em; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -101,6 +101,7 @@ tr.dead td { color: var(--muted); }
 
 /* 模态 */
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1em; animation: fade .15s; }
+.modal-bg.still { animation: none; }
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; max-width: 720px; width: 100%; max-height: 90vh; max-height: 90dvh; overflow-y: auto; padding: 1.2em 1.4em; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
 .modal h2 { margin-top: 0; }
 .opt { border: 1px solid var(--line-soft); border-radius: 6px; padding: .7em .9em; margin: .6em 0; background: var(--panel-2); }
@@ -259,6 +260,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
 /* 卡关时的“下一步” */
 .guide { margin: .35em 0 .2em; padding: .45em .6em; border-left: 3px solid var(--accent); background: rgba(224,169,79,.07); border-radius: 4px; }
 .guide .row.src { margin-top: .3em; }
+
+/* AI 写的文字：和规则写的纪事分开，一眼看得出 */
+.ai-note { border-left: 3px solid var(--accent); padding: .1em 0 .1em .6em; margin: .3em 0 .6em; color: var(--text); }
+.ai-note .src { color: var(--muted); font-size: .8em; margin-left: .4em; }
+.ai-wait { color: var(--muted); font-size: .85em; }
+.ai-form .row { align-items: center; }
+.ai-form input[type=password] { flex: 1 1 12em; min-width: 0; }
+.ai-rejects p { font-size: .85em; margin: .3em 0; }
 
 </style>
 </head>
@@ -5719,6 +5728,251 @@ button.wide { width: 100%; margin-bottom: .6em; }
   FX.Guide = Guide;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- core/propose.js ---------- */
+/* ============================================================
+ * propose —— AI 提案：记录、校验、事实摘要与提示词
+ * AI 只出提案，规则裁决。这一层不碰网络：调用在 ui/ai.js，回来的东西交给这里校验，通过的记进存档。
+ *  · 记录：s.aiLog 存通过校验的文字与提案，读档不重新调用。叙述文字只用于显示，不进任何规则。
+ *  · 文字校验：不准出现事实以外的数字、人名、地名、势力、物品、功法；不准漏掉该提的人。
+ *  · 提案校验：按规格逐项查——人要在世、地点物品功法要真有、不准带规格外的字段，也不准带数字
+ *    （数字只认规则算的）。不合格就整条丢掉，调用方回落模板。
+ *  · 事实摘要与提示词只读状态。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const T = () => FX.T;
+
+  const Prop = {};
+
+  /* ---------- 记录：s.aiLog ---------- */
+  // 每类只留最近若干条，免得存档越积越大；同一个 key 只留最新一条
+  Prop.caps = { narrate: 200, event: 60, life: 3 };
+  Prop.record = (s, kind, key, out, extra) => {
+    const L = (s.aiLog = s.aiLog || []).filter((r) => r.key !== key);
+    L.push(Object.assign({ kind, key, t: s.t, out }, extra || {}));
+    const cap = Prop.caps[kind] || 300;
+    const mine = L.filter((r) => r.kind === kind);
+    const drop = new Set(mine.slice(0, Math.max(0, mine.length - cap)));
+    s.aiLog = L.filter((r) => !drop.has(r));
+    return true;
+  };
+  Prop.get = (s, key) => { const L = s.aiLog || []; for (let i = L.length - 1; i >= 0; i--) if (L[i].key === key) return L[i]; return null; };
+  Prop.text = (s, key) => { const r = Prop.get(s, key); return r && typeof r.out === 'string' ? r.out : null; };
+  Prop.latest = (s, kind) => { const L = s.aiLog || []; for (let i = L.length - 1; i >= 0; i--) if (L[i].kind === kind) return L[i]; return null; };
+  // 叙述挂在一批纪事的最后一条上：纪事 id → 那段叙述
+  Prop.narrations = (s) => { const m = {}; for (const r of s.aiLog || []) if (r.kind === 'narrate' && r.hid) m[r.hid] = r.out; return m; };
+
+  /* ---------- 文字校验 ---------- */
+  const NUM = /\d+(?:\.\d+)?/g;
+  // 汉字数字带单位的说法（“七年”“三颗”“筑基三重”），事实里没有原样出现就算编造；单个“一”“两”“半”不算
+  const CNUM = /[零〇一二两三四五六七八九十百千万]+(?:年|载|个月|月|天|日|岁|颗|枚|株|份|件|次|回|场|重|层|成|味|符钱|道功)/g;
+  const VAGUE = /^[一两半]+[^零〇一二两三四五六七八九十百千万]/;
+  const GENERIC = new Set(['灵草']); // 物品名里的寻常字眼，单独出现不算编造
+  // 世界里所有专名：人、地、势力、物品、功法
+  Prop.names = (s) => {
+    const out = [];
+    for (const p of Object.values(s.people)) if (p.name && p.name.length >= 2) out.push(p.name);
+    for (const pl of Object.values(s.places)) if (pl.name && pl.name.length >= 2) out.push(pl.name);
+    for (const f of Object.values(s.factions)) if (f.name && f.name.length >= 2) out.push(f.name);
+    for (const it of Object.values(C().items)) if (it.name && it.name.length >= 2 && !GENERIC.has(it.name)) out.push(it.name);
+    for (const t of Object.values(C().techniques)) if (t.name && t.name.length >= 2) out.push(t.name);
+    return [...new Set(out)];
+  };
+  // 去掉模型常见的 Markdown 痕迹和包在外面的引号
+  Prop.tidy = (t) => String(t || '').replace(/^```[a-z]*\s*|\s*```$/g, '').replace(/^#+\s*/gm, '').replace(/\*\*/g, '').replace(/^\s*[-*]\s+/gm, '· ').replace(/^[“"「]([\s\S]*)[”"」]$/, '$1').trim();
+  // 不合格返回原因，合格返回 null
+  Prop.checkText = (s, text, facts, opts) => {
+    opts = opts || {};
+    const t = String(text || '').trim();
+    if (!t) return '空文本';
+    if (t.length > (opts.maxLen || 2000)) return '过长（' + t.length + ' 字）';
+    if (opts.minLen && t.length < opts.minLen) return '过短';
+    const fx = String(facts || '');
+    const allowed = new Set((fx.match(NUM) || []).concat(opts.allowNums || []).map((d) => String(Number(d))));
+    const badNum = (t.match(NUM) || []).filter((d) => !allowed.has(String(Number(d))));
+    if (badNum.length) return '出现事实以外的数字：' + badNum.slice(0, 3).join('、');
+    const badCn = (t.match(CNUM) || []).filter((w) => !VAGUE.test(w) && !fx.includes(w));
+    if (badCn.length) return '出现事实以外的数量：' + badCn.slice(0, 3).join('、');
+    if (s) {
+      // 长名字先比，免得“玉宸派”里的“玉宸”之类被重复算
+      const names = Prop.names(s).sort((a, b) => b.length - a.length);
+      let rest = t;
+      const outside = [];
+      for (const n of names) {
+        if (!rest.includes(n)) continue;
+        if (!fx.includes(n)) outside.push(n);
+        rest = rest.split(n).join('□');
+      }
+      if (outside.length) return '出现事实以外的名字：' + outside.slice(0, 3).join('、');
+    }
+    for (const n of opts.mustNames || []) if (!t.includes(n)) return '漏掉了 ' + n;
+    return null;
+  };
+
+  /* ---------- 提案校验：JSON ---------- */
+  // 从模型回复里取出 JSON 对象（容忍 ```json 围栏和前后的闲话）
+  Prop.parseJSON = (text) => {
+    const raw = String(text || '').replace(/```(?:json)?/gi, '');
+    const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+    if (a < 0 || b <= a) return { ok: false, error: '回复里没有 JSON 对象' };
+    try {
+      const v = JSON.parse(raw.slice(a, b + 1));
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: 'JSON 不是对象' };
+      return { ok: true, value: v };
+    } catch (e) { return { ok: false, error: 'JSON 解析失败' }; }
+  };
+  // 按名字或 id 找人：id 优先；名字要在世的人里唯一
+  const findPerson = (s, v, alive) => {
+    if (typeof v !== 'string') return null;
+    let p = s.people[v];
+    if (!p) { const hit = Object.values(s.people).filter((q) => q.name === v && (!alive || P().alive(q))); p = hit.length === 1 ? hit[0] : null; }
+    return p && (!alive || P().alive(p)) ? p : null;
+  };
+  const findIn = (map, v) => (typeof v !== 'string' ? null : map[v] ? v : Object.keys(map).find((k) => map[k].name === v || '《' + map[k].name + '》' === v) || null);
+  // 规格：{ 字段: { type, required, values, maxLen, of, fields, max } }
+  //   type：person（在世的人）| anyPerson | place | item | tech | faction | enum | text | bool | list | object
+  // 合格时返回把名字换成 id 的副本；数字一律不收
+  Prop.checkSpec = (s, spec, obj, path) => {
+    path = path || '';
+    const errors = [];
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, errors: [(path || '提案') + ' 不是对象'] };
+    const out = {};
+    for (const k of Object.keys(obj)) if (!spec[k]) errors.push('多出字段 ' + path + k);
+    for (const k of Object.keys(spec)) {
+      const f = spec[k], v = obj[k], at = path + k;
+      if (v === undefined || v === null || v === '') { if (f.required) errors.push('缺少 ' + at); continue; }
+      const r = Prop.checkField(s, f, v, at);
+      if (r.error) errors.push(r.error); else out[k] = r.value;
+    }
+    return errors.length ? { ok: false, errors } : { ok: true, value: out };
+  };
+  Prop.checkField = (s, f, v, at) => {
+    if (typeof v === 'number') return { error: at + ' 是数字（数字只认规则算的）' };
+    switch (f.type) {
+      case 'person': case 'anyPerson': { const p = findPerson(s, v, f.type === 'person'); return p ? { value: p.id } : { error: at + ' 找不到' + (f.type === 'person' ? '在世的' : '') + '这个人：' + v }; }
+      case 'place': { const id = findIn(s.places, v); return id ? { value: id } : { error: at + ' 没有这个地方：' + v }; }
+      case 'faction': { const id = findIn(s.factions, v); return id ? { value: id } : { error: at + ' 没有这个势力：' + v }; }
+      case 'item': { const id = findIn(C().items, v); return id ? { value: id } : { error: at + ' 没有这样东西：' + v }; }
+      case 'tech': { const id = findIn(C().techniques, v); return id ? { value: id } : { error: at + ' 没有这门功法：' + v }; }
+      case 'enum': return f.values.includes(v) ? { value: v } : { error: at + ' 只能是 ' + f.values.join('/') + '，不是 ' + v };
+      case 'bool': return typeof v === 'boolean' ? { value: v } : { error: at + ' 要是 true/false' };
+      case 'text': {
+        if (typeof v !== 'string') return { error: at + ' 要是文字' };
+        if (v.length > (f.maxLen || 200)) return { error: at + ' 过长' };
+        if (/\d/.test(v) && !f.digits) return { error: at + ' 里带了数字' };
+        return { value: v.trim() };
+      }
+      case 'list': {
+        if (!Array.isArray(v)) return { error: at + ' 要是列表' };
+        if (v.length > (f.max || 5)) return { error: at + ' 超过 ' + (f.max || 5) + ' 项' };
+        const out = [];
+        for (let i = 0; i < v.length; i++) {
+          const r = f.of.type === 'object' ? Prop.checkSpec(s, f.of.fields, v[i], at + '[' + i + '].') : Prop.checkField(s, f.of, v[i], at + '[' + i + ']');
+          if (r.errors) return { error: r.errors.join('；') };
+          if (r.error) return { error: r.error };
+          out.push(r.value);
+        }
+        return { value: out };
+      }
+      case 'object': { const r = Prop.checkSpec(s, f.fields, v, at + '.'); return r.ok ? { value: r.value } : { error: r.errors.join('；') }; }
+      default: return { error: at + ' 规格未知' };
+    }
+  };
+
+  /* ---------- 事实摘要（只读）---------- */
+  const hnum = (id) => parseInt(String(id).slice(1), 10) || 0;
+  const me = (s) => P().player(s);
+  const line = (e) => T().fmt(e.t) + '：' + H().text(e);
+  // 一次行动带出来的亲历纪事（从 fromHid 起）；没有要紧的事就不写
+  Prop.actBatch = (s, fromHid) => {
+    const from = hnum(fromHid);
+    const es = [];
+    for (let i = s.history.length - 1; i >= 0; i--) { const e = s.history[i]; if (hnum(e.id) < from) break; if (e.pov) es.unshift(e); }
+    if (!es.some((e) => e.severity >= 2)) return null;
+    // 太长时留下要紧的几条和最后一条
+    const keep = es.length > 12 ? es.filter((e, i) => e.severity >= 2 || i === es.length - 1).slice(-12) : es;
+    return { hid: es[es.length - 1].id, from: es[0].id, facts: keep.map(line).join('\n') };
+  };
+  Prop.eventFacts = (s, inst) => {
+    const v = FX.Ev.view(s, inst);
+    const names = v.people.map((id) => s.people[id] && s.people[id].name).filter(Boolean);
+    return { name: v.name, text: v.text, names, facts: v.name + '：' + v.text };
+  };
+  Prop.lifeFacts = (s) => {
+    const p = me(s);
+    const big = s.history.filter((e) => e.pov && (e.severity >= 3 || e.firstOf || e.type === 'breakthrough')).slice(-40).map(line);
+    return H().lifeSummary(s, p) + '\n' + big.join('\n');
+  };
+
+  /* ---------- 提示词 ---------- */
+  const WORLD = '世界取自《仙业》的东弥州：境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，钱叫符钱。';
+  const RULES = [
+    '你只能使用用户给出的事实写作。',
+    '严禁新增任何人物、地名、宗门、法宝、丹药、功法、数字，严禁改变任何结果、因果与先后。',
+    '数字一律照抄事实里的阿拉伯数字，不要改写成汉字数字，不要估算；事实里没有的时长、数量一概不写。',
+    '可以省略次要条目，可以调整语序、补充不含新信息的修饰。',
+    '只输出正文纯文本，不要标题、不要 Markdown、不要解释你在做什么。',
+  ].join('\n');
+  Prop.prompts = {
+    narrate: (s, b) => ({
+      maxTokens: 400, check: { maxLen: 320 },
+      messages: [
+        { role: 'system', content: '你是一位修士的随身记事人，文风古雅简练，近似笔记小说。' + WORLD + '\n' + RULES },
+        { role: 'user', content: `请把下列亲历的事写成 60 到 160 字的一段叙述，用第三人称：\n${b.facts}` },
+      ],
+    }),
+    event: (s, f) => ({
+      maxTokens: 300, check: { maxLen: Math.max(120, f.text.length * 2), mustNames: f.names },
+      messages: [
+        { role: 'system', content: '你为修仙游戏改写眼前事件的描述，让同一类事每回读来不同。' + WORLD + '\n' + RULES + '\n保留原文中的每个人名、地名与数字，长度与原文相近，不要替玩家做选择，不要提及选项。' },
+        { role: 'user', content: `事件「${f.name}」原文：${f.text}\n请换一种说法重写。` },
+      ],
+    }),
+    life: (s, facts) => ({
+      maxTokens: 1400, check: { maxLen: 1600, minLen: 80 },
+      messages: [
+        { role: 'system', content: '你为一位修士撰写小传，文风近似古代史书列传。' + WORLD + '\n' + RULES },
+        { role: 'user', content: `请依据以下事实为${me(s).name}写一篇 300 到 800 字的小传：\n${facts}` },
+      ],
+    }),
+  };
+
+  // 一次“写什么”的完整打包：key、事实、提示词。没有可写的返回 null
+  Prop.job = (s, kind, arg) => {
+    if (kind === 'narrate') {
+      const b = Prop.actBatch(s, arg);
+      if (!b) return null;
+      b.facts = '主角' + me(s).name + '，' + P().realmName(me(s)) + '。\n' + b.facts;
+      return Object.assign({ kind, key: 'n:' + b.hid, facts: b.facts, extra: { hid: b.hid, from: b.from } }, Prop.prompts.narrate(s, b));
+    }
+    if (kind === 'event') {
+      const f = Prop.eventFacts(s, arg);
+      return Object.assign({ kind, key: 'e:' + arg.id, facts: f.facts, extra: { inst: arg.id } }, Prop.prompts.event(s, f));
+    }
+    if (kind === 'life') {
+      const facts = Prop.lifeFacts(s);
+      const last = s.history.length ? s.history[s.history.length - 1].id : 'h0';
+      return Object.assign({ kind, key: 'l:' + last, facts, extra: { year: s.year } }, Prop.prompts.life(s, facts));
+    }
+    return null;
+  };
+
+  // 模型回来的文字：整理、校验，合格就记进存档。返回 { ok, text } 或 { ok:false, why }
+  Prop.accept = (s, job, raw) => {
+    const text = Prop.tidy(raw);
+    const why = Prop.checkText(s, text, job.facts, job.check);
+    if (why) return { ok: false, why, text };
+    Prop.record(s, job.kind, job.key, text, job.extra);
+    return { ok: true, text };
+  };
+
+  FX.Prop = Prop;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- core/save.js ---------- */
 /* ============================================================
  * save（核心部分）—— 序列化、校验、迁移、校验和
@@ -5732,6 +5986,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
   const SV = {};
 
   SV.hashState = (s) => U.hash(JSON.stringify(s));
+  // AI 记录（叙述文字之类）只用于显示，不算进规则状态
+  SV.hashRules = (s) => U.hash(JSON.stringify(Object.assign({}, s, { aiLog: [] })));
 
   SV.meta = (s) => {
     const p = FX.P.player(s);
@@ -6070,6 +6326,18 @@ button.wide { width: 100%; margin-bottom: .6em; }
       serialize: (s, savedAt) => FX.Save.serialize(s, savedAt),
       deserialize: (t) => FX.Save.deserialize(t),
       hash: (s) => FX.Save.hashState(s),
+      // 不算 AI 记录的状态摘要：同种子同选择，开不开 AI 都该一样
+      ruleHash: (s) => FX.Save.hashRules(s),
+    },
+
+    /* ---------- AI（只出提案，规则裁决；网络调用在 ui/ai.js）---------- */
+    ai: {
+      job: (s, kind, arg) => FX.Prop.job(s, kind, arg),
+      accept: (s, job, raw) => FX.Prop.accept(s, job, raw),
+      text: (s, key) => FX.Prop.text(s, key),
+      latest: (s, kind) => FX.Prop.latest(s, kind),
+      narrations: (s) => FX.Prop.narrations(s),
+      mark: (s) => 'h' + s.nextHistId,
     },
   };
 
@@ -6221,6 +6489,208 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
+/* ---------- ui/ai.js ---------- */
+/* ============================================================
+ * ai —— 接 DeepSeek（界面一侧，只管网络）
+ * AI 只出提案、只写文字；校验、记录在核心的 propose.js，规则从不等它：
+ *  - 默认关闭。未开启、没填 key、断网、超时、超过当日上限、回来的东西不合格，一律回落模板文字。
+ *  - key 只存在本机浏览器的 localStorage，只随请求发往设置里的接口地址；不进存档、不进导出、不进日志。
+ *  - 通过校验的文字由核心记进存档（s.aiLog），读档后直接显示，不重新调用；失败不自动重试，免得重复扣费。
+ * 这个文件不碰 DOM，可在 Node 里注入 fetch / storage 做测试。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+
+  const LS_CFG = 'family-xiuxian:ai';
+  const LS_KEY = 'family-xiuxian:ai-key';
+  const LS_USE = 'family-xiuxian:ai-usage';
+
+  const AI = {
+    defaults: {
+      enabled: false,
+      // 沿用家族版和“AI 朋友”实测可用的配置：deepseek-flash、官方 chat/completions、关闭思考
+      model: 'deepseek-flash',
+      endpoint: 'https://api.deepseek.com/chat/completions',
+      timeoutMs: 20000,
+      dailyLimit: 200, // 本机每天最多调用次数，防止误刷
+      narrate: true, // 行动后写一段叙述
+      eventText: true, // 眼前的事换个说法
+    },
+    models: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'],
+    // 可注入：测试时替换为假实现
+    env: {
+      fetch: typeof G.fetch === 'function' ? (...a) => G.fetch(...a) : null,
+      storage: (() => { try { return G.localStorage || null; } catch (e) { return null; } })(),
+      now: () => Date.now(),
+    },
+    pending: new Map(), // key -> Promise
+    failed: new Map(), // key -> 原因（本页内不再自动重试）
+    rejects: [], // 最近被拒的回复，设置页可看（只在本页内存里）
+    status: null, // 最近一次调用：{ at, kind, ok, reason }
+    onUpdate: null, // 有结果回来时通知界面
+    calls: 0,
+  };
+
+  /* ---------- 配置与 key ---------- */
+  const store = () => AI.env.storage;
+  AI.config = () => {
+    let c = {};
+    try { c = JSON.parse((store() && store().getItem(LS_CFG)) || '{}') || {}; } catch (e) { c = {}; }
+    return Object.assign({}, AI.defaults, c);
+  };
+  AI.saveConfig = (patch) => {
+    const c = Object.assign(AI.config(), patch || {});
+    const clean = {
+      enabled: !!c.enabled,
+      model: String(c.model || AI.defaults.model).trim().slice(0, 64),
+      endpoint: String(c.endpoint || AI.defaults.endpoint).trim().slice(0, 300),
+      timeoutMs: Math.max(3000, Math.min(120000, Number(c.timeoutMs) || AI.defaults.timeoutMs)),
+      dailyLimit: Math.max(1, Math.min(5000, Math.floor(Number(c.dailyLimit) || AI.defaults.dailyLimit))),
+      narrate: c.narrate !== false,
+      eventText: c.eventText !== false,
+    };
+    try { store() && store().setItem(LS_CFG, JSON.stringify(clean)); } catch (e) { /* 存不了就只在本页生效 */ }
+    return clean;
+  };
+  AI.hasKey = () => { try { return !!(store() && store().getItem(LS_KEY)); } catch (e) { return false; } };
+  AI.setKey = (k) => {
+    k = String(k || '').trim();
+    try { if (!store()) return false; if (k) store().setItem(LS_KEY, k); else store().removeItem(LS_KEY); return true; } catch (e) { return false; }
+  };
+  const getKey = () => { try { return (store() && store().getItem(LS_KEY)) || ''; } catch (e) { return ''; } };
+
+  AI.validEndpoint = (u) => /^https:\/\/[^\s/]+\/\S*$/.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\S*$/.test(u);
+
+  // 能否调用；不能时给出回落原因
+  AI.ready = () => {
+    const c = AI.config();
+    if (!c.enabled) return { ok: false, reason: '没有开启 AI' };
+    if (!AI.hasKey()) return { ok: false, reason: '没有填 key' };
+    if (!AI.env.fetch) return { ok: false, reason: '这个浏览器发不了网络请求' };
+    if (!AI.validEndpoint(c.endpoint)) return { ok: false, reason: '接口地址无效（要 https）' };
+    if (AI.usedToday().n >= c.dailyLimit) return { ok: false, reason: '今天的调用已到上限 ' + c.dailyLimit + ' 次' };
+    return { ok: true };
+  };
+  AI.on = (what) => { const c = AI.config(); return c.enabled && c[what] !== false; };
+
+  /* ---------- 每日用量（只记次数和 token，存本机）---------- */
+  const today = () => new Date(AI.env.now()).toISOString().slice(0, 10);
+  AI.usedToday = () => {
+    try { const u = JSON.parse((store() && store().getItem(LS_USE)) || '{}'); return u.day === today() ? { n: u.n || 0, tokens: u.tokens || 0 } : { n: 0, tokens: 0 }; } catch (e) { return { n: 0, tokens: 0 }; }
+  };
+  const countUse = (tokens) => {
+    const u = AI.usedToday();
+    try { store() && store().setItem(LS_USE, JSON.stringify({ day: today(), n: u.n + (tokens === undefined ? 1 : 0), tokens: u.tokens + (tokens || 0) })); } catch (e) { /* 忽略 */ }
+  };
+
+  const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接' };
+  AI.statusText = () => {
+    const st = AI.status;
+    if (!st) return '还没调用过';
+    return (KIND_NAME[st.kind] || st.kind) + '：' + (st.ok ? '成功' : '用了模板（' + st.reason + '）');
+  };
+
+  /* ---------- 底层调用 ---------- */
+  // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
+  AI.call = async (kind, messages, maxTokens) => {
+    const r = AI.ready();
+    if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
+    const c = AI.config();
+    AI.calls++;
+    countUse();
+    let timer = null;
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    try {
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, c.timeoutMs); });
+      const req = AI.env.fetch(c.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
+        body: JSON.stringify(Object.assign({ model: c.model, messages, temperature: 0.7, max_tokens: maxTokens || 600, stream: false }, /reasoner/.test(c.model) ? {} : { thinking: { type: 'disabled' } })),
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      const res = await Promise.race([req, timeout]);
+      if (!res || !res.ok) {
+        const HINT = { 400: '请求格式有误（400，检查模型名）', 401: 'key 不对或已删除（401）', 402: '账户余额不足（402）', 422: '参数有误（422，检查模型名）', 429: '请求太快被限流（429）', 500: 'DeepSeek 服务器出错（500）', 503: 'DeepSeek 服务器繁忙（503）' };
+        const reason = res ? HINT[res.status] || 'HTTP ' + res.status : '没有回应';
+        setStatus(kind, false, reason);
+        return { ok: false, reason };
+      }
+      const j = await Promise.race([res.json(), timeout]);
+      const text = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+      if (j && j.usage && j.usage.total_tokens) countUse(Number(j.usage.total_tokens) || 0);
+      if (!text || typeof text !== 'string') { setStatus(kind, false, '回来的内容是空的'); return { ok: false, reason: '回来的内容是空的' }; }
+      setStatus(kind, true);
+      return { ok: true, text: text.trim() };
+    } catch (e) {
+      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil(c.timeoutMs / 1000) + ' 秒）' : '网络错误';
+      setStatus(kind, false, reason);
+      return { ok: false, reason };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  /* ---------- 请求编排：异步、去重；结果交核心校验并记进存档 ---------- */
+  // 通知界面放到下一轮：请求常在渲染当中发起，不能在渲染里再套一次渲染；连着几次只通知一回
+  let notifying = false;
+  function notify() {
+    if (typeof AI.onUpdate !== 'function' || notifying) return;
+    notifying = true;
+    setTimeout(() => { notifying = false; try { AI.onUpdate(); } catch (e) { /* 界面刷新失败不影响游戏 */ } }, 0);
+  }
+  const reject = (kind, why, text) => {
+    AI.rejects.unshift({ at: AI.env.now(), kind, why, text: String(text || '').slice(0, 400) });
+    AI.rejects.length = Math.min(AI.rejects.length, 20);
+  };
+  // job 由核心打包（Game.ai.job）：key、事实、提示词、校验要求
+  function request(s, job) {
+    if (!job) return Promise.resolve(null);
+    const have = FX.Game.ai.text(s, job.key);
+    if (have) return Promise.resolve(have);
+    if (AI.pending.has(job.key)) return AI.pending.get(job.key);
+    if (AI.failed.has(job.key)) return Promise.resolve(null);
+    const r = AI.ready();
+    if (!r.ok) { setStatus(job.kind, false, r.reason); return Promise.resolve(null); }
+    const p = AI.call(job.kind, job.messages, job.maxTokens).then((res) => {
+      AI.pending.delete(job.key);
+      if (!res.ok) { AI.failed.set(job.key, res.reason); notify(); return null; }
+      const a = FX.Game.ai.accept(s, job, res.text);
+      if (!a.ok) {
+        AI.failed.set(job.key, '校验没过：' + a.why);
+        setStatus(job.kind, false, '校验没过：' + a.why);
+        reject(job.kind, a.why, a.text);
+        notify();
+        return null;
+      }
+      notify();
+      return a.text;
+    });
+    AI.pending.set(job.key, p);
+    notify();
+    return p;
+  }
+  AI.isPending = (key) => AI.pending.has(key);
+  AI.failure = (key) => AI.failed.get(key) || null;
+
+  /* ---------- 入口 ---------- */
+  // 一次行动以后：把这次亲历的要紧事写成一段叙述（mark 是行动前的纪事位置）
+  AI.narrate = (s, mark) => (AI.on('narrate') ? request(s, FX.Game.ai.job(s, 'narrate', mark)) : Promise.resolve(null));
+  // 眼前的事：换个说法
+  AI.eventText = (s, inst) => (AI.on('eventText') ? request(s, FX.Game.ai.job(s, 'event', inst)) : Promise.resolve(null));
+  AI.eventKey = (inst) => 'e:' + inst.id;
+  // 生平：写一篇小传（玩家点了才写）
+  AI.life = (s) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'life')) : Promise.resolve(null));
+  AI.lifeKey = (s) => { const j = FX.Game.ai.job(s, 'life'); return j ? j.key : null; };
+
+  AI.testConnection = async () => {
+    return AI.call('test', [{ role: 'user', content: '请只回复：通' }], 5);
+  };
+
+  FX.AI = AI;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- ui/app.js ---------- */
 /* ============================================================
  * ui —— 交互界面。只通过 FX.Game 公开函数操作核心，不直接修改状态。
@@ -6297,7 +6767,19 @@ button.wide { width: 100%; margin-bottom: .6em; }
     else if (UI.s && UI.s.pending.length && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
     render();
     focusModal();
+    aiAfter();
   }
+  /* ---------- AI：行动以后写一段叙述（不等它；回来了再刷新）---------- */
+  // UI.aiMark 记着上回看到的纪事位置；读档、开局时对齐，免得把以前的事都写一遍
+  function aiAfter() {
+    if (!UI.s || !FX.AI) return;
+    const mark = UI.aiMark;
+    UI.aiMark = Game.ai.mark(UI.s);
+    if (mark && mark !== UI.aiMark) FX.AI.narrate(UI.s, mark);
+  }
+  const aiOn = (what) => !!(FX.AI && FX.AI.on(what));
+  const narrOf = () => (UI.s && aiOn('narrate') ? Game.ai.narrations(UI.s) : {});
+  const aiNote = (text) => `<p class="ai-note">${esc(text)}<span class="src">AI 叙述</span></p>`;
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 300); }
   async function autosave() {
     if (!UI.s) return;
@@ -6308,7 +6790,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   async function readSave(text) {
     const r = Game.save.deserialize(text);
     if (!r.ok) { toast('读取失败：' + r.error, 5000); return false; }
-    UI.s = r.state; UI.modals = []; UI.page = 'now';
+    UI.s = r.state; UI.modals = []; UI.page = 'now'; UI.aiMark = Game.ai.mark(UI.s);
     afterAction();
     if (G.scrollTo) G.scrollTo(0, 0);
     return true;
@@ -6356,8 +6838,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
   }
 
   function feedHtml(list) {
-    return list.map((e) => `<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>';
+    const nr = narrOf();
+    return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>';
   }
+  const aiWaiting = (key) => (FX.AI && FX.AI.isPending(key) ? '<p class="ai-wait">AI 执笔中…</p>' : '');
   function renderAside() {
     const s = UI.s;
     const warn = s.pending.length ? `<p class="warn">⚑ 眼前有事要决断 <button class="link" data-act="openEvent">处理</button></p>` : '';
@@ -6477,7 +6961,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const member = ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan');
     // 手机上看不到右栏的“最近经历”，在顶上留两三条
     const recent = Game.view.feed(s, 12).filter((e) => e.pov).slice(0, 3);
-    const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${feedHtml(recent)}</div>` : '';
+    const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${aiWaiting('n:' + recent[0].id)}${feedHtml(recent)}</div>` : '';
     // 冲关：成功率、要什么、按钮放在一处
     const btActs = A.filter((a) => a.type === 'breakthrough' && !a.path);
     const failInfo = bt ? FX.CU.failInfo(s, P.player(s)) : null;
@@ -7037,7 +7521,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const s = UI.s, f = UI.chron.filter;
     const list = s.history.filter((e) => (f === 'pov' ? e.pov : f === 'rumor' ? !e.pov && e.severity >= 2 : e.pov || e.severity >= 2)).slice(-400).reverse();
     return `<h2>纪事</h2>${seenTabs('chron')}<div class="row tabs">${[['pov', '亲历'], ['rumor', '传闻'], ['all', '全部']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="chronFilter" data-k="${k}">${n}</button>`).join('')}</div>
-      <div class="card log">${list.map((e) => `<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join('') || '<p class="muted">尚无</p>'}</div>
+      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
       ${s.history.length > 400 ? '<p class="muted">只列最近 400 条。</p>' : ''}`;
   };
 
@@ -7056,20 +7540,41 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     return `<div class="card"><h3>手机上玩</h3><p style="margin-top:0">用手机浏览器打开 <a href="${esc(W.url || '')}" target="_blank" rel="noopener">${esc(W.url || '')}</a>，再加到主屏幕，就能像 App 一样全屏、离线玩。</p><p class="muted small" style="margin-bottom:0">这里的存档带不过去，要先在存档管理里「复制为文本」，到手机上「从文本导入」。</p></div>`;
   }
+  // AI：开关、key、模型、每日上限、测试连接、被拒的回复
+  function aiCard() {
+    const AI = FX.AI;
+    if (!AI) return '';
+    const c = AI.config(), key = AI.hasKey(), ready = AI.ready(), use = AI.usedToday();
+    const opts = AI.models.map((m) => `<option value="${esc(m)}" ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+    const rej = AI.rejects.length ? `<details class="ai-rejects"><summary class="muted small">最近被拒的回复（${AI.rejects.length} 条，换成了模板文字）</summary>${AI.rejects.map((r) => `<p><b>${esc(r.why)}</b><br><span class="muted">${esc(r.text)}</span></p>`).join('')}</details>` : '';
+    return `<div class="card ai-form"><h3>AI（DeepSeek）</h3>
+      <p class="muted small" style="margin-top:0">AI 只写文字，成败得失照旧由规则掷骰；没开、没填 key、断网或超时，就用原来的模板文字。key 只存在这台设备的浏览器里，只发往 DeepSeek，不进存档和导出。</p>
+      <div class="stat"><span>状态</span><b class="${c.enabled ? (ready.ok ? 'good' : 'warn') : 'muted'}">${c.enabled ? (ready.ok ? '已开启 · ' + esc(c.model) : '已开启，但' + esc(ready.reason)) : '已关闭'}</b></div>
+      <div class="row"><button class="${c.enabled ? '' : 'primary'}" data-act="aiToggle">${c.enabled ? '关闭 AI' : '开启 AI'}</button><button data-act="aiTest" ${ready.ok ? '' : 'disabled'}>测试连接</button></div>
+      <div class="row"><input type="password" id="ai-key" autocomplete="off" spellcheck="false" placeholder="${key ? '已填写（要换就粘贴新的）' : '粘贴 DeepSeek 的 key（sk-…）'}"><button data-act="aiKey">保存 key</button>${key ? '<button data-act="aiKeyClear">清除 key</button>' : ''}</div>
+      <div class="row"><label>模型 <select id="ai-model">${opts}</select></label><label>每天至多 <input type="number" id="ai-limit" min="1" max="5000" value="${c.dailyLimit}" style="width:5.5em"> 次</label></div>
+      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><button data-act="aiSave">保存设置</button></div>
+      <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
+      ${rej}</div>`;
+  }
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
+    ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：眼下会写纪事叙述、改写眼前的事、写小传；打字说想做什么、事件从世界里长出来、人物各有命运，接下来几步接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
   function renderModals() {
-    if (!UI.modals.length) return '';
+    if (!UI.modals.length) { UI.modalSig = null; return ''; }
     const m = UI.modals[UI.modals.length - 1];
     const body = MODALS[m.type](m);
-    return `<div class="modal-bg" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true">${body}</div></div>`;
+    // 同一个弹窗重画（比如 AI 的文字回来了）不再淡入一遍，免得闪
+    const sig = UI.modals.length + ':' + m.type, still = sig === UI.modalSig;
+    UI.modalSig = sig;
+    return `<div class="modal-bg${still ? ' still' : ''}" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true">${body}</div></div>`;
   }
   const MODALS = {
     event(m) {
@@ -7077,8 +7582,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
       if (!s.pending.length) { setTimeout(popModal, 0); return ''; }
       m.blocking = true;
       const v = Game.pendingEvents(s)[0];
+      let alt = null, wait = '';
+      if (aiOn('eventText')) {
+        const key = FX.AI.eventKey(s.pending[0]);
+        alt = Game.ai.text(s, key);
+        if (!alt) { FX.AI.eventText(s, s.pending[0]); wait = aiWaiting(key); }
+      }
       return `<h2>${esc(v.name)} <span class="tag">${esc(v.category)}</span></h2>
-        <p>${esc(v.text)}</p>${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
+        ${alt ? `<p class="ai-note">${esc(alt)}<span class="src">AI 改写</span></p><details class="muted small"><summary>原文</summary>${esc(v.text)}</details>` : `<p>${esc(v.text)}</p>${wait}`}${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
         ${v.options.map((o, i) => `<div class="opt ${o.available ? '' : 'disabled'}"><div class="row between"><b>${i + 1}. ${esc(o.label)}</b>
           <button class="${o.available ? 'primary' : ''}" data-act="choose" data-i="${v.id}" data-o="${o.id}" ${o.available ? '' : 'disabled'} ${i === 0 ? 'autofocus' : ''}>选择</button></div>
           <div class="meta">代价：<b>${esc(o.cost)}</b></div><div class="meta">风险：<b>${esc(o.risk)}</b></div>${o.outcome ? `<div class="meta">可能结果：<b>${esc(o.outcome)}</b></div>` : ''}
@@ -7130,7 +7641,15 @@ button.wide { width: 100%; margin-bottom: .6em; }
     },
     life() {
       const s = UI.s, p = P.player(s);
-      return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>`;
+      const on = !!(FX.AI && FX.AI.config().enabled);
+      const L = on ? Game.ai.latest(s, 'life') : null;
+      const key = on ? FX.AI.lifeKey(s) : null;
+      const busy = key && FX.AI.isPending(key);
+      const fresh = L && L.key === key;
+      const fail = key && FX.AI.failure(key);
+      const btn = on ? `<div class="row"><button data-act="aiLife" ${busy || fresh ? 'disabled' : ''}>${busy ? 'AI 执笔中…' : L ? (fresh ? '小传已是最新' : '按眼下的经历重写小传') : '请 AI 写一篇小传'}</button></div>${fail ? `<p class="muted small">没写成：${esc(fail)}</p>` : ''}` : '';
+      return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
+        ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
     },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
@@ -7197,7 +7716,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       UI.start.seed = ($('#in-seed') || {}).value || '';
       const seed = UI.start.seed || String(Date.now() % 1e9) + '-' + Math.floor(Math.random() * 1e6);
       UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, given: UI.start.given, sex: UI.start.sex, seed });
-      UI.page = 'now'; UI.modals = [];
+      UI.page = 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
       afterAction();
       if (G.scrollTo) G.scrollTo(0, 0);
       toast(`${P.player(UI.s).name}踏入仙途（种子 ${seed}）`, 3500);
@@ -7275,6 +7794,31 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const r = await FX.PWA.shareFile(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
       if (r === false) toast('这个浏览器分享不了文件，请改用下载或复制文本');
     },
+    aiToggle() {
+      const c = FX.AI.saveConfig({ enabled: !FX.AI.config().enabled });
+      toast(c.enabled ? (FX.AI.hasKey() ? 'AI 已开启' : 'AI 已开启，还要填 key') : 'AI 已关闭，用模板文字');
+      render();
+    },
+    aiKey() {
+      const v = (($('#ai-key') || {}).value || '').trim();
+      if (!v) return toast('先把 key 粘贴进框里');
+      if (!/^[\x21-\x7e]{8,200}$/.test(v)) return toast('这不像 key：应是一串英文字母和数字');
+      toast(FX.AI.setKey(v) ? 'key 已存在这台设备上' : '✗ 这个浏览器存不了 key');
+      render();
+    },
+    aiKeyClear() { pushModal({ type: 'confirm', title: '清除 key', text: '清除以后 AI 就停了，要用得重新粘贴。确定吗？', onYes: () => { FX.AI.setKey(''); toast('key 已清除'); } }); },
+    aiSave() {
+      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked });
+      toast('AI 设置已保存');
+      render();
+    },
+    async aiTest() {
+      toast('正在连 DeepSeek…');
+      const r = await FX.AI.testConnection();
+      toast(r.ok ? '连上了，DeepSeek 回了：' + r.text.slice(0, 20) : '✗ 没连上：' + r.reason, 5000);
+      render();
+    },
+    aiLife() { FX.AI.life(UI.s); render(); },
     async installApp() { const ok = await FX.PWA.prompt(); toast(ok ? '已装到主屏幕' : '没有安装'); render(); },
     async exportText() {
       const m = UI.modals[UI.modals.length - 1];
@@ -7325,6 +7869,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
     if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
+    if (FX.AI) FX.AI.onUpdate = () => {
+      if (UI.s) scheduleSave();
+      const a = document.activeElement;
+      if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+      render();
+    };
     render();
   }
   FX.UI = UI;

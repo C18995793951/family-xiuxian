@@ -128,6 +128,18 @@
       serialize: (s, savedAt) => FX.Save.serialize(s, savedAt),
       deserialize: (t) => FX.Save.deserialize(t),
       hash: (s) => FX.Save.hashState(s),
+      // 不算 AI 记录的状态摘要：同种子同选择，开不开 AI 都该一样
+      ruleHash: (s) => FX.Save.hashRules(s),
+    },
+
+    /* ---------- AI（只出提案，规则裁决；网络调用在 ui/ai.js）---------- */
+    ai: {
+      job: (s, kind, arg) => FX.Prop.job(s, kind, arg),
+      accept: (s, job, raw) => FX.Prop.accept(s, job, raw),
+      text: (s, key) => FX.Prop.text(s, key),
+      latest: (s, kind) => FX.Prop.latest(s, kind),
+      narrations: (s) => FX.Prop.narrations(s),
+      mark: (s) => 'h' + s.nextHistId,
     },
   };
 

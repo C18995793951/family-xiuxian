@@ -10,6 +10,8 @@
   const SV = {};
 
   SV.hashState = (s) => U.hash(JSON.stringify(s));
+  // AI 记录（叙述文字之类）只用于显示，不算进规则状态
+  SV.hashRules = (s) => U.hash(JSON.stringify(Object.assign({}, s, { aiLog: [] })));
 
   SV.meta = (s) => {
     const p = FX.P.player(s);

@@ -73,7 +73,19 @@
     else if (UI.s && UI.s.pending.length && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
     render();
     focusModal();
+    aiAfter();
   }
+  /* ---------- AI：行动以后写一段叙述（不等它；回来了再刷新）---------- */
+  // UI.aiMark 记着上回看到的纪事位置；读档、开局时对齐，免得把以前的事都写一遍
+  function aiAfter() {
+    if (!UI.s || !FX.AI) return;
+    const mark = UI.aiMark;
+    UI.aiMark = Game.ai.mark(UI.s);
+    if (mark && mark !== UI.aiMark) FX.AI.narrate(UI.s, mark);
+  }
+  const aiOn = (what) => !!(FX.AI && FX.AI.on(what));
+  const narrOf = () => (UI.s && aiOn('narrate') ? Game.ai.narrations(UI.s) : {});
+  const aiNote = (text) => `<p class="ai-note">${esc(text)}<span class="src">AI 叙述</span></p>`;
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 300); }
   async function autosave() {
     if (!UI.s) return;
@@ -84,7 +96,7 @@
   async function readSave(text) {
     const r = Game.save.deserialize(text);
     if (!r.ok) { toast('读取失败：' + r.error, 5000); return false; }
-    UI.s = r.state; UI.modals = []; UI.page = 'now';
+    UI.s = r.state; UI.modals = []; UI.page = 'now'; UI.aiMark = Game.ai.mark(UI.s);
     afterAction();
     if (G.scrollTo) G.scrollTo(0, 0);
     return true;
@@ -132,8 +144,10 @@
   }
 
   function feedHtml(list) {
-    return list.map((e) => `<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>';
+    const nr = narrOf();
+    return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>';
   }
+  const aiWaiting = (key) => (FX.AI && FX.AI.isPending(key) ? '<p class="ai-wait">AI 执笔中…</p>' : '');
   function renderAside() {
     const s = UI.s;
     const warn = s.pending.length ? `<p class="warn">⚑ 眼前有事要决断 <button class="link" data-act="openEvent">处理</button></p>` : '';
@@ -253,7 +267,7 @@
     const member = ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan');
     // 手机上看不到右栏的“最近经历”，在顶上留两三条
     const recent = Game.view.feed(s, 12).filter((e) => e.pov).slice(0, 3);
-    const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${feedHtml(recent)}</div>` : '';
+    const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${aiWaiting('n:' + recent[0].id)}${feedHtml(recent)}</div>` : '';
     // 冲关：成功率、要什么、按钮放在一处
     const btActs = A.filter((a) => a.type === 'breakthrough' && !a.path);
     const failInfo = bt ? FX.CU.failInfo(s, P.player(s)) : null;
@@ -813,7 +827,7 @@
     const s = UI.s, f = UI.chron.filter;
     const list = s.history.filter((e) => (f === 'pov' ? e.pov : f === 'rumor' ? !e.pov && e.severity >= 2 : e.pov || e.severity >= 2)).slice(-400).reverse();
     return `<h2>纪事</h2>${seenTabs('chron')}<div class="row tabs">${[['pov', '亲历'], ['rumor', '传闻'], ['all', '全部']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="chronFilter" data-k="${k}">${n}</button>`).join('')}</div>
-      <div class="card log">${list.map((e) => `<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join('') || '<p class="muted">尚无</p>'}</div>
+      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
       ${s.history.length > 400 ? '<p class="muted">只列最近 400 条。</p>' : ''}`;
   };
 
@@ -832,20 +846,41 @@
     }
     return `<div class="card"><h3>手机上玩</h3><p style="margin-top:0">用手机浏览器打开 <a href="${esc(W.url || '')}" target="_blank" rel="noopener">${esc(W.url || '')}</a>，再加到主屏幕，就能像 App 一样全屏、离线玩。</p><p class="muted small" style="margin-bottom:0">这里的存档带不过去，要先在存档管理里「复制为文本」，到手机上「从文本导入」。</p></div>`;
   }
+  // AI：开关、key、模型、每日上限、测试连接、被拒的回复
+  function aiCard() {
+    const AI = FX.AI;
+    if (!AI) return '';
+    const c = AI.config(), key = AI.hasKey(), ready = AI.ready(), use = AI.usedToday();
+    const opts = AI.models.map((m) => `<option value="${esc(m)}" ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+    const rej = AI.rejects.length ? `<details class="ai-rejects"><summary class="muted small">最近被拒的回复（${AI.rejects.length} 条，换成了模板文字）</summary>${AI.rejects.map((r) => `<p><b>${esc(r.why)}</b><br><span class="muted">${esc(r.text)}</span></p>`).join('')}</details>` : '';
+    return `<div class="card ai-form"><h3>AI（DeepSeek）</h3>
+      <p class="muted small" style="margin-top:0">AI 只写文字，成败得失照旧由规则掷骰；没开、没填 key、断网或超时，就用原来的模板文字。key 只存在这台设备的浏览器里，只发往 DeepSeek，不进存档和导出。</p>
+      <div class="stat"><span>状态</span><b class="${c.enabled ? (ready.ok ? 'good' : 'warn') : 'muted'}">${c.enabled ? (ready.ok ? '已开启 · ' + esc(c.model) : '已开启，但' + esc(ready.reason)) : '已关闭'}</b></div>
+      <div class="row"><button class="${c.enabled ? '' : 'primary'}" data-act="aiToggle">${c.enabled ? '关闭 AI' : '开启 AI'}</button><button data-act="aiTest" ${ready.ok ? '' : 'disabled'}>测试连接</button></div>
+      <div class="row"><input type="password" id="ai-key" autocomplete="off" spellcheck="false" placeholder="${key ? '已填写（要换就粘贴新的）' : '粘贴 DeepSeek 的 key（sk-…）'}"><button data-act="aiKey">保存 key</button>${key ? '<button data-act="aiKeyClear">清除 key</button>' : ''}</div>
+      <div class="row"><label>模型 <select id="ai-model">${opts}</select></label><label>每天至多 <input type="number" id="ai-limit" min="1" max="5000" value="${c.dailyLimit}" style="width:5.5em"> 次</label></div>
+      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><button data-act="aiSave">保存设置</button></div>
+      <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
+      ${rej}</div>`;
+  }
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
+    ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：眼下会写纪事叙述、改写眼前的事、写小传；打字说想做什么、事件从世界里长出来、人物各有命运，接下来几步接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
   function renderModals() {
-    if (!UI.modals.length) return '';
+    if (!UI.modals.length) { UI.modalSig = null; return ''; }
     const m = UI.modals[UI.modals.length - 1];
     const body = MODALS[m.type](m);
-    return `<div class="modal-bg" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true">${body}</div></div>`;
+    // 同一个弹窗重画（比如 AI 的文字回来了）不再淡入一遍，免得闪
+    const sig = UI.modals.length + ':' + m.type, still = sig === UI.modalSig;
+    UI.modalSig = sig;
+    return `<div class="modal-bg${still ? ' still' : ''}" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true">${body}</div></div>`;
   }
   const MODALS = {
     event(m) {
@@ -853,8 +888,14 @@
       if (!s.pending.length) { setTimeout(popModal, 0); return ''; }
       m.blocking = true;
       const v = Game.pendingEvents(s)[0];
+      let alt = null, wait = '';
+      if (aiOn('eventText')) {
+        const key = FX.AI.eventKey(s.pending[0]);
+        alt = Game.ai.text(s, key);
+        if (!alt) { FX.AI.eventText(s, s.pending[0]); wait = aiWaiting(key); }
+      }
       return `<h2>${esc(v.name)} <span class="tag">${esc(v.category)}</span></h2>
-        <p>${esc(v.text)}</p>${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
+        ${alt ? `<p class="ai-note">${esc(alt)}<span class="src">AI 改写</span></p><details class="muted small"><summary>原文</summary>${esc(v.text)}</details>` : `<p>${esc(v.text)}</p>${wait}`}${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
         ${v.options.map((o, i) => `<div class="opt ${o.available ? '' : 'disabled'}"><div class="row between"><b>${i + 1}. ${esc(o.label)}</b>
           <button class="${o.available ? 'primary' : ''}" data-act="choose" data-i="${v.id}" data-o="${o.id}" ${o.available ? '' : 'disabled'} ${i === 0 ? 'autofocus' : ''}>选择</button></div>
           <div class="meta">代价：<b>${esc(o.cost)}</b></div><div class="meta">风险：<b>${esc(o.risk)}</b></div>${o.outcome ? `<div class="meta">可能结果：<b>${esc(o.outcome)}</b></div>` : ''}
@@ -906,7 +947,15 @@
     },
     life() {
       const s = UI.s, p = P.player(s);
-      return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>`;
+      const on = !!(FX.AI && FX.AI.config().enabled);
+      const L = on ? Game.ai.latest(s, 'life') : null;
+      const key = on ? FX.AI.lifeKey(s) : null;
+      const busy = key && FX.AI.isPending(key);
+      const fresh = L && L.key === key;
+      const fail = key && FX.AI.failure(key);
+      const btn = on ? `<div class="row"><button data-act="aiLife" ${busy || fresh ? 'disabled' : ''}>${busy ? 'AI 执笔中…' : L ? (fresh ? '小传已是最新' : '按眼下的经历重写小传') : '请 AI 写一篇小传'}</button></div>${fail ? `<p class="muted small">没写成：${esc(fail)}</p>` : ''}` : '';
+      return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
+        ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
     },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
@@ -973,7 +1022,7 @@
       UI.start.seed = ($('#in-seed') || {}).value || '';
       const seed = UI.start.seed || String(Date.now() % 1e9) + '-' + Math.floor(Math.random() * 1e6);
       UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, given: UI.start.given, sex: UI.start.sex, seed });
-      UI.page = 'now'; UI.modals = [];
+      UI.page = 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
       afterAction();
       if (G.scrollTo) G.scrollTo(0, 0);
       toast(`${P.player(UI.s).name}踏入仙途（种子 ${seed}）`, 3500);
@@ -1051,6 +1100,31 @@
       const r = await FX.PWA.shareFile(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
       if (r === false) toast('这个浏览器分享不了文件，请改用下载或复制文本');
     },
+    aiToggle() {
+      const c = FX.AI.saveConfig({ enabled: !FX.AI.config().enabled });
+      toast(c.enabled ? (FX.AI.hasKey() ? 'AI 已开启' : 'AI 已开启，还要填 key') : 'AI 已关闭，用模板文字');
+      render();
+    },
+    aiKey() {
+      const v = (($('#ai-key') || {}).value || '').trim();
+      if (!v) return toast('先把 key 粘贴进框里');
+      if (!/^[\x21-\x7e]{8,200}$/.test(v)) return toast('这不像 key：应是一串英文字母和数字');
+      toast(FX.AI.setKey(v) ? 'key 已存在这台设备上' : '✗ 这个浏览器存不了 key');
+      render();
+    },
+    aiKeyClear() { pushModal({ type: 'confirm', title: '清除 key', text: '清除以后 AI 就停了，要用得重新粘贴。确定吗？', onYes: () => { FX.AI.setKey(''); toast('key 已清除'); } }); },
+    aiSave() {
+      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked });
+      toast('AI 设置已保存');
+      render();
+    },
+    async aiTest() {
+      toast('正在连 DeepSeek…');
+      const r = await FX.AI.testConnection();
+      toast(r.ok ? '连上了，DeepSeek 回了：' + r.text.slice(0, 20) : '✗ 没连上：' + r.reason, 5000);
+      render();
+    },
+    aiLife() { FX.AI.life(UI.s); render(); },
     async installApp() { const ok = await FX.PWA.prompt(); toast(ok ? '已装到主屏幕' : '没有安装'); render(); },
     async exportText() {
       const m = UI.modals[UI.modals.length - 1];
@@ -1101,6 +1175,12 @@
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
     if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
+    if (FX.AI) FX.AI.onUpdate = () => {
+      if (UI.s) scheduleSave();
+      const a = document.activeElement;
+      if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+      render();
+    };
     render();
   }
   FX.UI = UI;

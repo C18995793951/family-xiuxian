@@ -9,6 +9,7 @@
     "test:quick": "node test/run-tests.js --quick",
     "balance": "node test/balance.js",
     "test:ui": "node test/ui-smoke.js",
-    "test:web": "node test/web-smoke.js"
+    "test:web": "node test/web-smoke.js",
+    "test:ai": "node test/ai-tests.js"
   }
 }

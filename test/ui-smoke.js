@@ -86,9 +86,62 @@ const { chromium } = require('playwright');
     if (w > 376) overflow.push(p + ':' + w);
     if (p === 'now') await mp.screenshot({ path: path.join(out, 'mobile-now.png'), fullPage: true });
   }
+  // AI：手机宽度下开启、填 key、测试连接，过几步看纪事叙述和小传；DeepSeek 用假回声顶替，不发真实请求
+  const KEY = 'sk-UI-SMOKE-0123456789-SECRET';
+  const aiNet = [];
+  await mp.route('https://api.deepseek.com/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    aiNet.push({ auth: route.request().headers().authorization, model: body.model });
+    const user = (body.messages || []).slice(-1)[0].content || '';
+    let content = /请只回复/.test(user) ? '通' : /原文：/.test(user) ? user.split('原文：')[1].split('\n')[0] : '';
+    if (!content) { for (const l of user.split('\n').slice(1).filter(Boolean)) { if ((content + l).length > 300) break; content += (content ? '\n' : '') + l; } }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 100 } }) });
+  });
+  await mp.click('nav.bottom [data-act="page"][data-p="sys"]');
+  if (!(await mp.$('.ai-form'))) throw new Error('设置页没有 AI 卡片');
+  await mp.fill('#ai-key', KEY);
+  await mp.click('[data-act="aiKey"]');
+  await mp.click('[data-act="aiToggle"]');
+  await mp.click('[data-act="aiTest"]');
+  await mp.waitForFunction(() => FX.AI.status && FX.AI.status.kind === 'test');
+  const aiStatus = await mp.evaluate(() => FX.AI.statusText());
+  if (!/成功/.test(aiStatus)) throw new Error('测试连接没通：' + aiStatus);
+  const wAi = await mp.evaluate(() => document.documentElement.scrollWidth);
+  if (wAi > 376) overflow.push('sys+ai:' + wAi);
+  await mp.screenshot({ path: path.join(out, 'mobile-ai.png'), fullPage: true });
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  let notes = 0;
+  for (let i = 0; i < 60 && !notes; i++) {
+    const yes = await mp.$('.modal [data-act="confirmYes"]');
+    if (yes) { await yes.click(); continue; }
+    const choose = await mp.$('.modal [data-act="choose"]:not([disabled])');
+    if (choose) { await mp.waitForTimeout(50); await choose.click(); continue; }
+    if (await mp.$('.modal')) { await mp.keyboard.press('Escape'); continue; }
+    const q = await mp.$('.qbar button.primary:not([disabled])');
+    if (q) await q.click(); else await mp.click('main [data-act="do"]:not([disabled])');
+    await mp.waitForTimeout(80);
+    notes = (await mp.$$('main .ai-note')).length;
+  }
+  if (!notes) throw new Error('过了 60 步，此刻页没出现 AI 叙述');
+  await mp.screenshot({ path: path.join(out, 'mobile-ai-now.png'), fullPage: true });
+  await mp.click('nav.bottom [data-act="page"][data-p="sys"]');
+  await mp.click('[data-act="life"]');
+  await mp.click('.modal [data-act="aiLife"]');
+  await mp.waitForSelector('.modal .ai-note');
+  await mp.waitForTimeout(400);
+  await mp.screenshot({ path: path.join(out, 'mobile-ai-life.png') });
+  const leak = await mp.evaluate((k) => {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) { const n = localStorage.key(i); if (n !== 'family-xiuxian:ai-key' && String(localStorage.getItem(n)).includes(k)) out.push(n); }
+    if (FX.Game.save.serialize(FX.UI.s, 1).includes(k)) out.push('存档');
+    return out;
+  }, KEY);
+  if (leak.length) throw new Error('key 出现在：' + leak.join('、'));
+  if (aiNet.some((r) => r.auth !== 'Bearer ' + KEY)) throw new Error('请求头里的 key 不对');
+  const aiLog = await mp.evaluate(() => FX.UI.s.aiLog.map((r) => r.kind));
   await browser.close();
-  const report = { years: year - startYear, steps, events, errors, net, overflow };
+  const report = { years: year - startYear, steps, events, errors, net, overflow, ai: { requests: aiNet.length, notes, aiLog: aiLog.length } };
   console.log(JSON.stringify(report, null, 2));
   if (errors.length || net.length || overflow.length) process.exit(1);
-  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致');
+  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成，key 只在请求头里');
 })().catch((e) => { console.error(e); process.exit(1); });

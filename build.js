@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { FILES } = require('./test/load-core');
 const src = (p) => fs.readFileSync(path.join(__dirname, 'src', p), 'utf8');
-const UI_FILES = ['storage', 'pwa', 'app'];
+const UI_FILES = ['storage', 'pwa', 'ai', 'app'];
 const core = FILES.map((f) => `/* ---------- core/${f}.js ---------- */\n` + src('core/' + f + '.js')).join('\n');
 const ui = UI_FILES.map((f) => `/* ---------- ui/${f}.js ---------- */\n` + src('ui/' + f + '.js')).join('\n');
 const guard = (s) => s.replace(/<\/script/gi, '<\\/script');
