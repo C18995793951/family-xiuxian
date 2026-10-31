@@ -22,10 +22,10 @@
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
   const stars = (n, max) => '●'.repeat(n) + '○'.repeat(Math.max(0, (max || 5) - n));
-  const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生'];
-  const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'];
+  const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生', '金丹也会殒命', '元神方可涉足'];
+  const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '灵窟', '洞天'];
   const realmOf = (realm) => P.realmName({ realm });
-  const techLine = (t) => t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : '';
+  const techLine = (t) => t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
   const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : '修为');
 
   function toast(msg, ms) {
@@ -165,7 +165,7 @@
     const bt = ov.breakthrough;
     const place = ov.place;
     const pv = Game.view.place(s, place.id);
-    const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a ? '' : 'disabled'}>${esc(to.name)} <span class="muted">${l.days} 天 · ${DANGER[to.danger]}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}</span></button>`; }).join('');
+    const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a && a.ok ? '' : 'disabled'} title="${esc(a ? a.reason : '')}">${esc(to.name)} <span class="muted">${l.days} 天 · ${DANGER[to.danger]}${to.region && to.region !== place.region ? ' · ' + esc(to.region) : ''}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}${a && !a.ok ? ' · ' + esc(CF.realms.names[l.minMajor] || '') + '以后才过得去' : ''}</span></button>`; }).join('');
     const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>`;
     const fit = ov.fit;
     const disabled = s.ended || s.pending.length;
@@ -188,9 +188,9 @@
           <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         </div>
         <div class="card">
-          <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc(pv.typeName)}</span></div>
+          <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc((place.region || '南域') + ' · ' + pv.typeName)}</span></div>
           <div class="stat"><span>灵机</span><b>${stars(place.qi)} ${QI[place.qi]} · 属「${esc(place.attr)}」${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
-          <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(place.danger)} ${DANGER[place.danger]}</b></div>
+          <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(Math.min(5, place.danger))} ${DANGER[place.danger]}</b></div>
           ${s.player.dongfu ? `<div class="stat"><span>洞府</span><b>${s.player.dongfu === place.id ? '<span class="good">就在此地</span> <span class="muted">（灵机 +' + CF.dongfu.qiBonus + '，闭关少受打扰）</span>' : placeLink(s.player.dongfu)}</b></div>` : ''}
           <div class="stat"><span>势力</span><b>${pv.faction ? esc(pv.faction.name) : '无人管辖'}</b></div>
           <div class="stat"><span>此地的人</span><b>${pv.people.length} 人 <button class="link" data-act="page" data-p="people">看看</button></b></div>
@@ -214,23 +214,32 @@
   PAGE.map = () => {
     const s = UI.s, me = P.player(s);
     const cw = CF.world, K = 80, pad = 50;
-    const W = (cw.gridW - 1) * K + pad * 2, H = (cw.gridH - 1) * K + pad * 2;
-    const X = (p) => pad + p.x * K, Y = (p) => pad + p.y * K;
     const places = Object.values(s.places);
+    const xs = places.map((p) => p.x), ys = places.map((p) => p.y);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const W = (Math.max(...xs) - x0) * K + pad * 2, H = (Math.max(...ys) - y0) * K + pad * 2;
+    const X = (p) => pad + (p.x - x0) * K, Y = (p) => pad + (p.y - y0) * K;
+    const canGo = me.realm.major >= cw.outer.gate.minMajor;
     const lines = [];
     for (const a of places) for (const l of a.links) if (a.id < l.to) {
       const b = s.places[l.to];
-      lines.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}" class="road"/><text x="${(X(a) + X(b)) / 2}" y="${(Y(a) + Y(b)) / 2 - 4}" class="days">${l.days}天</text>`);
+      lines.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}" class="road${l.minMajor ? ' gate' : ''}"/><text x="${(X(a) + X(b)) / 2}" y="${(Y(a) + Y(b)) / 2 - 4}" class="days">${l.days}天${l.minMajor ? ' · ' + esc(CF.realms.names[l.minMajor]) + '以后' : ''}</text>`);
     }
+    // 地域名字（南域、中域……）写在各自地点的中间
+    const regions = {};
+    for (const p of places) { const k = p.region || '南域'; (regions[k] = regions[k] || []).push(p); }
+    const labels = Object.keys(regions).map((k) => { const l = regions[k]; const cx = l.reduce((a, p) => a + X(p), 0) / l.length, cy = l.reduce((a, p) => a + Y(p), 0) / l.length; return `<text x="${cx}" y="${cy - 32}" class="region">${esc(k)}</text>`; }).join('');
     const nodes = places.map((p) => {
       const here = p.id === me.locationId, seen = s.player.visited.includes(p.id);
-      return `<g class="node t-${p.type} ${here ? 'here' : ''} ${seen ? 'seen' : ''}" data-act="place" data-id="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)}">
+      const far = p.outer && !canGo && !seen;
+      return `<g class="node t-${p.type} ${here ? 'here' : ''} ${seen ? 'seen' : ''} ${far ? 'far' : ''}" data-act="place" data-id="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)}">
         <circle cx="${X(p)}" cy="${Y(p)}" r="${here ? 13 : 10}"/>
         <text x="${X(p)}" y="${Y(p) + 28}" class="pname">${esc(p.name)}</text></g>`;
     }).join('');
-    return `<h2>地图 <span class="muted">${esc(cw.region)}</span></h2>
-      <div class="card map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="世界地图">${lines.join('')}${nodes}</svg></div>
-      <p class="muted">点地点看详情。${Object.keys(cw.placeTypes).map((k) => `<span class="legend t-${k}">●</span>${esc(cw.placeTypes[k].name)}`).join(' ')}；描金边的是你去过的地方，大圈是你所在之处。</p>`;
+    return `<h2>地图 <span class="muted">东弥州</span></h2>
+      <div class="card map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="世界地图">${labels}${lines.join('')}${nodes}</svg></div>
+      <p class="muted">点地点看详情。${Object.keys(cw.placeTypes).map((k) => `<span class="legend t-${k}">●</span>${esc(cw.placeTypes[k].name)}`).join(' ')}；描金边的是你去过的地方，大圈是你所在之处。</p>
+      <p class="muted">南域是东弥州有名的穷土。往北隔着万里荒原是中域、西域、东域、北域和东海，玉宸派、赤明派、怙照宗三家大派都在那边；${canGo ? '你已能驾遁光过去。' : '要到金丹，才驾得起遁光越过荒原（虚线那条路）。'}</p>`;
   };
 
   /* ---------- 人物 ---------- */
@@ -328,6 +337,14 @@
       </div>
       <div class="card"><h3>${clan ? '家传功法' : '长老房 · 传功'}</h3>${lib || '<p class="muted">没有可传的功法。</p>'}</div>
       <div class="card"><h3>${clan ? '族中库藏' : '长老房 · 库藏'} <span class="muted">（常备，随时可换）</span></h3>${store}</div>
+      ${(() => {
+        const tr = A.find((x) => x.type === 'transfer');
+        const lv = A.find((x) => x.type === 'leave');
+        const up = !clan && f.key === 'xuanzhen' ? `<p class="muted">玄真派是玉宸派下辖的道脉。到了金丹，可去中域的玉宸派持道脉符书改投，${esc(M)}照记，不看运气。玉宸派山门是灵窟，日后冲击元神正用得上。</p>` : '';
+        return `<div class="card"><h3>去留</h3>${up}${tr ? `<div class="row">${btn(tr)}</div>` : ''}
+          ${lv ? `<div class="row"><button class="danger" data-act="doAsk" data-i="${A.indexOf(lv)}">${esc(lv.label)}</button></div>` : ''}
+          <p class="muted" style="margin-bottom:0">辞出以后就是散修，可以去求入别的宗门；八派六宗要金丹才收。</p></div>`;
+      })()}
       <div class="card"><h3>${clan ? '上交族中' : '功德房 · 上交'}</h3>
         ${subs.length ? `<div class="col">${subs.map((a) => `<div>${btn(a)}</div>`).join('')}</div>` : `<p class="muted">行囊里没有可上交的东西。${Object.entries(v.submit).map(([k, n]) => esc(CF.items[k].name) + '每件记 ' + n).join('、')}；本门没有的道书抄本按价值记，每部只记一次。</p>`}
       </div>`;
@@ -347,7 +364,7 @@
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，以及后期的天下大事（地渊开启、撷芳宴、道脉校考）、职位与推举、洞府、仇家都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息一路到金丹、元神、返虚（金丹分九品，品第影响战力和冲元神）。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮）、玉宸派/赤明派/怙照宗三家大派、道脉改投、职位与推举、洞府与洞天、仇家都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -391,12 +408,13 @@
       const A = Game.actions(s);
       const next = v.route && v.route.path.length > 1 ? A.find((a) => a.type === 'travel' && a.to === v.route.path[1]) : null;
       return `<div class="row between"><h2>${esc(p.name)}</h2><button data-act="close" aria-label="关闭">✕</button></div>
-        <p>${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''}${v.here ? ' · <b class="warn">你在这里</b>' : v.visited ? ' · 去过' : ' · 没去过'}</p>
+        <p>${esc(p.region || '南域')} · ${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''}${v.here ? ' · <b class="warn">你在这里</b>' : v.visited ? ' · 去过' : ' · 没去过'}</p>
         <div class="stat"><span>灵机</span><b>${stars(p.qi)} ${QI[p.qi]} · 属「${esc(p.attr)}」</b></div>
         ${v.fit ? `<div class="stat"><span>你在此采气</span><b class="${v.fit.value >= 1 ? 'good' : v.fit.value < 0.5 ? 'bad' : ''}">${esc(v.fit.short)} ×${v.fit.value}</b></div>` : ''}
         ${v.faction && v.faction.blurb ? `<p class="muted">${esc(v.faction.blurb)}</p>` : ''}
-        <div class="stat"><span>危险</span><b class="${p.danger >= 3 ? 'bad' : ''}">${stars(p.danger)} ${DANGER[p.danger]}</b></div>
+        <div class="stat"><span>危险</span><b class="${p.danger >= 3 ? 'bad' : ''}">${stars(Math.min(5, p.danger))} ${DANGER[p.danger]}</b></div>
         <div class="stat"><span>相邻</span><span>${p.links.map((l) => esc(s.places[l.to].name) + ' ' + l.days + '天').join('、')}</span></div>
+        ${v.blocked ? `<p class="warn">${esc(v.blocked)}。</p>` : ''}
         ${v.here ? '' : v.route ? `<p>从你所在之处出发：${v.route.path.map((id) => esc(s.places[id].name)).join(' → ')}，共 ${v.route.days} 天。路是一段一段走的，每段都可能出事。</p>
           ${next ? `<div class="row"><button class="primary" data-act="do" data-i="${A.indexOf(next)}" data-close="1">先走第一段：${esc(next.label)}</button></div>` : ''}` : ''}
         ${v.visited ? `<p class="muted">此地有 ${v.people.length} 人${v.market ? '，可以买卖东西' : ''}。</p>` : ''}`;
@@ -470,6 +488,11 @@
       afterAction();
     },
     buy(d) { const r = Game.buy(UI.s, d.k, Number(d.n) || 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    doAsk(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      pushModal({ type: 'confirm', title: a.label, text: '这一步回不了头，确定吗？', onYes: () => { const r = Game.act(UI.s, a); toast(r.ok ? r.text || '已办' : '✗ ' + r.error); if (r.ok) afterAction(); } });
+    },
     doN(d) {
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;

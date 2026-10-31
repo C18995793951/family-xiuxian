@@ -63,7 +63,9 @@
           faction: pl.factionId ? s.factions[pl.factionId] : null,
           visited: s.player.visited.includes(id),
           here: me.locationId === id,
-          route: FX.World.route(s, me.locationId, id),
+          route: FX.World.route(s, me.locationId, id, me),
+          // 走不通时说明原因（南域通往中域的关口要金丹）
+          blocked: !FX.World.route(s, me.locationId, id, me) && FX.World.route(s, me.locationId, id) ? C().world.outer.gate.why : '',
           people: P.at(s, id).filter((q) => q.id !== me.id).map((q) => ({ id: q.id, name: q.name, realm: P.realmName(q), faction: P.factionName(s, q), rel: P.relValue(s, me.id, q.id) })),
           market: FX.World.hasMarket(s, id) ? s.markets[id] : null,
         };

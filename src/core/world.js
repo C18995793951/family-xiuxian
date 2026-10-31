@@ -94,6 +94,51 @@
     for (const p of list) { p.links.sort((a, b) => (a.to < b.to ? -1 : 1)); s.places[p.id] = p; }
   };
 
+  /* ---------- 东弥州腹地 ----------
+   * 南域以北的中域、西域、东域、北域与东海：地点、道路固定，三家八派六宗与门人在此生成。
+   * 新开局与旧存档迁移都调用它；与南域只有一条路相连，金丹以后才走得通。 */
+  W.genOuter = (s) => {
+    const O = C().world.outer;
+    if (Object.values(s.places).some((x) => x.region && x.region !== '南域')) return;
+    for (const pl of Object.values(s.places)) if (!pl.region) pl.region = '南域';
+    let n = Object.keys(s.places).length;
+    const byKey = {};
+    for (const d of O.places) {
+      let id = 'l' + ++n;
+      while (s.places[id]) id = 'l' + ++n;
+      const pl = { id, name: d.name, type: d.type, x: d.x, y: d.y, qi: d.qi, attr: d.attr, danger: d.danger, factionId: null, surname: null, links: [], region: d.region, outer: true };
+      s.places[id] = pl;
+      byKey[d.key] = pl;
+    }
+    // 关口：南域最北边、离中域最近的一处凡人国、墟市或荒野
+    const south = Object.values(s.places).filter((x) => x.region === '南域' && ['city', 'town', 'wild'].includes(x.type));
+    const zy = byKey[O.links[0][1]];
+    byKey.gate = south.sort((a, b) => a.y - b.y || Math.abs(a.x - zy.x) - Math.abs(b.x - zy.x) || (a.id < b.id ? -1 : 1))[0];
+    const cw = C().world;
+    for (const [ka, kb] of O.links) {
+      const a = byKey[ka], b = byKey[kb];
+      const gate = ka === 'gate';
+      const days = gate ? O.gate.days : Math.max(4, Math.round(dist(a, b) * cw.daysPerUnit));
+      const l1 = { to: b.id, days }, l2 = { to: a.id, days };
+      if (gate) { l1.minMajor = l2.minMajor = O.gate.minMajor; }
+      a.links.push(l1); b.links.push(l2);
+      a.links.sort((x, y) => (x.to < y.to ? -1 : 1)); b.links.sort((x, y) => (x.to < y.to ? -1 : 1));
+    }
+    let fn = Object.keys(s.factions).length;
+    for (const def of C().factionDefs.filter((d) => d.outer)) {
+      const seat = byKey[def.key];
+      let id = 'f' + ++fn;
+      while (s.factions[id]) id = 'f' + ++fn;
+      const f = { id, key: def.key, name: def.name, type: def.type, tier: def.tier, tech: def.tech || null, blurb: def.blurb || '', seatId: seat.id, leaderId: null, relToPlayer: 0 };
+      s.factions[id] = f;
+      seat.factionId = f.id;
+      W.genMembers(s, f);
+    }
+    for (const pl of Object.values(byKey)) if (pl.outer && W.hasMarket(s, pl.id)) W.refreshMarket(s, pl.id);
+  };
+  // 这条路此人走不走得通（南域通往中域的关口要金丹）
+  W.linkOpen = (p, l) => !l.minMajor || p.realm.major >= l.minMajor;
+
   /* ---------- 势力 ---------- */
   W.genFactions = (s) => {
     const r = s.rng;
@@ -108,6 +153,7 @@
     const sects = places.filter((x) => x.type === 'sect');
     let si = 0;
     for (const def of C().factionDefs) {
+      if (def.outer) continue; // 八派六宗在东弥州腹地，由 genOuter 生成
       if (def.type === 'sect') {
         const seat = sects[si++];
         if (!seat) continue;
@@ -139,6 +185,8 @@
     if (realm.major === 4) age = Math.max(age, R.int(r, 90, 200));
     if (realm.major === 5) age = Math.max(age, R.int(r, 150, 320));
     if (realm.major === 6) age = Math.max(age, R.int(r, 300, 900));
+    if (realm.major === 7) age = Math.max(age, R.int(r, 900, 2200));
+    if (realm.major === 8) age = Math.max(age, R.int(r, 2500, 5000));
     return Math.min(age, life - R.int(r, 3, 25));
   };
   const L = (st) => ({ major: 2, stage: st });
@@ -151,6 +199,10 @@
     sect2_leader: RM(6, 1, 1),
     sect2_elder: (r) => (R.chance(r, 0.4) ? RM(5, 1, 2)(r) : RM(4, 1, 3)(r)),
     sect2_member: (r) => (R.chance(r, 0.12) ? RM(3, 1, 2)(r) : L(R.int(r, 2, 9))),
+    // 八派六宗：掌门元神，长老金丹，门人多是筑基、紫府
+    sect3_leader: RM(7, 1, 1),
+    sect3_elder: (r) => (R.chance(r, 0.6) ? RM(6, 1, 1)(r) : RM(5, 2, 3)(r)),
+    sect3_member: (r) => (R.chance(r, 0.1) ? RM(6, 1, 1)(r) : R.chance(r, 0.3) ? RM(4, 1, 3)(r) : R.chance(r, 0.6) ? RM(3, 1, 3)(r) : L(R.int(r, 6, 9))),
     clan_leader: RM(3, 1, 2),
     clan_elder: (r) => (R.chance(r, 0.4) ? { major: 3, stage: 1 } : L(R.int(r, 8, 9))),
     clan_member: (r) => (R.chance(r, 0.2) ? { major: 1, stage: 1 } : L(R.int(r, 1, 7))),
@@ -175,7 +227,8 @@
     const f = o.factionId ? s.factions[o.factionId] : null;
     const tech = o.techniqueId || W.npcTech(r, f, o.role || 'member');
     const B = C().breakthrough;
-    const kaifuGrade = realm.major >= 4 ? R.weighted(r, [1, 2, 3], (g) => B.npcKaifu[g] * (f && f.tier === 2 ? [1, 0.6, 1.5, 3][g] : 1)) : 0;
+    const kaifuGrade = realm.major >= 4 ? R.weighted(r, [1, 2, 3], (g) => B.npcKaifu[g] * (f && f.tier >= 2 ? [1, 0.6, 1.5, 3][g] * (f.tier >= 3 ? [1, 0.5, 1, 2][g] : 1) : 1)) : 0;
+    const big = f && f.tier >= 3;
     const p = P().create(s, {
       surname: o.surname, realm, birthYear: s.year - age,
       progress: Math.floor(R.next(r) * Math.min(P().need({ realm }), 9999) * 0.8),
@@ -183,27 +236,32 @@
       daoji: realm.major >= 3 ? P().daojiOf(C().techniques[tech].tier) : 0,
       kaifuId: kaifuGrade ? Object.keys(C().techniques).find((k) => C().techniques[k].kind === 'kaifu' && C().techniques[k].grade === kaifuGrade) : null,
       yixiang: kaifuGrade,
+      daoId: realm.major >= 6 ? (big ? R.pick(r, ['dao_mid', 'dao_mid', 'dao_high']) : 'dao_low') : null,
       locationId: o.locationId, factionId: o.factionId || null, role: o.role || (o.factionId ? 'member' : 'loose'),
     });
+    if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2));
     if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
     return p;
   };
   const CU = () => FX.CU;
 
+  W.genMembers = (s, f) => {
+    const r = s.rng, cw = C().world;
+    const seat = s.places[f.seatId];
+    const [lo, hi] = cw.factionMembers[f.type];
+    const n = R.int(r, lo, hi) + (f.tier >= 3 ? 6 : 0);
+    const sn = f.type === 'clan' ? seat.surname : null;
+    const prefix = f.type === 'sect' ? 'sect' + f.tier : f.type;
+    for (let i = 0; i < n; i++) {
+      const role = i === 0 ? 'leader' : (f.type === 'sect' && i <= (f.tier >= 3 ? 5 : 2)) || (f.type === 'clan' && i === 1) ? 'elder' : 'member';
+      const p = W.spawnNpc(s, { kind: prefix + '_' + role, role, factionId: f.id, locationId: seat.id, surname: sn });
+      if (role === 'leader') f.leaderId = p.id;
+    }
+  };
+
   W.genPeople = (s) => {
     const r = s.rng, cw = C().world;
-    for (const f of Object.values(s.factions)) {
-      const seat = s.places[f.seatId];
-      const [lo, hi] = cw.factionMembers[f.type];
-      const n = R.int(r, lo, hi);
-      const sn = f.type === 'clan' ? seat.surname : null;
-      const prefix = f.type === 'sect' ? 'sect' + f.tier : f.type;
-      for (let i = 0; i < n; i++) {
-        const role = i === 0 ? 'leader' : (f.type === 'sect' && i <= 2) || (f.type === 'clan' && i === 1) ? 'elder' : 'member';
-        const p = W.spawnNpc(s, { kind: prefix + '_' + role, role, factionId: f.id, locationId: seat.id, surname: sn });
-        if (role === 'leader') f.leaderId = p.id;
-      }
-    }
+    for (const f of Object.values(s.factions)) W.genMembers(s, f);
     const looseSpots = Object.values(s.places).filter((p) => p.type === 'town' || p.type === 'wild' || p.type === 'city');
     while (P().living(s).length < cw.npcCount) W.spawnNpc(s, { kind: 'loose', locationId: R.pick(r, looseSpots).id });
   };
@@ -254,13 +312,13 @@
   W.itemName = (key) => {
     if (!key.startsWith('tech:')) return C().items[key] ? C().items[key].name : key;
     const t = C().techniques[key.slice(5)];
-    return (t.kind === 'kaifu' ? '开府真法' : '练炁术') + '《' + t.name + '》';
+    return (t.kind === 'kaifu' ? '开府真法' : t.kind === 'dao' ? '道书' : '练炁术') + '《' + t.name + '》';
   };
   W.sellPrice = (s, key) => Math.max(1, Math.floor(C().items[key].price * C().market.sellRatio));
 
   /* ---------- 道路 ---------- */
   // 最短路（按天数，Dijkstra）；返回经过的地点 id 列表（含起终点）与总天数
-  W.route = (s, from, to) => {
+  W.route = (s, from, to, who) => {
     if (from === to) return { path: [from], days: 0 };
     const D = {}, prev = {}, done = new Set();
     for (const id in s.places) D[id] = Infinity;
@@ -271,7 +329,7 @@
       if (u === null) break;
       if (u === to) break;
       done.add(u);
-      for (const l of s.places[u].links) if (D[u] + l.days < D[l.to]) { D[l.to] = D[u] + l.days; prev[l.to] = u; }
+      for (const l of s.places[u].links) if ((!who || W.linkOpen(who, l)) && D[u] + l.days < D[l.to]) { D[l.to] = D[u] + l.days; prev[l.to] = u; }
     }
     if (D[to] === Infinity) return null;
     const path = [to];

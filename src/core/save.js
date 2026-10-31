@@ -39,6 +39,22 @@
     3: (st) => { Object.assign(st.player, { merit: 0, joinTried: {}, submitted: [], orders: [] }); st.schemaVersion = 4; return st; },
     // v4 → v5：天下大事排期、洞府、门中职位、自动服药
     4: (st) => { Object.assign(st.player, { autoPill: true, dongfu: null, post: 0, tuijuDeclined: null }); FX.Saga.init(st); st.schemaVersion = 5; return st; },
+    // v5 → v6：金丹以后（元神、返虚、金丹品第）、东弥州腹地与三家大派、天魔潮
+    5: (st) => {
+      st.player.dongtian = null;
+      for (const p of Object.values(st.people)) {
+        if (p.danPin === undefined) p.danPin = 0;
+        if (p.daoId === undefined) p.daoId = null;
+        // 已结丹的人补定金丹品第（不掷骰，机缘按中等算）
+        if (p.realm.major >= 6 && !p.danPin) p.danPin = FX.CU.danPinFor(p, 1);
+        if (p.realm.major >= 6 && !p.daoId && st.player.id !== p.id) p.daoId = 'dao_low';
+        if (p.realm.major === 6 && p.realm.stage > 1) p.realm.stage = 1;
+      }
+      FX.World.genOuter(st);
+      FX.Saga.init(st);
+      st.schemaVersion = 6;
+      return st;
+    },
   };
 
   const REQUIRED = {

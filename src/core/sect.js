@@ -93,6 +93,7 @@
     // 一回不成就明年再来：每求过一回，诚意 +10
     const tried = s.player.joinTried[f.id];
     if (tried && tried.fails) parts.push({ label: '已求过 ' + tried.fails + ' 回，心诚', value: Math.min(30, tried.fails * 10) });
+    if (j.pin && p.danPin) parts.push({ label: P().danPinName(p), value: (5 - p.danPin) * 6 });
     return { chance: Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 90)), parts };
   };
   // 能否求入此门；返回 true 或不能的原因
@@ -102,6 +103,7 @@
     if (j.closed) return j.closed;
     if (p.factionId) return '你已是' + s.factions[p.factionId].name + '中人';
     if (p.realm.major < j.minMajor) return '至少要' + C().realms.names[j.minMajor] + '才收';
+    if (j.refuseTrait && p.traits.includes(j.refuseTrait)) return '你性情' + j.refuseTrait + '，入不了这道门';
     if (j.maxAge && P().age(s, p) > j.maxAge) return '年过 ' + j.maxAge + '，不收了';
     if (s.player.joinTried[f.id] && s.player.joinTried[f.id].year === s.year) return '今年已求过一回，明年再来';
     if (!Sect.atSeat(s, f)) return Sect.awayReason(s, f);
@@ -122,8 +124,18 @@
       }
     }
     if (!f) return;
+    // 道脉出身的金丹真人，可凭道脉符书改投上宗（不看运气）
+    if (place.factionId && place.factionId !== f.id) {
+      const g = s.factions[place.factionId], j = Sect.def(g).join;
+      if (j && j.daomai && j.daomai === f.key) {
+        const why = p.realm.major < j.minMajor ? '道脉弟子要到' + cf.realms.names[j.minMajor] + '才收' : '';
+        add({ type: 'transfer', fid: g.id, days: HS().joinDays, label: '持道脉符书改投' + g.name + '（' + M() + '照记）', group: '宗门', ok: !why, reason: why });
+      }
+    }
     const at = Sect.atSeat(s, f);
     const away = at ? '' : Sect.awayReason(s, f);
+    // 辞出：放在宗门页，不放在“此刻”页，免得误点
+    add({ type: 'leave', fid: f.id, days: 0, label: '辞出' + f.name + '（' + M() + '作废' + (f.leaderId === p.id ? '，掌门之位交给门中最强的人' : '') + '）', group: '库藏', ok: true, reason: '' });
     // 符诏：除妖
     const mm = Sect.missionMerit(p);
     const hurt = p.health.state === 'heavy' ? '重伤未愈' : '';
@@ -226,6 +238,40 @@
     const why = f.type === 'clan' ? '族里托你除掉的那头' : '奉事房符诏上要除的那头';
     FX.Ev.spawn(s, 'BEAST', { place: spot.id, _beast: beast, _power: power, _danger: d, _why: why, _merit: Sect.missionMerit(p), _stone: R.int(s.rng, MS.stone[0], MS.stone[1]) }, []);
     return { text: '在' + spot.name + '找到了' + beast, interrupted: true };
+  };
+
+  // 离开本门：掌门（家主）之位交给门中修为最高的人
+  const leaveFaction = (s, p, f) => {
+    if (f.leaderId === p.id) {
+      const next = P().living(s).filter((q) => q.factionId === f.id && q.id !== p.id).sort((a, b) => P().realmRank(b) - P().realmRank(a) || (a.id < b.id ? -1 : 1))[0];
+      f.leaderId = next ? next.id : null;
+      if (next) next.role = 'leader';
+    }
+    p.factionId = null;
+    p.role = 'loose';
+    s.player.post = 0;
+    s.player.tuijuDeclined = null;
+  };
+  DO.leave = (s, a) => {
+    const p = me(s), f = s.factions[a.fid];
+    leaveFaction(s, p, f);
+    s.player.merit = 0;
+    H().add(s, { type: 'join', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'leave', pov: true, severity: 3, params: { name: p.name, faction: f.name } });
+    return { text: '辞出了' + f.name };
+  };
+  DO.transfer = (s, a) => {
+    const p = me(s), from = Sect.mine(s), g = s.factions[a.fid];
+    Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (s.pending.length) return { text: '还没见到人，先出了变故', interrupted: true };
+    leaveFaction(s, p, from);
+    p.factionId = g.id;
+    p.role = 'member';
+    g.relToPlayer = Math.max(g.relToPlayer, 20);
+    if (g.leaderId && P().alive(s.people[g.leaderId])) P().adjustRelation(s, p.id, g.leaderId, 8, '同门');
+    const hid = H().add(s, { type: 'join', tags: ['宗门', '大事'], actors: [p.id], factions: [g.id, from.id], places: [g.seatId], key: 'transfer', pov: true, severity: 4, params: { name: p.name, from: from.name, faction: g.name } });
+    H().markFirst(s, 'join_' + g.key, hid);
+    return { text: '改投' + g.name };
   };
 
   Sect.DO = DO;

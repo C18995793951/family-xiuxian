@@ -20,7 +20,7 @@
 
   const Saga = {};
   const SG = () => C().saga;
-  const KINDS = ['diyuan', 'xiefang', 'jiaokao'];
+  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo'];
   const me = (s) => P().player(s);
   const pl = (s) => P().player(s);
   const give = (s, k, n) => { s.player.inv[k] = (s.player.inv[k] || 0) + n; };
@@ -33,9 +33,10 @@
   const placeByName = (s, name) => Object.values(s.places).find((x) => x.name === name) || null;
 
   /* ---------- 排期 ---------- */
+  // 只补上还没有排期的大事（旧存档迁移时，已有的排期不动）
   Saga.init = (s) => {
-    s.saga = {};
-    for (const k of KINDS) s.saga[k] = { next: s.year + R.int(s.rng, SG()[k].first[0], SG()[k].first[1]), open: null, done: null, count: 0 };
+    s.saga = s.saga || {};
+    for (const k of KINDS) if (!s.saga[k]) s.saga[k] = { next: s.year + R.int(s.rng, SG()[k].first[0], SG()[k].first[1]), open: null, done: null, count: 0 };
   };
 
   // 本次大事正在进行（返回开始的年份），否则 null
@@ -47,6 +48,7 @@
       const st = s.saga[k], cfg = SG()[k];
       if (st.open && s.year > st.open.until) {
         if (k === 'diyuan') Saga.diyuanToll(s);
+        if (k === 'tianmo') Saga.tianmoToll(s);
         st.open = null;
         st.next = s.year + R.int(s.rng, cfg.every[0], cfg.every[1]);
       }
@@ -67,6 +69,7 @@
     const cfg = SG()[k];
     if (k === 'diyuan') { const pl2 = placeByName(s, cfg.place); return '到' + (pl2 ? pl2.name : cfg.place) + '去，练炁以上都能进'; }
     if (k === 'xiefang') { const f = factionByKey(s, cfg.faction); return '无门无派、练炁以上的散修可到' + (f ? s.places[f.seatId].name : '花神府') + '赴宴，要交供奉'; }
+    if (k === 'tianmo') return '天魔从' + cfg.places.join('、') + '一带涌出，玉宸派发下敕令，召各家' + C().realms.names[cfg.minMajor] + '以上的修士前去镇守';
     const f = factionByKey(s, cfg.faction);
     return (f ? f.name : '玄真派') + '弟子回' + (f ? s.places[f.seatId].name : '山门') + '应考，按同辈排名评上、中、下考';
   };
@@ -105,6 +108,19 @@
       const done = s.saga.jiaokao.done === s.saga.jiaokao.open.from;
       const why = done ? '这回校考已经应过了' : place.id !== xz.seatId ? '要回到' + s.places[xz.seatId].name + '应考' : '';
       add({ type: 'jiaokao', days: jk.days, label: '应道脉校考（预计' + Saga.grade(s).name + '）', group: '大事', ok: !why, reason: why });
+    }
+    // 天魔潮
+    const tm = SG().tianmo;
+    if (Saga.openYear(s, 'tianmo') !== null && tm.places.includes(place.name)) {
+      const done = s.saga.tianmo.done === s.saga.tianmo.open.from && s.saga.tianmo.doneYear === s.year;
+      const why = done ? '今年已经镇守过一回了' : p.realm.major < tm.minMajor ? C().realms.names[tm.minMajor] + '以上才收' : p.health.state === 'heavy' ? '重伤未愈' : '';
+      add({ type: 'tianmo', days: tm.days, label: '应敕令镇守' + place.name + ' ' + T().dur(tm.days), group: '大事', ok: !why, reason: why });
+    }
+    // 洞天（元神以后，在东海）
+    const DT = cf.dongtian;
+    if (place.type === DT.placeType && s.player.dongtian !== place.id) {
+      const why = p.realm.major < DT.minMajor ? C().realms.names[DT.minMajor] + '以后才开得了洞天' : s.player.stone < DT.cost ? '符钱不够（需 ' + DT.cost + '）' : '';
+      add({ type: 'dongtian', days: DT.days, cost: DT.cost, label: '在' + place.name + '开辟洞天（' + DT.cost + ' 符钱，' + T().dur(DT.days) + '）', group: '修炼', ok: !why, reason: why });
     }
     // 洞府
     const D = cf.dongfu;
@@ -147,7 +163,7 @@
     }
   };
   // 越深所得越好；打赢就一定有，按境界给用得上的
-  const deepGift = (p) => (p.realm.major >= 5 ? 'ningdan' : p.realm.major >= 4 ? 'yusui' : 'danmusha');
+  const deepGift = (p) => (p.realm.major >= 6 ? 'dingshen' : p.realm.major >= 5 ? 'ningdan' : p.realm.major >= 4 ? 'yusui' : 'danmusha');
   const meritFor = (s, b, layer) => { const m = b._fuzhao * SG().diyuan.merit[layer]; if (m) s.player.merit += m; return m ? '，地渊符诏记' + C().house.meritName + ' ' + m : ''; };
   const layerFoe = (layer) => (s, b) => ({
     name: b[layer === 'deep' ? '_deepBeast' : '_midBeast'], power: b[layer === 'deep' ? '_deepPower' : '_midPower'],
@@ -235,7 +251,10 @@
       Sim().passDays(s, jk.tingjiangDays, 'other');
       if (!P().alive(p)) return { text: '' };
       const gain = Math.round(CU().addProgress(s, p, Math.min(P().need(p), 20000) * jk.tingjiangGain) * 10) / 10;
-      what = '评为上考，由派主举荐入玉宸派听讲三年，修为 +' + gain + (giftName ? '，得玉宸派下赐' + giftName : '') + '，记' + C().house.meritName + ' ' + tm * jk.upperMerit;
+      // 修为早已圆满的，听讲所得化作冲关前的积累
+      if (!gain && P().isFull(p)) p.fullDays += jk.tingjiangDays;
+      const got = gain ? '修为 +' + gain : '修为早已圆满，听讲三年只添了几分积累';
+      what = '评为上考，由派主举荐入玉宸派听讲三年，' + got + (giftName ? '，得玉宸派下赐' + giftName : '') + '，记' + C().house.meritName + ' ' + tm * jk.upperMerit;
     } else if (gr.g === 2) {
       s.player.merit += tm * jk.midMerit;
       give(s, 'qiju', jk.midQiju);
@@ -260,6 +279,44 @@
       FX.Ev.spawn(s, 'REVENGE', { place: p.locationId, foe: q.id }, []);
       return;
     }
+  };
+
+  /* ---------- 天魔潮 ---------- */
+  Saga.DO.tianmo = (s, a) => {
+    const p = me(s), tm = SG().tianmo;
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.tianmo.done = s.saga.tianmo.open.from;
+    s.saga.tianmo.doneYear = s.year;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没到地方就出了变故', interrupted: true };
+    const my = P().power(s, p);
+    const d = Math.min(7, Math.max(4, p.realm.major));
+    FX.Ev.spawn(s, 'TIANMO', { place: p.locationId, _head: R.pick(s.rng, C().encounter.beastNames[d]), _headPower: Math.round(my * R.range(s.rng, tm.headSwing[0], tm.headSwing[1]) * 10) / 10 }, []);
+    return { text: '到了' + s.places[p.locationId].name + '，魔气冲天', interrupted: true };
+  };
+  // 天魔潮退去时，镇守的人里总有几个没回来
+  Saga.tianmoToll = (s) => {
+    const tm = SG().tianmo;
+    const pool = P().living(s).filter((q) => !P().isPlayer(s, q) && q.realm.major >= 3 && q.realm.major <= 6).sort((a, b) => (a.id < b.id ? -1 : 1));
+    const n = R.int(s.rng, tm.npcDeaths[0], tm.npcDeaths[1]);
+    for (let i = 0; i < n && pool.length; i++) {
+      const q = pool.splice(R.int(s.rng, 0, pool.length - 1), 1)[0];
+      P().kill(s, q, '镇守天魔潮时陨落', [], {});
+    }
+  };
+  const tmStone = (p) => SG().tianmo.guardStone[Math.min(8, Math.max(4, p.realm.major))] || 0;
+  const tmMerit = (s, n) => { if (!Sect().mine(s)) return ''; s.player.merit += n; return '，本门记' + C().house.meritName + ' ' + n; };
+
+  /* ---------- 洞天 ---------- */
+  Saga.DO.dongtian = (s, a) => {
+    const p = me(s), place = s.places[p.locationId];
+    s.player.stone -= a.cost;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    s.player.dongtian = place.id;
+    H().add(s, { type: 'dongtian', tags: ['洞天'], actors: [p.id], places: [place.id], key: 'dongtian', pov: true, severity: 5, params: { name: p.name, place: place.name, cost: a.cost } });
+    return { text: '在' + place.name + '开辟了一方洞天', interrupted: r.interrupted };
   };
 
   /* ---------- 洞府 ---------- */
@@ -296,6 +353,32 @@
       },
       layerOpt('middle', '往中层去'),
       layerOpt('deep', '闯深处'),
+    ],
+  };
+
+  EV.TIANMO = {
+    name: '天魔潮', category: '大事', severity: 4,
+    text: (s, b, n) => `${n.place}魔气翻涌，各家修士结阵镇守。阵外游荡着成群的下位天魔，阵前有一头${b._head}（战力 ${b._headPower}）正在冲阵。你战力 ${P().power(s, pl(s))}。`,
+    options: [
+      {
+        id: 'guard', label: '守在阵中',
+        cost: () => '无', risk: () => `约 ${Math.round(SG().tianmo.guardHurt * 100)}% 会被魔气所伤（轻伤）`,
+        outcome: (s) => '按功劳得符钱 ' + tmStone(pl(s)) + (Sect().mine(s) ? '，本门记道功' : ''),
+        apply(s) {
+          const tm = SG().tianmo, p = pl(s);
+          const st = tmStone(p);
+          s.player.stone += st;
+          let t = '守满了日子，玉宸派按功劳发下符钱 ' + st + tmMerit(s, Sect().taskMerit(p) * tm.guardMerit / 10);
+          if (R.chance(s.rng, tm.guardHurt)) { P().injure(s, p, 'light'); t += '，被魔气侵体，受了轻伤'; }
+          return { text: t, gain: true };
+        },
+      },
+      Object.assign({}, Cb().fightOpt((s, b) => ({
+        name: b._head, power: b._headPower, winText: '斩了魔头，敕令上记头功',
+        onWin(s2) { const p = pl(s2); const st = tmStone(p) * 3; s2.player.stone += st; give(s2, 'dingshen', 1); return '斩了' + b._head + '，记头功，得符钱 ' + st + '、' + C().items.dingshen.name + tmMerit(s2, Sect().taskMerit(p) * SG().tianmo.headMerit / 10); },
+        onLose() {},
+      })), { id: 'head', label: '出阵斩魔头', outcome: (s) => '打赢记头功：符钱 ' + tmStone(pl(s)) * 3 + '、' + C().items.dingshen.name + (Sect().mine(s) ? '，本门记道功' : '') }),
+      { id: 'leave', label: '不打了，退走', cost: () => '无', risk: () => '无', outcome: () => '什么也不得', apply() { return { text: '退出了阵地' }; } },
     ],
   };
 

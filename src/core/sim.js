@@ -52,6 +52,7 @@
     W().genPlaces(s, { clanSurname: origin === 'clan' ? surname : null });
     W().genFactions(s);
     W().genPeople(s);
+    W().genOuter(s);
     FX.Saga.init(s);
 
     // 主角
@@ -82,6 +83,7 @@
       orders: [],      // 托墟市代寻、尚未送到的货
       autoPill: true,  // 修炼时自动续服中孚丹
       dongfu: null,    // 洞府所在地点
+      dongtian: null,  // 洞天所在地点（元神以后）
       post: 0,         // 已告知过的门中职位
       tuijuDeclined: null,
       stats: { cultivateDays: 0, explores: 0, exploreNothing: 0, fights: 0, wins: 0, seek: 0, seekNoGain: 0, fortunes: 0, actions: 0 },
@@ -156,7 +158,8 @@
     if (s.pending.length) return true;
     if (mode === 'cultivate' && opts.interruptible) {
       const place = s.places[p.locationId];
-      const df = FX.Saga.isDongfu(s, p, place.id) ? cf.dongfu.disturbMult : 1; // 自家洞府有禁制护着
+      // 自家洞府有禁制护着；自家洞天自成天地，外人进不来
+      const df = s.player.dongtian === place.id ? 0 : FX.Saga.isDongfu(s, p, place.id) ? cf.dongfu.disturbMult : 1;
       if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5) * df)) {
         FX.Act.disturb(s, place);
         return true;
@@ -183,7 +186,7 @@
       CU().npcYear(s, p);
       if (!p.factionId && P().alive(p) && R.chance(s.rng, cf.world.looseMoveChance)) {
         const to = R.pick(s.rng, place.links);
-        if (to) p.locationId = to.to;
+        if (to && W().linkOpen(p, to)) p.locationId = to.to;
       }
     }
     for (const id in s.markets) W().refreshMarket(s, id);

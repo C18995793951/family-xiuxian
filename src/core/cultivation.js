@@ -37,9 +37,14 @@
     if (!place) return 1;
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
-    if (FX.Saga.isDongfu(s, p, place.id)) return Math.min(5, place.qi + C().dongfu.qiBonus);
+    if (P().isPlayer(s, p) && s.player.dongtian === place.id) return C().dongtian.qi;
+    // 洞府聚灵：最多聚到五级；灵窟福地本身就是六级
+    if (FX.Saga.isDongfu(s, p, place.id)) return Math.max(place.qi, Math.min(5, place.qi + C().dongfu.qiBonus));
     return place.qi;
   };
+
+  // 金丹品第：成丹时按道基、紫府异象、资质定，另有一点机缘（luck 0–2）
+  CU.danPinFor = (p, luck) => U.clamp(11 - ((p.daoji || 1) + (p.yixiang || 1) + Math.floor(p.aptitude / 25) + luck), 1, 9);
 
   // 以符钱修行一年要花多少符钱（胎息以下炼不了外物，返回 null）
   CU.coinPerYear = (p) => C().cultivation.coin.perYear[p.realm.major] || null;
@@ -134,9 +139,13 @@
     if (m === 0) return 'taixi';
     if (m === 2 && st === 9) return 'zhuji';
     if (m >= 3 && m <= 5) return st < 3 ? 'minor' : ['zifu', 'dongxuan', 'jindan'][m - 3];
+    if (m === 6) return 'yuanshen';
+    if (m === 7) return 'fanxu';
     return null;
   };
-  const NEXT = { taixi: { major: 1, stage: 1 }, zhuji: { major: 3, stage: 1 }, zifu: { major: 4, stage: 1 }, dongxuan: { major: 5, stage: 1 }, jindan: { major: 6, stage: 1 } };
+  const NEXT = { taixi: { major: 1, stage: 1 }, zhuji: { major: 3, stage: 1 }, zifu: { major: 4, stage: 1 }, dongxuan: { major: 5, stage: 1 }, jindan: { major: 6, stage: 1 }, yuanshen: { major: 7, stage: 1 }, fanxu: { major: 8, stage: 1 } };
+  // 元神的「地」、返虚的洞天
+  CU.diNote = '大派山门（八派六宗各占一座灵窟），或在九危山、东域福地这样的六级福地开辟洞府';
   CU.nextRealm = (p) => { const k = CU.gateKind(p); return k === 'minor' ? { major: p.realm.major, stage: p.realm.stage + 1 } : NEXT[k] || null; };
   CU.targetName = (p) => {
     const n = CU.nextRealm(p);
@@ -173,6 +182,12 @@
       if (isPlayer && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺凝丹大药（' + C().items.ningdan.where + '）' };
       if (!isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺凝丹大药' };
     }
+    if (k === 'yuanshen' && CU.qiFor(s, p) < B.yuanshen.minQi) return { ok: false, reason: '成就元神要有一处「地」：在灵机六级、你用得上的灵窟福地里冲关（' + CU.diNote + '）' };
+    if (k === 'fanxu') {
+      if (!isPlayer) return { ok: false, reason: '没有洞天' };
+      if (!s.player.dongtian) return { ok: false, reason: '返虚要先在东海开辟一座洞天' };
+      if (p.locationId !== s.player.dongtian) return { ok: false, reason: '要回到自家洞天里冲关' };
+    }
     return { ok: true, kind: k };
   };
 
@@ -205,6 +220,15 @@
     if (k === 'jindan') {
       out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.ningdan.name, ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
+    }
+    if (k === 'yuanshen') {
+      out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
+    }
+    if (k === 'fanxu') {
+      const dt = P().isPlayer(s, p) && s.player.dongtian;
+      out.push({ label: '一座自家洞天', ok: !!dt, note: dt ? '在' + s.places[dt].name : '元神真人可在东海开辟洞天，要 ' + C().dongtian.cost + ' 符钱、三年工夫' });
+      out.push({ label: '人在自家洞天里', ok: !!dt && p.locationId === dt });
     }
     out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
     if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
@@ -240,6 +264,12 @@
       if (kaifu) parts.push({ label: '《' + C().techniques[kaifu].name + '》（' + C().gradeNames[C().techniques[kaifu].grade] + '）', value: B.yixiangMod[C().techniques[kaifu].grade] });
     }
     if ((k === 'dongxuan' || k === 'jindan') && p.yixiang) parts.push({ label: C().yixiangNames[p.yixiang], value: B.yixiangMod[p.yixiang] });
+    let hasShen = false;
+    if (k === 'yuanshen') {
+      if (p.danPin) parts.push({ label: P().danPinName(p), value: (5 - p.danPin) * C().realms.danPinBreak });
+      hasShen = isPlayer && inv(s, p).dingshen > 0;
+      if (hasShen) parts.push({ label: '点上' + C().items.dingshen.name, value: B.yuanshenPill });
+    }
     if (k !== 'taixi') {
       const qi = CU.qiFor(s, p);
       if (qi >= B.qiBonusMin) parts.push({ label: '灵机 ' + qi + ' 级之地', value: B.qiBonus });
@@ -254,7 +284,7 @@
     const max = k === 'minor' ? B.max : B.majorMax;
     total = U.clamp(total, B.min, max);
     const death = cfg.deathChance || 0;
-    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, kaifu, days: cfg.days };
+    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, usesShen: hasShen, kaifu, days: cfg.days };
   };
 
   CU.attempt = (s, p, opts) => {
@@ -270,6 +300,7 @@
       if (ch.usesPill) s.player.inv.zhuji--;
       if (need) s.player.inv[need.item] -= need.qty;
       if (ch.kind === 'jindan') s.player.inv.ningdan--;
+      if (ch.usesShen) s.player.inv.dingshen--;
     }
     const success = R.next(r) * 100 < ch.chance;
     const res = { ok: true, success, chance: ch.chance, target, kind: ch.kind };
@@ -280,13 +311,14 @@
       const next = CU.nextRealm(p);
       if (ch.kind === 'zhuji') { const t = P().lianqiOf(p); p.daoji = P().daojiOf(t ? t.tier : 1); }
       if (ch.kind === 'zifu') { p.kaifuId = ch.kaifu; p.yixiang = C().techniques[ch.kaifu].grade; }
+      if (ch.kind === 'jindan') p.danPin = CU.danPinFor(p, R.int(r, 0, 2));
       p.progress = 0;
       p.realm = next;
       p.fullDays = 0;
       p.failCount = 0;
       CU.updateLifespan(s, p);
       if (P().realmRank(p) > p.peakRank) p.peakRank = P().realmRank(p);
-      const extra = ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.tianfa ? '，扛过了天罚' : '';
+      const extra = ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.kind === 'jindan' ? '，扛过了天罚，丹成' + P().danPinName(p) : ch.tianfa ? '，扛过了天罚' : '';
       if (isPlayer) {
         res.hid = H().add(s, {
           type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_ok' : 'break_ok', pov: true,

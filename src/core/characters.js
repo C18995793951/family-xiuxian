@@ -33,11 +33,12 @@
     const cf = C().realms;
     return cf.names[p.realm.major] + cf.stageNames[p.realm.major][p.realm.stage - 1];
   };
-  // 带小境界名号，如“筑基二重「大小如意」”
+  // 带小境界名号，如“筑基二重「大小如意」”；金丹以后另注金丹品第
   P.realmTitle = (p) => {
     const t = C().realms.stageTitles[p.realm.major];
-    return P.realmName(p) + (t ? '「' + t[p.realm.stage - 1] + '」' : '');
+    return P.realmName(p) + (t ? '「' + t[p.realm.stage - 1] + '」' : '') + (p.realm.major >= 6 && p.danPin ? '·' + P.danPinName(p) : '');
   };
+  P.danPinName = (p) => (p.danPin ? C().realms.danPinNames[p.danPin] : '');
   // 名位：羽士、高功、链师、真人
   P.title = (p) => C().realms.titles[p.realm.major] || '';
   // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20
@@ -63,8 +64,18 @@
   const NO_TECH = { kind: 'none', name: '（尚无练炁术）', tier: 0, grade: 0, attrs: [], opp: [], mult: 1, desc: '' };
   // 练炁术（练炁、筑基两境用它采气）
   P.lianqiOf = (p) => { const t = C().techniques[p.techniqueId]; return t && t.kind === 'lianqi' ? t : null; };
-  // 眼下用来修行的法门：紫府以上换成开府真法
+  // 金丹以后的道书：主角用行囊里最好的一部，NPC 看 daoId
+  P.daoOf = (s, p) => {
+    const T = C().techniques;
+    if (P.isPlayer(s, p)) { const k = s.player.manuals.filter((x) => T[x] && T[x].kind === 'dao').sort((a, b) => T[b].grade - T[a].grade)[0]; return k ? T[k] : null; }
+    return p.daoId && T[p.daoId] ? T[p.daoId] : null;
+  };
+  // 眼下用来修行的法门：紫府以上换成开府真法，金丹以后换成道书（没有道书就还用开府真法）
   P.techOf = (s, p) => {
+    if (p.realm.major >= 6) {
+      const d = P.daoOf(s, p), k = p.kaifuId ? C().techniques[p.kaifuId] : null;
+      if (d && (!k || d.mult >= k.mult)) return d;
+    }
     if (p.realm.major >= 4 && p.kaifuId && C().techniques[p.kaifuId]) return C().techniques[p.kaifuId];
     return P.lianqiOf(p) || NO_TECH;
   };
@@ -81,6 +92,7 @@
     const t = P.techOf(s, p);
     if (t.kind !== 'none') F.push({ label: '法门 ' + t.name, value: t.mult });
     if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
+    if (p.realm.major >= 6 && p.danPin) F.push({ label: P.danPinName(p), value: U.round1((1 + (5 - p.danPin) * C().realms.danPinPower) * 100) / 100 });
     if (P.isPlayer(s, p)) {
       const best = Object.keys(C().items).filter((k) => C().items[k].power && s.player.inv[k] > 0).sort((a, b) => C().items[b].power - C().items[a].power)[0];
       if (best) F.push({ label: C().items[best].name, value: C().items[best].power });
@@ -172,6 +184,8 @@
       kaifuId: o.kaifuId || null,         // 开府真法（紫府以上）
       daoji: o.daoji || 0,                // 道基品第 1 下 2 中 3 上（筑基时定下）
       yixiang: o.yixiang || 0,            // 紫府异象品第（开府时定下）
+      danPin: o.danPin || 0,              // 金丹品第 1–9，一品最高（结丹时定下）
+      daoId: o.daoId || null,             // 金丹以后修的道书（NPC）
       nearDeathT: null,                   // 上一次在生死之间走过（重伤）的时刻
       locationId: o.locationId,
       factionId: o.factionId || null,

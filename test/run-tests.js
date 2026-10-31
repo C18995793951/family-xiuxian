@@ -346,10 +346,15 @@ check('13', '推进不只靠运气：每道关卡要的东西都有稳定来路'
   }
   if (!M.town.staples.some((x) => x.item.startsWith('tech:') && CF.techniques[x.item.slice(5)].kind === 'lianqi')) miss.push('墟市不常备练炁术');
   if (!M.town.staples.some((x) => x.item.startsWith('tech:') && CF.techniques[x.item.slice(5)].kind === 'kaifu')) miss.push('墟市不常备开府真法');
-  for (const d of CF.factionDefs.filter((x) => x.type === 'sect')) {
+  for (const d of CF.factionDefs.filter((x) => x.type === 'sect' && !x.outer)) {
     if (!d.library.some((e) => !e.merit && CF.techniques[e.tech].kind === 'lianqi')) miss.push(d.name + ' 不白传练炁术');
     if (!d.library.some((e) => CF.techniques[e.tech].kind === 'kaifu')) miss.push(d.name + ' 不传开府真法');
   }
+  // 八派六宗只收金丹，白传一部道书
+  for (const d of CF.factionDefs.filter((x) => x.outer)) if (!d.library.some((e) => !e.merit && CF.techniques[e.tech].kind === 'dao')) miss.push(d.name + ' 不白传道书');
+  // 元神要的「地」：大派山门之外，还有能开洞府的六级福地
+  if (!CF.world.outer.places.some((x) => x.qi >= CF.breakthrough.yuanshen.minQi && (x.type === 'wild' || x.type === 'danger') && CF.dongfu.cost[x.qi])) miss.push('没有能开洞府的六级福地');
+  if (!CF.market.mart.staples.some((x) => x.item === 'ningdan')) miss.push('中域坊市不常备凝丹大药');
   assert(!miss.length, miss.join('；'));
   // 实测：一年年过去，金谷墟市的常备货始终都在
   const s = FX.Game.newGame({ origin: 'loose', seed: 'stock' });
@@ -500,6 +505,114 @@ check('14', '后期：天下大事、校考、地渊、撷芳宴、洞府、推�
   const m = FX.Save.deserialize(t4);
   assert(m.ok && m.state.saga && m.state.saga.diyuan.next > m.state.year && m.state.player.autoPill === true, 'v4 存档迁移失败：' + m.error);
   return `120 年里地渊 ${kinds.diyuan} 回、撷芳宴 ${kinds.xiefang} 回、校考 ${kinds.jiaokao} 回，每回都提前 ${SG.notice} 年有风声；校考评${g1.name}；地渊外围 ${herbs} 回都有收获（${hurt} 回受轻伤）；撷芳宴 ${xfTried} 回里 ${xfJoined} 回连胜拜入花神府；洞府、推举、仇家、自动服丹、v4 迁移均正常`;
+});
+
+check('15', '金丹以后：东弥州腹地、三家大派、道脉改投、金丹品第、元神之地、洞天、天魔潮、v5 存档迁移', () => {
+  const CF = FX.CONFIG, B = CF.breakthrough;
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  // 1. 新开局就有东弥州腹地：地点、关口、三家大派与门人
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'outer' });
+  const outer = Object.values(s.places).filter((x) => x.outer);
+  assert(outer.length === CF.world.outer.places.length, '腹地地点数不对');
+  const big = Object.values(s.factions).filter((f) => f.tier === 3);
+  assert(big.length === 3 && big.every((f) => s.people[f.leaderId] && s.people[f.leaderId].realm.major === 7), '三家大派或元神掌门缺了');
+  assert(big.every((f) => FX.P.living(s).filter((q) => q.factionId === f.id && q.realm.major === 6).length >= 2), '大派里金丹长老太少');
+  const gate = Object.values(s.places).find((x) => x.links.some((l) => l.minMajor));
+  const gl = gate.links.find((l) => l.minMajor);
+  const p = FX.P.player(s);
+  p.locationId = gate.id;
+  let tr = FX.Game.actions(s).find((a) => a.type === 'travel' && a.to === gl.to);
+  assert(tr && !tr.ok, '练炁弟子也能越过万里荒原');
+  // 2. 结丹：定下金丹品第，品第进斗法
+  p.realm = { major: 5, stage: 3 }; p.progress = FX.P.need(p); p.daoji = 2; p.yixiang = 2;
+  s.player.inv.ningdan = 3;
+  const xz = s.factions[p.factionId];
+  p.locationId = xz.seatId;
+  let got = false;
+  for (let i = 0; i < 30 && !got; i++) {
+    p.restUntil = 0; p.health = { state: 'healthy', days: 0 }; p.progress = FX.P.need(p); s.player.inv.ningdan = 3;
+    const r = FX.CU.attempt(s, p, {});
+    if (r.success) got = true;
+    if (!FX.P.alive(p)) { p.status = 'alive'; p.deathYear = null; s.ended = null; }
+  }
+  assert(got && p.realm.major === 6 && p.danPin >= 1 && p.danPin <= 9, '结丹后没有金丹品第');
+  assert(FX.P.powerBreakdown(s, p).factors.some((f) => /金丹/.test(f.label)), '金丹品第没进斗法');
+  // 3. 金丹能越过荒原；第一次进中域记一笔
+  p.locationId = gate.id;
+  tr = FX.Game.actions(s).find((a) => a.type === 'travel' && a.to === gl.to);
+  assert(tr && tr.ok, '金丹真人也过不去荒原');
+  // 4. 玄真派金丹凭道脉符书改投玉宸派：不看运气，道功照记；掌门之位交出去
+  const yc = big.find((f) => f.key === 'yuchen');
+  xz.leaderId = p.id;
+  s.player.merit = 500;
+  p.locationId = yc.seatId;
+  const tf = FX.Game.actions(s).find((a) => a.type === 'transfer');
+  assert(tf && tf.ok, '玄真派金丹在玉宸派山门改投不了');
+  FX.Game.act(s, tf);
+  while (s.pending.length) choose(s);
+  assert(p.factionId === yc.id && s.player.merit === 500, '改投后不在玉宸派或道功没了');
+  assert(xz.leaderId && xz.leaderId !== p.id, '改投后玄真派掌门之位没交出去');
+  // 5. 元神要「地」：玉宸派山门是灵窟，门人在此用得上六级灵机；金丹圆满就能冲
+  p.progress = FX.P.need(p); p.restUntil = 0; p.health = { state: 'healthy', days: 0 };
+  assert(FX.CU.qiFor(s, p) === 6 && FX.CU.canAttempt(s, p).ok, '玉宸派门人在山门冲不了元神');
+  const pit = Object.values(s.places).find((x) => x.name === '地渊');
+  p.locationId = pit.id;
+  assert(!FX.CU.canAttempt(s, p).ok, '在五级之地也能冲元神');
+  // 散修的路：在六级福地开洞府
+  const fudi = outer.find((x) => x.qi >= 6 && x.type === 'wild');
+  p.locationId = fudi.id; s.player.stone = 500000;
+  const df = FX.Game.actions(s).find((a) => a.type === 'dongfu');
+  assert(df && df.ok && df.cost === CF.dongfu.cost[6], '六级福地开不了洞府');
+  FX.Game.act(s, df);
+  while (s.pending.length) choose(s);
+  assert(FX.CU.qiFor(s, p) === 6 && FX.CU.canAttempt(s, p).ok, '福地洞府里冲不了元神');
+  // 6. 元神在东海开洞天，在洞天里冲返虚
+  p.realm = { major: 7, stage: 1 }; p.progress = FX.P.need(p);
+  assert(!FX.CU.canAttempt(s, p).ok, '没有洞天也能冲返虚');
+  const sea = outer.find((x) => x.type === 'sea');
+  p.locationId = sea.id; s.player.stone = 500000;
+  const dt = FX.Game.actions(s).find((a) => a.type === 'dongtian');
+  assert(dt && dt.ok, '东海开不了洞天');
+  FX.Game.act(s, dt);
+  while (s.pending.length) choose(s);
+  p.locationId = sea.id; p.health = { state: 'healthy', days: 0 }; p.restUntil = 0; p.progress = FX.P.need(p);
+  assert(s.player.dongtian === sea.id && FX.CU.qiFor(s, p) === CF.dongtian.qi && FX.CU.canAttempt(s, p).ok, '有了洞天也冲不了返虚');
+  // 7. 天魔潮：紫府以上应敕令镇守，守在阵中一定有符钱
+  const m = FX.Game.newGame({ origin: 'sect', seed: 'tianmo' });
+  const mp = FX.P.player(m);
+  mp.realm = { major: 4, stage: 1 };
+  mp.locationId = Object.values(m.places).find((x) => x.name === '地渊').id;
+  m.saga.tianmo.open = { from: m.year, until: m.year + 1 };
+  const ta = FX.Game.actions(m).find((a) => a.type === 'tianmo');
+  assert(ta && ta.ok, '天魔潮时去不了地渊镇守');
+  FX.Game.act(m, ta);
+  let guarded = false;
+  while (m.pending.length && !m.ended) { const v = FX.Game.pendingEvents(m)[0]; if (v.defId === 'TIANMO') { const st0 = m.player.stone; FX.Game.choose(m, v.id, 'guard'); guarded = m.player.stone > st0; } else choose(m); }
+  assert(guarded || m.ended, '守在阵中没有符钱');
+  // 8. v5 存档迁移：补出腹地与大派，已结丹的人补定品第
+  const g5 = FX.Game.newGame({ origin: 'sect', seed: 'mig6' });
+  const t5 = JSON.parse(FX.Save.serialize(g5));
+  const st = t5.state;
+  const outerIds = new Set(Object.values(st.places).filter((x) => x.outer).map((x) => x.id));
+  const bigIds = new Set(Object.values(st.factions).filter((f) => f.tier === 3).map((f) => f.id));
+  for (const id of outerIds) delete st.places[id];
+  for (const pl of Object.values(st.places)) { delete pl.region; pl.links = pl.links.filter((l) => !outerIds.has(l.to)); }
+  for (const id of bigIds) delete st.factions[id];
+  for (const id of Object.keys(st.people)) if (bigIds.has(st.people[id].factionId) || outerIds.has(st.people[id].locationId)) delete st.people[id];
+  st.relations = st.relations.filter((r) => st.people[r.a] && st.people[r.b]);
+  for (const id of Object.keys(st.markets)) if (outerIds.has(id)) delete st.markets[id];
+  for (const q of Object.values(st.people)) { delete q.danPin; delete q.daoId; }
+  const me5 = st.people[st.player.id]; me5.realm = { major: 6, stage: 1 }; me5.progress = 0;
+  delete st.player.dongtian; delete st.saga.tianmo;
+  st.schemaVersion = 5; t5.schemaVersion = 5; delete t5.checksum;
+  const mg = FX.Save.deserialize(t5);
+  assert(mg.ok, 'v5 存档迁移失败：' + mg.error);
+  const ms = mg.state;
+  assert(Object.values(ms.places).filter((x) => x.outer).length === CF.world.outer.places.length && Object.values(ms.factions).filter((f) => f.tier === 3).length === 3, '迁移后没有腹地与大派');
+  assert(ms.people[ms.player.id].danPin >= 1 && ms.saga.tianmo && ms.saga.tianmo.next > ms.year && ms.player.dongtian === null, '迁移后金丹品第、天魔潮或洞天字段缺了');
+  // 迁移后照常推进十年
+  for (let y = 0; y < 10 && !ms.ended; y++) { FX.Sim.passDays(ms, CF.daysPerYear, 'rest'); while (ms.pending.length && !ms.ended) choose(ms); }
+  return `腹地 ${outer.length} 处、大派 3 家（元神掌门）；关口要金丹；结丹定为${FX.P.danPinName(p) || '某品'}；道脉改投、元神之地（大派灵窟、福地洞府）、东海洞天、天魔潮、v5 迁移均正常`;
 });
 
 const failed = results.filter((r) => !r.ok);

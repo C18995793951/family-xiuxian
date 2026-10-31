@@ -64,7 +64,10 @@
     // 游历
     for (const d of cf.actions.exploreDays) add({ type: 'explore', days: d, label: '在' + place.name + '游历 ' + T().dur(d), group: '外出' });
     // 赶路
-    for (const l of place.links) add({ type: 'travel', to: l.to, days: l.days, label: '前往' + s.places[l.to].name + '（' + l.days + ' 天）', group: '赶路' });
+    for (const l of place.links) {
+      const open = W().linkOpen(p, l);
+      add({ type: 'travel', to: l.to, days: l.days, label: '前往' + s.places[l.to].name + '（' + l.days + ' 天）', group: '赶路', ok: open, reason: open ? '' : C().world.outer.gate.why });
+    }
     // 差事
     const job = cf.actions.work[place.type];
     if (job) {
@@ -276,10 +279,16 @@
     if (!P().alive(p)) return { text: '' };
     if (r.interrupted) return { text: '路上出了事', interrupted: true };
     p.locationId = to.id;
-    if (!s.player.visited.includes(to.id)) s.player.visited.push(to.id);
+    if (!s.player.visited.includes(to.id)) {
+      // 第一次踏进东弥州腹地的某一域
+      if (to.region && to.region !== '南域' && !s.player.visited.some((id) => s.places[id].region === to.region)) {
+        H().add(s, { type: 'travel', tags: ['赶路', '大事'], actors: [p.id], places: [to.id], key: 'outer_first', pov: true, severity: 3, params: { name: p.name, region: to.region } });
+      }
+      s.player.visited.push(to.id);
+    }
     const danger = Math.max(from.danger, to.danger);
     const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
-    if (danger > 0 && R.chance(s.rng, C().world.travelEncounterPerDanger * danger)) {
+    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger))) {
       Act.spawnDanger(s, to, '赶路途中，', [hid]);
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
     }
@@ -395,7 +404,8 @@
     const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3);
     const nearby = evil.filter((q) => q.locationId === place.id || s.places[q.locationId].links.some((l) => l.to === place.id));
     if (nearby.length) { const q = R.pick(s.rng, nearby); q.locationId = place.id; return q; }
-    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, 12);
+    // 南域的劫修最高不过筑基二重；东弥州腹地什么人都有
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, place.outer ? P().maxRank() - 1 : 12);
     return W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: place.id });
   };
 
@@ -429,7 +439,7 @@
     if (k === 'place') {
       const unknown = Object.values(s.places).filter((x) => !s.player.visited.includes(x.id));
       const pl = unknown.length ? R.pick(r, unknown) : R.pick(r, Object.values(s.places));
-      return `${pl.name}灵机${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'][pl.qi]}，灵气属「${pl.attr}」，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖物出没' : '还算太平'}。`;
+      return `${pl.name}灵机${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '如灵窟', '如洞天'][pl.qi]}，灵气属「${pl.attr}」，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖物出没' : '还算太平'}。`;
     }
     if (k === 'market') {
       const rare = [];
