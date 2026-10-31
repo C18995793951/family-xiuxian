@@ -138,6 +138,8 @@
     if (s.ended) return { ok: false, error: '这一生已经结束' };
     if (s.pending.length) return { ok: false, error: '眼前还有事要先决断' };
     if (a && (a.type === 'buy' || a.type === 'sell')) { const r = Act[a.type](s, a.item, a.qty); FX.Ars.sync(s); return r; }
+    // 七个通用动作（自由输入用）：校验与结算在 deeds.js
+    if (a && a.type === 'deed') { const r = FX.Deed.run(s, a); FX.Ars.sync(s); Sim().checkEnd(s); return r; }
     const item = a && Act.find(s, a);
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };

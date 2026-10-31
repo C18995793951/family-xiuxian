@@ -342,7 +342,11 @@
       if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
     }
     const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
+    // 自由输入：说一句想做什么，先看预览再照做
+    const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
+    const sayBox = disabled ? '' : `<div class="say-box"><div class="row say-row"><input id="say-in" type="text" maxlength="200" enterkeyhint="go" autocomplete="off" placeholder="想做什么，直接说（如：去坊市打听丹母砂哪里有）" value="${esc(UI.sayText || '')}" ${UI.sayBusy ? 'disabled' : ''}><button class="primary" data-act="say" ${UI.sayBusy ? 'disabled' : ''}>${UI.sayBusy ? 'AI 理解中…' : '说'}</button></div><div class="muted small">${aiReady ? 'AI 理解你的话，拆成规则认得的几步，先给你看再做' : 'AI 没开，按地名、人名、物名找最像的几种做法'}</div></div>`;
     const actCard = `<div class="card acts"><h3>做什么</h3>${disabled ? `<p class="warn">眼前的事要先处理。 ${s.pending.length ? '<button class="link" data-act="openEvent">去处理</button>' : ''}</p>` : ''}
+        ${sayBox}
         ${sagaMini}
         ${big.length ? `<div class="act-group"><span class="warn">大事</span><div class="row">${big.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div></div>` : ''}
         ${tabs.length > 1 ? `<div class="row tabs acts-tabs">${tabs.map((g) => { const n = listOf(g).filter((a) => a.ok).length; return `<button class="${g === tab ? 'on' : ''}" data-act="subTab" data-key="actTab" data-k="${g}">${g}${g !== tab && n ? ' <span class="muted small">' + n + '</span>' : ''}</button>`; }).join('')}</div>` : ''}
@@ -957,6 +961,31 @@
       return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
         ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
     },
+    // 自由输入的预览：每步的耗时、花费、成功率由规则算；确认后才结算
+    intent(m) {
+      const s = UI.s;
+      const num = '①②③④⑤';
+      const plans = m.plans || [];
+      const row = (r, i) => {
+        const bits = [];
+        if (r.days) bits.push(T.dur(r.days));
+        if (r.cost) bits.push('花 ' + n0(r.cost) + ' 符钱');
+        if (r.chance !== null && r.chance !== undefined) bits.push('成功率 ' + r.chance + '%');
+        return `<div class="${r.ok ? '' : 'bad'}">${num[i] || i + 1} ${esc(r.label || '')}${bits.length ? ' <span class="muted small">· ' + esc(bits.join(' · ')) + '</span>' : ''}${r.ok ? '' : '<br><span class="small">做不到：' + esc(r.reason || '') + '</span>'}${r.ok && (r.gain || r.risk) ? `<br><span class="muted small">${esc([r.gain, r.risk].filter(Boolean).join('；'))}</span>` : ''}${r.warn ? `<br><span class="warn small">${esc(r.warn)}</span>` : ''}</div>`;
+      };
+      const card = (pl, i) => {
+        const c = pl.check;
+        return `<div class="card intent-plan${i === 0 && c.ok ? ' hl' : ''}"><b>${esc(pl.say || '这样做')}</b>${pl.via === 'ai' ? ' <span class="muted small">AI 的理解</span>' : ''}
+          <div class="intent-steps">${c.rows.map(row).join('')}</div>
+          ${c.ok ? `<div class="row between"><span class="muted small">${c.days ? '共约 ' + esc(T.dur(c.days)) : ''}${c.cost ? ' · 花 ' + n0(c.cost) + ' 符钱' : ''}${c.rows.length > 1 ? ' · 路上出事就停' : ''}</span><button class="primary" data-act="intentGo" data-i="${i}">照做</button></div>` : ''}</div>`;
+      };
+      return `<div class="row between"><h2>你说</h2><button data-act="close">✕</button></div>
+        <p class="say-quote">“${esc(m.input)}”</p>
+        ${m.note ? `<p class="${m.noteCls || 'muted'}">${esc(m.note)}</p>` : ''}
+        ${plans.map(card).join('')}
+        ${!plans.length ? '<p class="muted">没找到对得上的做法。换个说法试试，提到具体的人名、地名或东西更好认。</p>' : ''}
+        <div class="row"><button data-act="close" autofocus>换个说法</button></div>`;
+    },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
     },
@@ -1053,6 +1082,42 @@
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;
       pushModal({ type: 'confirm', title: a.label, text: '这一步回不了头，确定吗？', onYes: () => { const r = Game.act(UI.s, a); toast(r.ok ? r.text || '已办' : '✗ ' + r.error); if (r.ok) afterAction(); } });
+    },
+    // 自由输入：先问 AI（至多 8 秒），不行就按关键词匹配
+    async say() {
+      const s = UI.s;
+      const inp = $('#say-in');
+      const text = ((inp && inp.value) || UI.sayText || '').trim();
+      UI.sayText = text;
+      if (!text) { toast('先写一句想做什么'); return; }
+      if (!s || s.ended || s.pending.length || UI.sayBusy) return;
+      const local = () => Game.intent.match(s, text);
+      const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
+      const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
+      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      UI.sayBusy = true; render();
+      let r;
+      try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }
+      UI.sayBusy = false;
+      if (UI.s !== s || s.pending.length) { render(); return; }
+      if (r.ok && r.plan) {
+        const pl = withCheck(r.plan);
+        // AI 的拆法走不通时，把关键词匹配的几种也列出来
+        pushModal({ type: 'intent', input: text, plans: pl.check.ok ? [pl] : [pl].concat(local().filter((c) => c.check.ok).slice(0, 2)) });
+      } else if (r.ok && r.ask) pushModal({ type: 'intent', input: text, note: 'AI 想问清楚：' + r.ask, noteCls: 'warn', plans: local() });
+      else if (r.ok && r.cannot) pushModal({ type: 'intent', input: text, note: '做不到：' + r.cannot, noteCls: 'bad', plans: local() });
+      else pushModal({ type: 'intent', input: text, note: 'AI 没接上（' + (r.reason || '未知') + '），先按字面找了几种做法。', plans: local() });
+    },
+    intentGo(d) {
+      const m = UI.modals[UI.modals.length - 1];
+      const pl = m && m.plans && m.plans[Number(d.i)];
+      if (!pl) return;
+      UI.modals.pop();
+      const r = Game.intent.exec(UI.s, pl);
+      UI.sayText = '';
+      const msg = r.texts.join('；') || (r.done ? '办完了' : '');
+      toast((r.stopped ? (r.done ? '做了 ' + r.done + '/' + r.total + ' 步，停下：' + r.stopped : '✗ ' + r.stopped) + (msg ? '。' + msg : '') : msg), 5000);
+      afterAction();
     },
     doN(d) {
       const a = Game.actions(UI.s)[Number(d.i)];
@@ -1152,8 +1217,11 @@
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
+  // 输入框里的字在重画时不丢
+  document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'say-in') UI.sayText = ev.target.value; });
   document.addEventListener('keydown', (ev) => {
     const m = UI.modals[UI.modals.length - 1];
+    if (!m && ev.key === 'Enter' && ev.target && ev.target.id === 'say-in' && !ev.isComposing) { ev.preventDefault(); ACT.say(); return; }
     if (!m) {
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset && ['pickOrigin', 'place'].includes(ev.target.dataset.act)) { ev.preventDefault(); ACT[ev.target.dataset.act](ev.target.dataset); }
       return;

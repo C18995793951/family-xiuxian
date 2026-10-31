@@ -251,3 +251,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .ai-form .row { align-items: center; }
 .ai-form input[type=password] { flex: 1 1 12em; min-width: 0; }
 .ai-rejects p { font-size: .85em; margin: .3em 0; }
+
+/* 自由输入 */
+.say-box { margin: .2em 0 .6em; }
+.say-row { flex-wrap: nowrap; gap: .4em; }
+.say-row input { flex: 1; min-width: 0; font-size: 1em; padding: .45em .6em; }
+.say-quote { font-size: 1.05em; margin: .2em 0 .5em; }
+.intent-plan { margin: .4em 0; }
+.intent-steps > div { margin: .3em 0; }

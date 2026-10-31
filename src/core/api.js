@@ -141,6 +141,14 @@
       narrations: (s) => FX.Prop.narrations(s),
       mark: (s) => 'h' + s.nextHistId,
     },
+    // 自由输入：AI 提案的打包与校验、没有 AI 时的关键词匹配、预览与执行（见 intent.js）
+    intent: {
+      job: (s, text) => FX.Intent.job(s, text),
+      parse: (s, job, raw) => FX.Intent.parse(s, job, raw),
+      match: (s, text) => FX.Intent.match(s, text),
+      preview: (s, steps) => FX.Intent.preview(s, steps),
+      exec: (s, plan) => { const r = FX.Intent.exec(s, plan); FX.Sim.checkEnd(s); return r; },
+    },
   };
 
   FX.Game = Game;

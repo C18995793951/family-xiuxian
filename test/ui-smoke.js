@@ -86,6 +86,24 @@ const { chromium } = require('playwright');
     if (w > 376) overflow.push(p + ':' + w);
     if (p === 'now') await mp.screenshot({ path: path.join(out, 'mobile-now.png'), fullPage: true });
   }
+  // 自由输入（AI 没开）：说一句，出预览卡，照做
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  const sayIntent = async (text, wantAI) => {
+    await mp.fill('#say-in', text);
+    await mp.press('#say-in', 'Enter');
+    await mp.waitForSelector('.modal .intent-plan [data-act="intentGo"]', { timeout: 10000 });
+    const txt = await mp.textContent('.modal');
+    if (wantAI && !/AI 的理解/.test(txt)) throw new Error('预览卡里没有 AI 的理解：' + txt.slice(0, 120));
+    const w = await mp.evaluate(() => document.documentElement.scrollWidth);
+    if (w > 376) overflow.push('intent:' + w);
+    await mp.screenshot({ path: path.join(out, wantAI ? 'mobile-intent-ai.png' : 'mobile-intent.png') });
+    const t0 = await mp.evaluate(() => FX.UI.s.t);
+    await mp.click('.modal [data-act="intentGo"]');
+    const t1 = await mp.evaluate(() => FX.UI.s.t);
+    if (t1 <= t0) throw new Error('照做以后时间没走：' + text);
+    while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
+  };
+  await sayIntent('在这里游历几天', false);
   // AI：手机宽度下开启、填 key、测试连接，过几步看纪事叙述和小传；DeepSeek 用假回声顶替，不发真实请求
   const KEY = 'sk-UI-SMOKE-0123456789-SECRET';
   const aiNet = [];
@@ -93,6 +111,10 @@ const { chromium } = require('playwright');
     const body = JSON.parse(route.request().postData() || '{}');
     aiNet.push({ auth: route.request().headers().authorization, model: body.model });
     const user = (body.messages || []).slice(-1)[0].content || '';
+    if (/意图解析器/.test(body.messages[0].content)) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '{"say":"你想在此地游历","steps":[{"do":"游历"}]}' } }], usage: { total_tokens: 100 } }) });
+      return;
+    }
     let content = /请只回复/.test(user) ? '通' : /原文：/.test(user) ? user.split('原文：')[1].split('\n')[0] : '';
     if (!content) { for (const l of user.split('\n').slice(1).filter(Boolean)) { if ((content + l).length > 300) break; content += (content ? '\n' : '') + l; } }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 100 } }) });
@@ -130,6 +152,9 @@ const { chromium } = require('playwright');
   await mp.waitForSelector('.modal .ai-note');
   await mp.waitForTimeout(400);
   await mp.screenshot({ path: path.join(out, 'mobile-ai-life.png') });
+  await mp.keyboard.press('Escape');
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  await sayIntent('四处走走看看', true);
   const leak = await mp.evaluate((k) => {
     const out = [];
     for (let i = 0; i < localStorage.length; i++) { const n = localStorage.key(i); if (n !== 'family-xiuxian:ai-key' && String(localStorage.getItem(n)).includes(k)) out.push(n); }
@@ -143,5 +168,5 @@ const { chromium } = require('playwright');
   const report = { years: year - startYear, steps, events, errors, net, overflow, ai: { requests: aiNet.length, notes, aiLog: aiLog.length } };
   console.log(JSON.stringify(report, null, 2));
   if (errors.length || net.length || overflow.length) process.exit(1);
-  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成，key 只在请求头里');
+  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成、自由输入（有无 AI）预览后照做，key 只在请求头里');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -19,7 +19,7 @@
 
   /* ---------- 记录：s.aiLog ---------- */
   // 每类只留最近若干条，免得存档越积越大；同一个 key 只留最新一条
-  Prop.caps = { narrate: 200, event: 60, life: 3 };
+  Prop.caps = { narrate: 200, event: 60, life: 3, intent: 50 };
   Prop.record = (s, kind, key, out, extra) => {
     const L = (s.aiLog = s.aiLog || []).filter((r) => r.key !== key);
     L.push(Object.assign({ kind, key, t: s.t, out }, extra || {}));

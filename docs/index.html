@@ -269,6 +269,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .ai-form input[type=password] { flex: 1 1 12em; min-width: 0; }
 .ai-rejects p { font-size: .85em; margin: .3em 0; }
 
+/* 自由输入 */
+.say-box { margin: .2em 0 .6em; }
+.say-row { flex-wrap: nowrap; gap: .4em; }
+.say-row input { flex: 1; min-width: 0; font-size: 1em; padding: .45em .6em; }
+.say-quote { font-size: 1.05em; margin: .2em 0 .5em; }
+.intent-plan { margin: .4em 0; }
+.intent-steps > div { margin: .3em 0; }
+
 </style>
 </head>
 <body>
@@ -3554,6 +3562,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (s.ended) return { ok: false, error: '这一生已经结束' };
     if (s.pending.length) return { ok: false, error: '眼前还有事要先决断' };
     if (a && (a.type === 'buy' || a.type === 'sell')) { const r = Act[a.type](s, a.item, a.qty); FX.Ars.sync(s); return r; }
+    // 七个通用动作（自由输入用）：校验与结算在 deeds.js
+    if (a && a.type === 'deed') { const r = FX.Deed.run(s, a); FX.Ars.sync(s); Sim().checkEnd(s); return r; }
     const item = a && Act.find(s, a);
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
@@ -5728,6 +5738,412 @@ button.wide { width: 100%; margin-bottom: .6em; }
   FX.Guide = Guide;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- core/deeds.js ---------- */
+/* ============================================================
+ * deeds —— 七个通用动作：交谈、打听、交易、相助、相争、潜行、立约
+ * 自由输入里规则认得的“现有行动”之外，只多这七样。AI 只挑动作和对象，成功率、时日、得失全由这里的规则算：
+ *  · 对象必须在场、在世；送出去的东西必须在行囊里；
+ *  · 得到的消息由规则从世界状态里挑（市价、某人在哪、卡关的来路），不编；
+ *  · 不改境界、寿元、生死，不发功法；相争落败只受伤，不致死。
+ * Deed.check 只读（预览卡用），Deed.run 执行（由 Act.run 转进来）。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const R = FX.RNG;
+  const U = FX.U;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const W = () => FX.World;
+  const T = () => FX.T;
+  const Sim = () => FX.Sim;
+  const Cb = () => FX.Combat;
+
+  const Deed = {};
+  const me = (s) => P().player(s);
+  const here = (s) => s.places[me(s).locationId];
+  const town = (pl) => ['town', 'city', 'sect', 'clan'].includes(pl.type);
+
+  Deed.VERBS = {
+    talk: { name: '交谈', aims: { chat: '叙话', ask: '打听消息', apologize: '赔礼' } },
+    inquire: { name: '打听', topics: { item: '某样东西哪里有', person: '某人下落', place: '某地情形', way: '眼下卡关的来路', rumor: '近来的传闻' } },
+    trade: { name: '交易', aims: { sell: '把东西让给对方换符钱', borrow: '向对方借符钱' } },
+    help: { name: '相助', aims: {} },
+    fight: { name: '相争', modes: { spar: '切磋', rob: '抢夺', duel: '赴约斗法' } },
+    sneak: { name: '潜行', aims: {} },
+    pact: { name: '立约', kinds: { sworn: '结为兄弟/姊妹', duel: '约十年后再战' } },
+  };
+  // 规则常数（只在这里，AI 碰不到）
+  const K = {
+    talkDays: 7, inquireDays: { town: 5, wild: 12 }, tradeDays: 3, helpDays: 30, fightDays: 1, sneakDays: 10, pactDays: 3,
+    swornMin: 60, duelYears: 10, favorBonus: 15,
+  };
+  Deed.K = K;
+  const favors = (s) => (s.player.favors = s.player.favors || []);
+  const pacts = (s) => (s.player.pacts = s.player.pacts || []);
+  const owedBy = (s, npc) => favors(s).find((f) => f.npc === npc && f.kind === 'owed');
+  const rankGap = (p, q) => P().realmRank(q) - P().realmRank(p);
+  // 礼物的分量：同样的东西，境界越高看得越轻
+  const giftWeight = (p, item) => { const it = C().items[item]; return it ? Math.min(25, Math.round(it.price / (5 * Math.pow(1 + p.realm.major, 2)))) : 0; };
+  // 对方手头宽裕程度：借钱、抢夺能得多少
+  const purse = (q) => 20 * Math.pow(1 + q.realm.major, 2);
+  Deed.duePact = (s, npc) => pacts(s).find((x) => x.npc === npc && x.kind === 'duel' && !x.done && x.due <= s.t);
+
+  /* ---------- 消息：只从世界状态里挑 ---------- */
+  Deed.intel = (s, topic, a) => {
+    const p = me(s);
+    if (topic === 'item' && a.item) {
+      const name = W().itemName(a.item);
+      const shops = [];
+      for (const id in s.markets) for (const x of s.markets[id].stock) if (x.item === a.item && x.qty > 0) shops.push({ id, price: x.price });
+      shops.sort((x, y) => (W().route(s, p.locationId, x.id, p) || { days: 1e9 }).days - (W().route(s, p.locationId, y.id, p) || { days: 1e9 }).days);
+      const parts = shops.slice(0, 2).map((x) => s.places[x.id].name + '的货架上有，要价 ' + x.price + ' 符钱');
+      if (FX.Guide) {
+        const ways = FX.Guide.ways(s, { label: name, keys: [a.item], qty: 1 }).filter((w) => !w.earn);
+        for (const w of ways.slice(0, 2)) if (!parts.some((t) => w.text.includes(t))) parts.push(w.text);
+      }
+      return parts.length ? name + '：' + parts.join('；') + '。' : '一时没人知道哪里有' + name + '。';
+    }
+    if (topic === 'person' && a.npc) {
+      const q = s.people[a.npc];
+      if (!q) return '没人听说过这个人。';
+      if (!P().alive(q)) return q.name + '已经不在人世了。';
+      return P().factionName(s, q) + '的' + q.name + '，' + P().realmName(q) + '，眼下在' + s.places[q.locationId].name + (q.health.state !== 'healthy' ? '，听说带着伤' : '') + '。';
+    }
+    if (topic === 'place' && a.place) {
+      const pl = s.places[a.place];
+      const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '如灵窟', '如洞天'];
+      const r = W().route(s, p.locationId, pl.id, p);
+      return pl.name + '灵机' + QI[pl.qi] + '，灵气属「' + pl.attr + '」，' + (pl.danger >= 3 ? '凶险得很' : pl.danger >= 1 ? '偶有妖物出没' : '还算太平') + (r ? '，从这里过去约 ' + r.days + ' 天' : '，眼下你过不去') + '。';
+    }
+    if (topic === 'way') {
+      const g = FX.Guide && FX.Guide.next(s);
+      return g && g.best ? g.need.label + '：' + g.best.text + '。' : '眼下没有卡着你的东西，照常修炼就是。';
+    }
+    return FX.Act.rumor(s);
+  };
+  // 潜行跟着某人能看出的东西：他的底细与恩怨
+  const tailIntel = (s, q) => {
+    const rel = P().relationsOf(s, q.id).filter((r) => Math.abs(r.strength) >= 30).sort((x, y) => Math.abs(y.strength) - Math.abs(x.strength)).slice(0, 3);
+    const who = rel.map((r) => { const o = s.people[r.a === q.id ? r.b : r.a]; return o ? (r.strength > 0 ? '与' + o.name + '交好' : '与' + o.name + '有仇') : ''; }).filter(Boolean);
+    return q.name + '是' + P().realmName(q) + (q.health.state !== 'healthy' ? '，身上有伤' : '') + (who.length ? '，' + who.join('，') : '，没看出和谁特别亲近或结怨') + '。';
+  };
+
+  /* ---------- 校验与预览（只读）---------- */
+  // 返回 { ok, reason, label, days, cost, chance, risk, gain }
+  Deed.check = (s, a) => {
+    const v = a && Deed.VERBS[a.verb];
+    if (!v) return { ok: false, reason: '没有这种做法' };
+    if (s.ended) return { ok: false, reason: '这一生已经结束' };
+    const p = me(s), pl = here(s);
+    const q = a.npc ? s.people[a.npc] : null;
+    const needHere = ['talk', 'trade', 'help', 'fight', 'sneak', 'pact'].includes(a.verb);
+    const out = { ok: true, reason: '', verb: a.verb, label: '', days: 0, cost: 0, chance: null, risk: '', gain: '' };
+    const no = (why) => Object.assign(out, { ok: false, reason: why });
+    if (needHere) {
+      if (!q || q.id === p.id) return no('要指明对谁做');
+      out.label = v.name + '·' + q.name;
+      if (!P().alive(q)) return no(q.name + '已经不在人世');
+      if (q.locationId !== p.locationId) return no(q.name + '不在' + pl.name + '，在' + s.places[q.locationId].name);
+    }
+    const rel = q ? P().relValue(s, p.id, q.id) : 0;
+    const fav = q && owedBy(s, q.id) ? K.favorBonus : 0;
+    if (a.gift !== undefined && a.gift !== null) {
+      if (!C().items[a.gift]) return no('送不了这个');
+      if (!(s.player.inv[a.gift] > 0)) return no('行囊里没有' + W().itemName(a.gift));
+    }
+    const gift = a.gift ? giftWeight(p, a.gift) : 0;
+    const giftTxt = a.gift ? '，送出' + W().itemName(a.gift) + ' 一份' : '';
+    switch (a.verb) {
+      case 'talk': {
+        const aim = v.aims[a.aim] ? a.aim : 'chat';
+        out.label = (aim === 'apologize' ? '向' + q.name + '赔礼' : aim === 'ask' ? '向' + q.name + '打听' + (a.topic ? Deed.VERBS.inquire.topics[a.topic] || '' : '消息') : '与' + q.name + '叙话') + giftTxt;
+        if (aim === 'apologize' && rel >= 0) return no('你和' + q.name + '没有过节，不必赔礼');
+        out.days = K.talkDays;
+        out.chance = Math.round(U.clamp(45 + rel / 2 + gift + fav - Math.min(25, Math.max(0, rankGap(p, q)) * 2), 10, 90));
+        out.gain = aim === 'ask' ? '成了得一条消息，交情略升' : aim === 'apologize' ? '成了化解几分仇怨' : '成了交情上升';
+        out.risk = '不成交情不变或略降' + (a.gift ? '；礼物送出去就收不回' : '');
+        break;
+      }
+      case 'inquire': {
+        const topic = v.topics[a.topic] ? a.topic : 'rumor';
+        if (topic === 'item' && !a.item) return no('要说明打听什么东西');
+        if (topic === 'person' && !a.npc) return no('要说明打听谁');
+        if (topic === 'place' && !a.place) return no('要说明打听哪里');
+        const t = town(pl);
+        out.label = '在' + pl.name + '打听' + (topic === 'item' ? W().itemName(a.item) + '哪里有' : topic === 'person' ? (q ? q.name : '某人') + '的下落' : topic === 'place' ? s.places[a.place].name + '的情形' : v.topics[topic]);
+        out.days = t ? K.inquireDays.town : K.inquireDays.wild;
+        const crowd = P().at(s, pl.id).length - 1;
+        out.chance = Math.round(U.clamp((t ? ({ city: 85, town: 75, sect: 70, clan: 65 }[pl.type] || 70) : 25 + crowd * 10), 10, 90));
+        out.gain = '成了得到世上真有的消息';
+        out.risk = t ? '不成就白费几天' : '荒僻地方人少，多半问不出什么';
+        break;
+      }
+      case 'trade': {
+        const aim = v.aims[a.aim] ? a.aim : a.item ? 'sell' : 'borrow';
+        out.days = K.tradeDays;
+        if (aim === 'sell') {
+          const it = a.item;
+          if (!it || !C().items[it]) return no('要说明拿什么换');
+          if (!(s.player.inv[it] > 0)) return no('行囊里没有' + W().itemName(it));
+          const price = Math.max(1, Math.round(C().items[it].price * U.clamp(0.6 + rel / 200, 0.5, 0.9)));
+          out.label = '把' + W().itemName(it) + '让给' + q.name + '，换 ' + price + ' 符钱';
+          out.chance = Math.round(U.clamp(50 + rel / 2 + fav, 20, 90));
+          out.gain = '成了得 ' + price + ' 符钱';
+          out.risk = '对方不要就作罢';
+          out.price = price; out.item = it;
+        } else {
+          const amt = Math.round(purse(q) * 0.5);
+          out.label = '向' + q.name + '借 ' + amt + ' 符钱';
+          out.chance = Math.round(U.clamp(rel - 20 + fav, 5, 80));
+          out.gain = '成了得 ' + amt + ' 符钱，欠下一个人情';
+          out.risk = '交情不深多半借不到';
+          out.amount = amt;
+        }
+        out.aim = aim;
+        break;
+      }
+      case 'help': {
+        out.label = '替' + q.name + '出力（护法、寻药之类）';
+        out.days = K.helpDays;
+        out.chance = Cb().fightChance(s, p, P().power(s, q) * 0.6).chance;
+        const same = p.factionId && p.factionId === q.factionId && FX.Sect.mine(s);
+        out.gain = '成了交情上升，对方欠你一个人情' + (same ? '，记' + C().house.meritName + ' ' + FX.Sect.taskMerit(p) : '');
+        out.risk = '不成白费一月，约三成受轻伤';
+        break;
+      }
+      case 'fight': {
+        const mode = v.modes[a.mode] ? a.mode : 'spar';
+        const pw = P().power(s, q);
+        out.label = (mode === 'rob' ? '抢夺' : mode === 'duel' ? '赴约与' : '与') + q.name + (mode === 'rob' ? '' : mode === 'duel' ? '斗法' : '切磋');
+        if (mode === 'spar' && rel < -20) return no(q.name + '和你有仇，不肯切磋');
+        if (mode === 'duel' && !Deed.duePact(s, q.id)) return no('和' + q.name + '没有到期的约战');
+        out.days = K.fightDays;
+        out.chance = Cb().fightChance(s, p, pw).chance;
+        out.mode = mode;
+        if (mode === 'rob') {
+          const same = p.factionId && p.factionId === q.factionId;
+          out.gain = '胜了夺得约 ' + Math.round(purse(q) * 0.5) + '–' + Math.round(purse(q) * 1.5) + ' 符钱';
+          out.risk = '无论胜负都与' + q.name + '结仇；败了受伤（' + Math.round(C().encounter.lossHeavyShare * 100) + '% 为重伤）' + (same ? '；同门相残要按门规罚' + C().house.meritName : '');
+        } else {
+          out.gain = mode === 'duel' ? '胜负都了结这桩约，胜了交情、名声都好看' : '胜负都略增交情';
+          out.risk = '输的一方约两成受轻伤';
+        }
+        break;
+      }
+      case 'sneak': {
+        out.label = '暗中跟着' + q.name + '，摸清对方底细';
+        out.days = K.sneakDays;
+        out.chance = Cb().fleeChance(s, p, P().power(s, q)).chance;
+        out.gain = '成了看出他的境况和恩怨';
+        out.risk = '被发现就结仇，对方可能动手';
+        break;
+      }
+      case 'pact': {
+        const kind = v.kinds[a.kind] ? a.kind : 'sworn';
+        out.kind = kind;
+        out.days = K.pactDays;
+        if (kind === 'sworn') {
+          out.label = '与' + q.name + '结拜';
+          if ((P().relationBetween(s, p.id, q.id) || { tags: [] }).tags.includes('结拜')) return no('你们已经结拜过了');
+          if (rel < K.swornMin) return no('交情不够（需 ' + K.swornMin + '，现在 ' + rel + '）');
+          out.chance = Math.round(U.clamp(rel - 20 + fav, 10, 90));
+          out.gain = '成了交情大增，记作结拜';
+          out.risk = '不成交情略降';
+        } else {
+          out.label = '与' + q.name + '约 ' + K.duelYears + ' 年后再战';
+          if (pacts(s).some((x) => x.npc === q.id && x.kind === 'duel' && !x.done)) return no('你们已有约战');
+          out.chance = Math.round(U.clamp(60 - Math.abs(rankGap(p, q)) * 5, 10, 90));
+          out.gain = '成了记下约期，到期可赴约斗法';
+          out.risk = '对方不应就作罢';
+        }
+        break;
+      }
+      default: return no('没有这种做法');
+    }
+    if (a.gift && !['talk'].includes(a.verb)) return no('只有交谈时能送礼');
+    return out;
+  };
+
+  /* ---------- 执行 ---------- */
+  const say = (s, key, params, actors, severity) => H().add(s, { type: 'deed', tags: ['人物'], actors, places: [me(s).locationId], key, pov: true, severity: severity || 1, params: Object.assign({ name: me(s).name }, params) });
+  const rel = (s, q, d, tag) => { if (d) P().adjustRelation(s, me(s).id, q.id, d, tag); };
+  const useFavor = (s, q) => { const f = owedBy(s, q.id); if (f) favors(s).splice(favors(s).indexOf(f), 1); };
+
+  Deed.run = (s, a) => {
+    const c = Deed.check(s, a);
+    if (!c.ok) return { ok: false, error: c.reason };
+    const p = me(s), q = a.npc ? s.people[a.npc] : null;
+    s.player.stats.actions++;
+    if (a.gift) s.player.inv[a.gift]--;
+    const r = Sim().passDays(s, c.days, 'other');
+    if (!P().alive(p)) return { ok: true, text: '' };
+    if (r && r.interrupted) return { ok: true, text: '还没办成就出了事', interrupted: true };
+    if (q && (!P().alive(q) || q.locationId !== p.locationId)) { FX.Act.seek(s, false); return { ok: true, text: '没见着' + q.name }; }
+    const win = R.chance(s.rng, (c.chance === null ? 100 : c.chance) / 100);
+    FX.Act.seek(s, win);
+    let text = '';
+    switch (a.verb) {
+      case 'talk': {
+        const g = a.gift ? Math.ceil(giftWeight(p, a.gift) / 2) : 0;
+        const giftTxt = a.gift ? '，送上' + W().itemName(a.gift) : '';
+        if (!win) { rel(s, q, a.gift ? g : -1, '交谈'); say(s, 'deed_talk_fail', { other: q.name, gift: giftTxt }, [p.id, q.id]); text = q.name + '没怎么搭理你'; break; }
+        if (owedBy(s, q.id)) useFavor(s, q);
+        if (a.aim === 'apologize') { const d = Math.min(-P().relValue(s, p.id, q.id) + 5, R.int(s.rng, 8, 18) + g); rel(s, q, d, '赔礼'); say(s, 'deed_apologize', { other: q.name, gift: giftTxt, delta: '+' + d }, [p.id, q.id], 2); text = q.name + '接了你的赔礼（关系 +' + d + '）'; break; }
+        if (a.aim === 'ask') {
+          const info = Deed.intel(s, a.topic || 'rumor', a);
+          rel(s, q, 1 + g, '交谈');
+          say(s, 'deed_ask', { other: q.name, gift: giftTxt, info }, [p.id, q.id], 2);
+          text = q.name + '说：' + info;
+          break;
+        }
+        const d = R.int(s.rng, 3, 8) + g;
+        rel(s, q, d, '叙话');
+        say(s, 'deed_chat', { other: q.name, gift: giftTxt, delta: '+' + d }, [p.id, q.id]);
+        text = '与' + q.name + '谈得投机（关系 +' + d + '）';
+        break;
+      }
+      case 'inquire': {
+        if (!win) { say(s, 'deed_inquire_fail', { place: here(s).name }, [p.id]); text = '没问出什么'; break; }
+        const info = Deed.intel(s, a.topic || 'rumor', a);
+        say(s, 'deed_inquire', { place: here(s).name, info }, [p.id], 2);
+        text = '打听到：' + info;
+        break;
+      }
+      case 'trade': {
+        if (!win) { say(s, 'deed_trade_fail', { other: q.name }, [p.id, q.id]); text = q.name + '没答应'; break; }
+        if (owedBy(s, q.id)) useFavor(s, q);
+        if (c.aim === 'sell') {
+          s.player.inv[c.item]--;
+          s.player.stone += c.price;
+          rel(s, q, 1, '交易');
+          say(s, 'deed_sell', { other: q.name, item: W().itemName(c.item), stone: c.price }, [p.id, q.id]);
+          text = '把' + W().itemName(c.item) + '让给' + q.name + '，得 ' + c.price + ' 符钱';
+        } else {
+          s.player.stone += c.amount;
+          favors(s).push({ npc: q.id, kind: 'owe', t: s.t });
+          say(s, 'deed_borrow', { other: q.name, stone: c.amount }, [p.id, q.id], 2);
+          text = '向' + q.name + '借得 ' + c.amount + ' 符钱，欠下一个人情';
+        }
+        break;
+      }
+      case 'help': {
+        if (!win) {
+          rel(s, q, 1, '相助');
+          const hurt = R.chance(s.rng, 0.3);
+          if (hurt) P().injure(s, p, 'light');
+          say(s, 'deed_help_fail', { other: q.name, hurt: hurt ? '，自己还受了轻伤' : '' }, [p.id, q.id]);
+          text = '没帮上' + q.name + (hurt ? '，受了轻伤' : '');
+          break;
+        }
+        const d = R.int(s.rng, 5, 12);
+        rel(s, q, d, '相助');
+        // 欠着对方的人情，这回算还上；不然对方欠你一个
+        const mine = favors(s).find((f) => f.npc === q.id && f.kind === 'owe');
+        if (mine) favors(s).splice(favors(s).indexOf(mine), 1); else favors(s).push({ npc: q.id, kind: 'owed', t: s.t });
+        const same = p.factionId && p.factionId === q.factionId && FX.Sect.mine(s);
+        const merit = same ? FX.Sect.taskMerit(p) : 0;
+        s.player.merit += merit;
+        say(s, 'deed_help', { other: q.name, delta: '+' + d, merit: merit ? '，记' + C().house.meritName + ' ' + merit : '', favor: mine ? '，算是还了人情' : '，对方记下这份人情' }, [p.id, q.id], 2);
+        text = '帮成了' + q.name + '（关系 +' + d + '）' + (merit ? '，' + C().house.meritName + ' +' + merit : '');
+        break;
+      }
+      case 'fight': {
+        s.player.stats.fights++;
+        if (win) s.player.stats.wins++;
+        const mode = c.mode;
+        const loser = win ? q : p;
+        if (mode === 'rob') {
+          rel(s, q, -40, '抢夺');
+          if (win) {
+            const got = Math.round(purse(q) * R.range(s.rng, 0.5, 1.5));
+            s.player.stone += got;
+            const same = p.factionId && p.factionId === q.factionId && FX.Sect.mine(s);
+            const fine = same ? Math.min(s.player.merit, FX.Sect.taskMerit(p) * 3) : 0;
+            s.player.merit -= fine;
+            say(s, 'deed_rob_win', { other: q.name, stone: got, fine: fine ? '。同门相残，罚' + C().house.meritName + ' ' + fine : '' }, [p.id, q.id], 3);
+            text = '胜了，夺得 ' + got + ' 符钱，与' + q.name + '结仇' + (fine ? '，门规罚' + C().house.meritName + ' ' + fine : '');
+          } else {
+            const heavy = R.chance(s.rng, C().encounter.lossHeavyShare);
+            P().injure(s, p, heavy ? 'heavy' : 'light');
+            say(s, 'deed_rob_lose', { other: q.name, hurt: heavy ? '重伤' : '轻伤' }, [p.id, q.id], 3);
+            text = '败了，受了' + (heavy ? '重伤' : '轻伤') + '，与' + q.name + '结仇';
+          }
+          break;
+        }
+        if (R.chance(s.rng, 0.2)) P().injure(s, loser, 'light');
+        if (mode === 'duel') { const pk = Deed.duePact(s, q.id); pk.done = true; rel(s, q, win ? 5 : 3, '赴约'); }
+        else rel(s, q, 2, '切磋');
+        say(s, mode === 'duel' ? 'deed_duel' : 'deed_spar', { other: q.name, who: win ? p.name : q.name }, [p.id, q.id], 2);
+        text = (mode === 'duel' ? '赴约斗法，' : '切磋，') + (win ? '你胜了半招' : q.name + '胜了半招');
+        break;
+      }
+      case 'sneak': {
+        if (win) {
+          const info = tailIntel(s, q);
+          say(s, 'deed_sneak', { other: q.name, info }, [p.id, q.id], 2);
+          text = '看出来了：' + info;
+          break;
+        }
+        rel(s, q, -15, '被跟踪');
+        // 被发现：对方未必动手；动手就按斗法掷
+        let hurt = '';
+        if (R.chance(s.rng, 0.5)) {
+          const ok = R.chance(s.rng, Cb().fightChance(s, p, P().power(s, q)).chance / 100);
+          if (!ok) { P().injure(s, p, 'light'); hurt = '，动起手来你吃了亏，受了轻伤'; } else hurt = '，动起手来你脱了身';
+        }
+        say(s, 'deed_sneak_fail', { other: q.name, hurt }, [p.id, q.id], 2);
+        text = '被' + q.name + '发现了' + hurt;
+        break;
+      }
+      case 'pact': {
+        if (!win) { rel(s, q, -2, '立约'); say(s, 'deed_pact_fail', { other: q.name }, [p.id, q.id]); text = q.name + '没有答应'; break; }
+        if (c.kind === 'sworn') {
+          rel(s, q, 10, '结拜');
+          const r2 = P().relationBetween(s, p.id, q.id);
+          if (r2 && !r2.tags.includes('结拜')) r2.tags.push('结拜');
+          say(s, 'deed_sworn', { other: q.name }, [p.id, q.id], 3);
+          text = '与' + q.name + '结拜';
+        } else {
+          const due = s.t + K.duelYears * C().daysPerYear;
+          pacts(s).push({ npc: q.id, kind: 'duel', t: s.t, due });
+          say(s, 'deed_duel_pact', { other: q.name, when: T().fmt(due) }, [p.id, q.id], 2);
+          text = '与' + q.name + '约定 ' + T().fmt(due) + ' 再战';
+        }
+        break;
+      }
+    }
+    return { ok: true, text, success: win };
+  };
+
+  // 纪事模板
+  Object.assign(C().text, {
+    deed_talk_fail: ['{name}找{other}说话{gift}，{other}没怎么搭理。'],
+    deed_chat: ['{name}与{other}叙话{gift}，谈得投机，关系 {delta}。'],
+    deed_ask: ['{name}向{other}打听{gift}。{other}说：{info}'],
+    deed_apologize: ['{name}向{other}赔礼{gift}，{other}接了，关系 {delta}。'],
+    deed_inquire: ['{name}在{place}四处打听，得知：{info}'],
+    deed_inquire_fail: ['{name}在{place}四处打听，没问出什么。'],
+    deed_trade_fail: ['{name}想与{other}做笔交易，{other}没答应。'],
+    deed_sell: ['{name}把{item}让给{other}，得符钱 {stone}。'],
+    deed_borrow: ['{name}向{other}借得符钱 {stone}，欠下一个人情。'],
+    deed_help: ['{name}替{other}出力，事情办成了，关系 {delta}{merit}{favor}。'],
+    deed_help_fail: ['{name}替{other}出力，没能帮上{hurt}。'],
+    deed_rob_win: ['{name}出手抢夺{other}，得手，夺得符钱 {stone}，从此结仇{fine}。'],
+    deed_rob_lose: ['{name}出手抢夺{other}，反被打得{hurt}，从此结仇。'],
+    deed_spar: ['{name}与{other}切磋，{who}胜了半招。'],
+    deed_duel: ['{name}赴约与{other}斗法，{who}胜了，了结旧约。'],
+    deed_sneak: ['{name}暗中跟着{other}多日，看出：{info}'],
+    deed_sneak_fail: ['{name}暗中跟着{other}，被发现了{hurt}。'],
+    deed_pact_fail: ['{name}想与{other}立约，{other}没有答应。'],
+    deed_sworn: ['{name}与{other}结拜。'],
+    deed_duel_pact: ['{name}与{other}约定 {when} 再战。'],
+  });
+
+  FX.Deed = Deed;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- core/propose.js ---------- */
 /* ============================================================
  * propose —— AI 提案：记录、校验、事实摘要与提示词
@@ -5750,7 +6166,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   /* ---------- 记录：s.aiLog ---------- */
   // 每类只留最近若干条，免得存档越积越大；同一个 key 只留最新一条
-  Prop.caps = { narrate: 200, event: 60, life: 3 };
+  Prop.caps = { narrate: 200, event: 60, life: 3, intent: 50 };
   Prop.record = (s, kind, key, out, extra) => {
     const L = (s.aiLog = s.aiLog || []).filter((r) => r.key !== key);
     L.push(Object.assign({ kind, key, t: s.t, out }, extra || {}));
@@ -5971,6 +6387,398 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 
   FX.Prop = Prop;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ---------- core/intent.js ---------- */
+/* ============================================================
+ * intent —— 自由输入：把玩家的一句话落到规则认得的行动上
+ * 一句话 → 至多三步。每步是下面四种之一：
+ *   act  此刻清单里的某项行动（按编号，只在原地有效）
+ *   go   赶到某地（按最短路一段段走）
+ *   do   常见行动按名字指（拜访、请教、游历、营生、静养、修炼、冲关、研习、服用、买、卖），到了地方再对清单
+ *   deed 七个通用动作（deeds.js）
+ * AI 只出提案（JSON），这里逐项校验；没有 AI、超时、提案不合格时按关键词匹配给几个候选。
+ * 预览在状态副本上走一遍（只挪位置，不掷骰），写出每步的耗时、花费、成功率；玩家确认后 exec 才真正结算。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const W = () => FX.World;
+  const T = () => FX.T;
+  const Act = () => FX.Act;
+  const Deed = () => FX.Deed;
+  const Prop = () => FX.Prop;
+
+  const Intent = {};
+  const me = (s) => P().player(s);
+  Intent.MAX_STEPS = 3;
+
+  /* ---------- 词表 ---------- */
+  const DO = { 拜访: 'befriend', 请教: 'consult', 游历: 'explore', 营生: 'work', 静养: 'rest', 修炼: 'cultivate', 冲关: 'breakthrough', 研习: 'learn', 服用: 'use', 买: 'buy', 卖: 'sell' };
+  const DEED = { 交谈: 'talk', 打听: 'inquire', 交易: 'trade', 相助: 'help', 相争: 'fight', 潜行: 'sneak', 立约: 'pact' };
+  const AIM = { 叙话: 'chat', 打听消息: 'ask', 赔礼: 'apologize', 卖: 'sell', 借: 'borrow' };
+  const TOPIC = { 东西: 'item', 人: 'person', 地方: 'place', 卡关: 'way', 传闻: 'rumor' };
+  const MODE = { 切磋: 'spar', 抢夺: 'rob', 赴约: 'duel' };
+  const KIND = { 结拜: 'sworn', 约战: 'duel' };
+  Intent.words = { DO, DEED, AIM, TOPIC, MODE, KIND };
+
+  const STEP = {
+    act: { type: 'text', maxLen: 6, digits: true },
+    go: { type: 'place' },
+    do: { type: 'enum', values: Object.keys(DO) },
+    deed: { type: 'enum', values: Object.keys(DEED) },
+    npc: { type: 'anyPerson' },
+    item: { type: 'text', maxLen: 30 },
+    gift: { type: 'text', maxLen: 30 },
+    place: { type: 'place' },
+    aim: { type: 'enum', values: Object.keys(AIM) },
+    topic: { type: 'enum', values: Object.keys(TOPIC) },
+    mode: { type: 'enum', values: Object.keys(MODE) },
+    kind: { type: 'enum', values: Object.keys(KIND) },
+  };
+  Intent.SPEC = {
+    say: { type: 'text', maxLen: 120, digits: true },
+    ask: { type: 'text', maxLen: 120, digits: true },
+    cannot: { type: 'text', maxLen: 120, digits: true },
+    steps: { type: 'list', max: Intent.MAX_STEPS, of: { type: 'object', fields: STEP } },
+  };
+
+  // 物品名或功法名 → 行囊/坊市里用的 key（功法是 tech:xxx）
+  const itemKey = (v) => {
+    if (typeof v !== 'string') return null;
+    const n = v.replace(/^《|》$/g, '').trim();
+    const its = C().items, ts = C().techniques;
+    if (its[n]) return n;
+    const i = Object.keys(its).find((k) => its[k].name === n);
+    if (i) return i;
+    const t = ts[n] ? n : Object.keys(ts).find((k) => ts[k].name === n);
+    return t ? 'tech:' + t : null;
+  };
+
+  /* ---------- 给 AI 看的事实 ---------- */
+  // 返回 { text, acts }：acts[i] 是编号 a(i+1) 对应的行动
+  Intent.facts = (s) => {
+    const p = me(s), pl = s.places[p.locationId], cf = C();
+    const L = [];
+    const inv = Object.keys(s.player.inv).filter((k) => s.player.inv[k] > 0).map((k) => W().itemName(k) + '×' + s.player.inv[k]);
+    L.push('主角：' + p.name + '，' + P().realmName(p) + '，' + P().factionName(s, p) + '，' + (p.health.state === 'healthy' ? '无伤' : p.health.state === 'heavy' ? '重伤' : '轻伤') + '，符钱 ' + s.player.stone + (p.factionId ? '，' + cf.house.meritName + ' ' + s.player.merit : '') + '。');
+    L.push('行囊：' + (inv.length ? inv.join('、') : '空') + (s.player.manuals.length ? '；功法：' + s.player.manuals.map((t) => '《' + cf.techniques[t].name + '》').join('') : ''));
+    L.push('所在：' + pl.name + '（' + cf.world.placeTypes[pl.type].name + '）' + (W().hasMarket(s, pl.id) ? '，有坊市' : ''));
+    L.push('相邻：' + pl.links.map((l) => s.places[l.to].name + '（' + l.days + ' 天）').join('、'));
+    const here = P().at(s, pl.id).filter((q) => q.id !== p.id).slice(0, 12);
+    if (here.length) L.push('在场的人：' + here.map((q) => q.name + '（' + P().realmName(q) + '，' + P().factionName(s, q) + '，交情 ' + P().relValue(s, p.id, q.id) + '）').join('、'));
+    const known = P().relationsOf(s, p.id).map((r) => s.people[r.a === p.id ? r.b : r.a]).filter((q) => q && P().alive(q) && q.locationId !== pl.id)
+      .sort((a, b) => Math.abs(P().relValue(s, p.id, b.id)) - Math.abs(P().relValue(s, p.id, a.id))).slice(0, 8);
+    if (known.length) L.push('相识的人：' + known.map((q) => q.name + '（' + P().realmName(q) + '，在' + s.places[q.locationId].name + '，交情 ' + P().relValue(s, p.id, q.id) + '）').join('、'));
+    const due = (s.player.pacts || []).filter((x) => !x.done && s.people[x.npc]).map((x) => '与' + s.people[x.npc].name + (x.due <= s.t ? '的约战已到期' : '约战，期在 ' + T().fmt(x.due)));
+    if (due.length) L.push('约定：' + due.join('、'));
+    const g = FX.Guide && FX.Guide.next(s);
+    if (g) L.push('卡关：' + g.need.label);
+    const acts = Act().list(s).filter((a) => a.ok && !(a.type === 'cultivate' && (a.coin || (!a.until && a.days < 360)))).slice(0, 40);
+    L.push('此刻能做（编号：说明）：\n' + acts.map((a, i) => 'a' + (i + 1) + '：' + a.label).join('\n'));
+    const recent = s.history.filter((e) => e.pov).slice(-5).map((e) => T().fmt(e.t) + '：' + H().text(e));
+    if (recent.length) L.push('最近：\n' + recent.join('\n'));
+    return { text: L.join('\n'), acts };
+  };
+
+  const SYSTEM = [
+    '你是修仙游戏的意图解析器。玩家用一句话说想做什么，你把它拆成至多三步游戏规则认得的行动，只输出一个 JSON 对象，不要别的文字。',
+    '格式：{"say":"你想……（一句复述）","steps":[步骤…]}；拿不准玩家想做什么时改回 {"ask":"一句追问"}；规则里做不到时回 {"cannot":"一句原因"}。',
+    '每个步骤是下面之一（字段值一律用文字，不要写数字）：',
+    '1. {"act":"a3"}：此刻清单里的编号，只能放在第一步或赶路之前。',
+    '2. {"go":"地名"}：赶到某地。',
+    '3. {"do":"拜访|请教|游历|营生|静养|修炼|冲关|研习|服用|买|卖", "npc":"人名", "item":"物品或功法名"}：到了地方再做的常见行动；拜访、请教要 npc，研习、服用、买、卖要 item。',
+    '4. {"deed":"交谈|打听|交易|相助|相争|潜行|立约", ...}：七个通用动作。',
+    '   交谈：npc，aim 取 叙话|打听消息|赔礼，可加 gift（送的物品，须在行囊里），打听消息时可加 topic。',
+    '   打听：在所在地向众人打听，topic 取 东西|人|地方|卡关|传闻，配 item / npc / place。',
+    '   交易：npc，aim 取 卖（配 item，把行囊里的东西让给对方换符钱）|借（向对方借符钱）。',
+    '   相助：npc，替对方出力（护法、寻药等）。相争：npc，mode 取 切磋|抢夺|赴约。潜行：npc，暗中跟踪、偷听。立约：npc，kind 取 结拜|约战。',
+    '交谈、交易、相助、相争、潜行、立约的对象必须和主角在同一地；不在就先用 go 赶过去。',
+    '只能用事实里出现的人名、地名、物品名、功法名。成败、得失、数字都由规则算，你不要写。',
+    '游戏没有的做法（凭空得到宝物、直接突破境界、杀死某人、加寿元、学会没有的功法、让别人送你东西）一律回 cannot。',
+    'say 用第二人称“你想……”，不超过四十字，不要写数字。',
+  ].join('\n');
+
+  Intent.job = (s, text) => {
+    const f = Intent.facts(s);
+    return {
+      kind: 'intent', facts: f.text, acts: f.acts, input: String(text || '').slice(0, 200), maxTokens: 500,
+      messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: '事实：\n' + f.text + '\n\n玩家说：' + String(text || '').slice(0, 200) }],
+    };
+  };
+
+  /* ---------- 校验：AI 的 JSON → 规范的步骤 ---------- */
+  // 规范步骤：{ k:'act', a } | { k:'go', to } | { k:'do', type, npc, item } | { k:'deed', a }
+  const normStep = (s, st, i, acts, moved) => {
+    const keys = ['act', 'go', 'do', 'deed'].filter((k) => st[k] !== undefined);
+    if (keys.length !== 1) return { error: '第 ' + (i + 1) + ' 步要且只能有 act/go/do/deed 之一' };
+    const k = keys[0];
+    if (k === 'act') {
+      if (moved) return { error: '编号只在原地有效，赶路以后要用 do 或 deed' };
+      const m = /^a?(\d{1,2})$/.exec(String(st.act).trim());
+      const a = m && acts[Number(m[1]) - 1];
+      if (!a) return { error: '没有编号 ' + st.act };
+      const pick = { type: a.type };
+      for (const x of ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall', 'coin', 'until']) if (a[x] !== undefined) pick[x] = a[x];
+      return { step: { k: 'act', a: pick } };
+    }
+    if (k === 'go') return { step: { k: 'go', to: st.go } };
+    const item = st.item !== undefined ? itemKey(st.item) : null;
+    if (st.item !== undefined && !item) return { error: '没有这样东西：' + st.item };
+    const gift = st.gift !== undefined ? itemKey(st.gift) : null;
+    if (st.gift !== undefined && (!gift || gift.startsWith('tech:'))) return { error: '送不了：' + st.gift };
+    if (k === 'do') {
+      const type = DO[st.do];
+      if ((type === 'befriend' || type === 'consult') && !st.npc) return { error: st.do + '要说明对谁' };
+      if (['learn', 'use', 'buy', 'sell'].includes(type) && !item) return { error: st.do + '要说明哪样东西' };
+      return { step: { k: 'do', type, npc: st.npc, item } };
+    }
+    const a = { type: 'deed', verb: DEED[st.deed] };
+    if (st.npc) a.npc = st.npc;
+    if (item) a.item = item.startsWith('tech:') ? null : item;
+    if (item && item.startsWith('tech:')) return { error: '功法不能拿来交易' };
+    if (gift) a.gift = gift;
+    if (st.place) a.place = st.place;
+    if (st.aim) a.aim = AIM[st.aim];
+    if (st.topic) a.topic = TOPIC[st.topic];
+    if (st.mode) a.mode = MODE[st.mode];
+    if (st.kind) a.kind = KIND[st.kind];
+    // 打听东西/人/地方时，对象顺手补上话题
+    if (a.verb === 'inquire' && !a.topic) a.topic = a.item ? 'item' : a.npc ? 'person' : a.place ? 'place' : 'rumor';
+    return { step: { k: 'deed', a } };
+  };
+
+  // 返回 { ok, say, steps } | { ok, ask } | { ok, cannot } | { ok:false, why }
+  Intent.parse = (s, job, raw) => {
+    const j = Prop().parseJSON(raw);
+    if (!j.ok) return { ok: false, why: j.error };
+    const r = Prop().checkSpec(s, Intent.SPEC, j.value);
+    if (!r.ok) return { ok: false, why: r.errors.slice(0, 3).join('；') };
+    const v = r.value;
+    // 复述、追问、原因也是给玩家看的文字：不准编数字和名字
+    const facts = job.facts + '\n' + job.input;
+    for (const f of ['say', 'ask', 'cannot']) if (v[f]) { const why = Prop().checkText(s, v[f], facts, { maxLen: 120 }); if (why) { if (f === 'say') delete v.say; else return { ok: false, why: f + '：' + why }; } }
+    if (v.ask) return { ok: true, ask: v.ask };
+    if (v.cannot) return { ok: true, cannot: v.cannot };
+    if (!v.steps || !v.steps.length) return { ok: false, why: '没有步骤' };
+    const steps = [];
+    let moved = false;
+    for (let i = 0; i < v.steps.length; i++) {
+      const n = normStep(s, v.steps[i], i, job.acts, moved);
+      if (n.error) return { ok: false, why: n.error };
+      if (n.step.k === 'go' || (n.step.k === 'act' && n.step.a.type === 'travel')) moved = true;
+      steps.push(n.step);
+    }
+    return { ok: true, say: v.say || null, steps };
+  };
+
+  /* ---------- 落到具体行动（在给定状态上；只读）---------- */
+  // 返回 { ok, reason, label, days, cost, chance, risk, gain, run }，run 是交给 Act.run 的东西（go 例外）
+  Intent.resolve = (s, st) => {
+    const p = me(s);
+    const no = (label, why) => ({ ok: false, reason: why, label });
+    if (st.k === 'go') {
+      const to = s.places[st.to];
+      if (!to) return no('赶路', '没有这个地方');
+      if (to.id === p.locationId) return { ok: true, label: '已在' + to.name, days: 0, go: true, skip: true };
+      const r = W().route(s, p.locationId, to.id, p);
+      if (!r) return no('前往' + to.name, W().route(s, p.locationId, to.id) ? C().world.outer.gate.why : '走不通');
+      return { ok: true, label: '赶路到' + to.name + '（' + r.days + ' 天' + (r.path.length > 2 ? '，' + (r.path.length - 1) + ' 段' : '') + '）', days: r.days, go: true, risk: '路上可能遇事，遇事就停下' };
+    }
+    if (st.k === 'deed') {
+      const c = Deed().check(s, st.a);
+      return Object.assign({}, c, { run: st.a, label: c.label || Deed().VERBS[st.a.verb].name });
+    }
+    const L = Act().list(s);
+    let a = null;
+    if (st.k === 'act') a = Act().find(s, st.a);
+    else {
+      const t = st.type;
+      if (t === 'buy' || t === 'sell') {
+        const name = W().itemName(st.item);
+        if (t === 'sell') {
+          const m = Act().marketOf(s);
+          if (!m) return no('卖' + name, '此地没有坊市');
+          if (!((s.player.inv[st.item] || 0) > 0)) return no('卖' + name, '行囊里没有' + name);
+          return { ok: true, label: '在坊市卖掉' + name + ' 一份', days: 0, run: { type: 'sell', item: st.item, qty: 1 } };
+        }
+        const m = Act().marketOf(s);
+        const slot = m && m.stock.find((x) => x.item === st.item && x.qty > 0);
+        if (!m) return no('买' + name, '此地没有坊市');
+        if (!slot) return no('买' + name, s.places[p.locationId].name + '的货架上没有' + name);
+        if (s.player.stone < slot.price) return no('买' + name, '符钱不够（要 ' + slot.price + '，你有 ' + s.player.stone + '）');
+        return { ok: true, label: '买' + name + ' 一份', days: 0, cost: slot.price, run: { type: 'buy', item: st.item, qty: 1 } };
+      }
+      const of = L.filter((x) => x.type === t);
+      if (t === 'befriend' || t === 'consult') {
+        const q = s.people[st.npc];
+        a = of.find((x) => x.npc === st.npc);
+        if (!a) return no((t === 'consult' ? '请教' : '拜访') + (q ? q.name : ''), !q || !P().alive(q) ? '这人已不在人世' : q.locationId !== p.locationId ? q.name + '不在这里，在' + s.places[q.locationId].name : t === 'consult' ? Act().canConsult(s, q) === true ? '对方修为不比你高' : Act().canConsult(s, q) : '见不着');
+      } else if (t === 'learn') a = of.find((x) => 'tech:' + x.tech === st.item) || null;
+      else if (t === 'use') a = of.find((x) => x.item === st.item) || null;
+      else if (t === 'cultivate') a = of.find((x) => x.until) || of.find((x) => !x.coin && x.days === 360) || of.find((x) => !x.coin);
+      else if (t === 'explore' || t === 'rest') a = of.slice().sort((x, y) => x.days - y.days)[0];
+      else if (t === 'breakthrough') a = of.find((x) => !x.path) || of[0];
+      else a = of[0];
+      if (!a) {
+        const what = { learn: '研习', use: '服用', cultivate: '修炼', explore: '游历', rest: '静养', breakthrough: '冲关', work: '营生' }[t] || t;
+        return no(what, t === 'work' ? '这里没有营生可做' : t === 'rest' ? '没有受伤' : t === 'breakthrough' ? '眼下没有关可冲' : t === 'learn' || t === 'use' ? '手里没有这样东西，或眼下用不了' : '此刻不能这样做');
+      }
+    }
+    if (!a) return no('行动', '此刻不能这样做');
+    const ch = /（(\d+)%）/.exec(a.label);
+    let chance = ch ? Number(ch[1]) : null;
+    if (a.type === 'consult') { const rel = P().relValue(s, p.id, a.npc); chance = Math.round(Math.max(40, Math.min(90, 40 + rel / 1.5))); }
+    const run = {};
+    for (const x of ['type', 'days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall', 'coin', 'until']) if (a[x] !== undefined) run[x] = a[x];
+    return { ok: a.ok, reason: a.reason, label: a.label, days: a.days || 0, cost: a.cost || 0, chance, run, warn: a.warn || '' };
+  };
+
+  /* ---------- 预览：在副本上一步步对 ---------- */
+  Intent.preview = (s, steps) => {
+    const v = JSON.parse(JSON.stringify(s));
+    const out = [];
+    let days = 0, cost = 0, ok = true;
+    for (const st of steps) {
+      const r = Intent.resolve(v, st);
+      out.push(r);
+      if (!r.ok) { ok = false; break; }
+      days += r.days || 0; cost += r.cost || 0;
+      // 只挪位置，不掷骰、不结算
+      if (r.go) me(v).locationId = st.to;
+      else if (r.run && r.run.type === 'travel') me(v).locationId = r.run.to;
+    }
+    return { ok, rows: out, days, cost };
+  };
+
+  /* ---------- 执行 ---------- */
+  // 一路赶到某地：按最短路一段段走，出事、走不通就停
+  Intent.travel = (s, to) => {
+    let legs = 0;
+    while (legs < 40) {
+      const p = me(s);
+      if (p.locationId === to) return { ok: true, legs };
+      const r = W().route(s, p.locationId, to, p);
+      if (!r || r.path.length < 2) return { ok: false, legs, why: '走不通' };
+      const a = Act().list(s).find((x) => x.type === 'travel' && x.to === r.path[1]);
+      if (!a || !a.ok) return { ok: false, legs, why: a ? a.reason : '此刻走不了' };
+      const res = Act().run(s, a);
+      if (!res.ok) return { ok: false, legs, why: res.error };
+      legs++;
+      if (s.pending.length || s.ended || res.interrupted) return { ok: me(s).locationId === to && !s.pending.length, legs, why: s.pending.length ? '路上出了事' : res.text || '路上出了变故', stop: true };
+    }
+    return { ok: false, legs, why: '路太远' };
+  };
+
+  // 逐步执行；返回 { done, texts, stopped }
+  Intent.exec = (s, plan) => {
+    const texts = [];
+    let done = 0, stopped = '';
+    Prop().record(s, 'intent', 'i:' + s.t + ':' + FX.U.hash(JSON.stringify(plan.steps) + (plan.input || '')), { input: plan.input || '', say: plan.say || '', steps: plan.steps, via: plan.via || 'match' });
+    for (const st of plan.steps) {
+      if (s.ended || s.pending.length) { stopped = s.ended ? '这一生已经结束' : '眼前有事要先决断'; break; }
+      const r = Intent.resolve(s, st);
+      if (!r.ok) { stopped = r.label + '：' + r.reason; break; }
+      if (r.skip) { done++; continue; }
+      if (r.go) {
+        const t = Intent.travel(s, st.to);
+        if (t.legs) texts.push('赶路 ' + t.legs + ' 段' + (t.ok ? '，到了' + s.places[st.to].name : ''));
+        if (!t.ok || t.stop) { stopped = t.why; if (t.ok) done++; break; }
+        done++;
+        continue;
+      }
+      const res = Act().run(s, r.run);
+      if (!res.ok) { stopped = res.error; break; }
+      done++;
+      if (res.text) texts.push(res.text);
+      if (res.interrupted) { stopped = '中途出了变故'; break; }
+    }
+    if (!stopped && done < plan.steps.length) stopped = '没走完';
+    return { done, total: plan.steps.length, texts, stopped };
+  };
+
+  /* ---------- 没有 AI：按关键词匹配 ---------- */
+  const has = (t, re) => re.test(t);
+  // 句子里提到的专名，长名先比
+  const mentions = (s, t) => {
+    const p = me(s);
+    const ppl = Object.values(s.people).filter((q) => q.id !== p.id && q.name && q.name.length >= 2 && t.includes(q.name))
+      .sort((a, b) => (P().alive(b) - P().alive(a)) || (b.locationId === p.locationId) - (a.locationId === p.locationId) || Math.abs(P().relValue(s, p.id, b.id)) - Math.abs(P().relValue(s, p.id, a.id)));
+    const places = Object.values(s.places).filter((x) => x.name && t.includes(x.name)).sort((a, b) => b.name.length - a.name.length);
+    const items = [];
+    for (const k of Object.keys(C().items)) { const n = C().items[k].name; if (n && n.length >= 2 && t.includes(n)) items.push(k); }
+    for (const k of Object.keys(C().techniques)) { const n = C().techniques[k].name; if (n && n.length >= 2 && t.includes(n)) items.push('tech:' + k); }
+    return { q: ppl[0] || null, place: places[0] || null, item: items.sort((a, b) => W().itemName(b).length - W().itemName(a).length)[0] || null };
+  };
+  Intent.match = (s, text) => {
+    const t = String(text || '');
+    const p = me(s);
+    const m = mentions(s, t);
+    const q = m.q && P().alive(m.q) ? m.q : null;
+    const cands = [];
+    const add = (say, steps) => cands.push({ say, steps, via: 'match', input: t });
+    const toQ = (steps) => (q && q.locationId !== p.locationId ? [{ k: 'go', to: q.locationId }].concat(steps) : steps);
+    const dd = (a) => ({ k: 'deed', a: Object.assign({ type: 'deed' }, a) });
+    const it = m.item && !m.item.startsWith('tech:') ? m.item : null;
+    if (q) {
+      const nm = q.name;
+      if (has(t, /切磋|比试|较量/)) add('与' + nm + '切磋', toQ([dd({ verb: 'fight', npc: q.id, mode: 'spar' })]));
+      if (has(t, /抢|劫|夺/)) add('抢夺' + nm, toQ([dd({ verb: 'fight', npc: q.id, mode: 'rob' })]));
+      if (has(t, /赴约|约战之期/)) add('赴约与' + nm + '斗法', toQ([dd({ verb: 'fight', npc: q.id, mode: 'duel' })]));
+      if (has(t, /跟踪|跟着|尾随|偷听|潜入|盯着|摸清/)) add('暗中跟着' + nm, toQ([dd({ verb: 'sneak', npc: q.id })]));
+      if (has(t, /结拜|结义|兄弟|姊妹|姐妹/)) add('与' + nm + '结拜', toQ([dd({ verb: 'pact', npc: q.id, kind: 'sworn' })]));
+      if (has(t, /约战|再战|年后/)) add('与' + nm + '约战', toQ([dd({ verb: 'pact', npc: q.id, kind: 'duel' })]));
+      if (has(t, /借/)) add('向' + nm + '借符钱', toQ([dd({ verb: 'trade', npc: q.id, aim: 'borrow' })]));
+      if (has(t, /卖|换钱|出手/) && it) add('把' + W().itemName(it) + '让给' + nm, toQ([dd({ verb: 'trade', npc: q.id, aim: 'sell', item: it })]));
+      if (has(t, /帮|助|护法|出力|寻药/)) add('替' + nm + '出力', toQ([dd({ verb: 'help', npc: q.id })]));
+      if (has(t, /赔礼|道歉|赔罪|和解/)) add('向' + nm + '赔礼', toQ([dd(Object.assign({ verb: 'talk', npc: q.id, aim: 'apologize' }, it ? { gift: it } : {}))]));
+      if (has(t, /请教|指点|讨教/)) add('向' + nm + '请教', toQ([{ k: 'do', type: 'consult', npc: q.id }]));
+      if (has(t, /打听|问|消息|下落/)) add('向' + nm + '打听', toQ([dd(Object.assign({ verb: 'talk', npc: q.id, aim: 'ask' }, m.item && it ? { topic: 'item', item: it } : { topic: has(t, /卡|缺|下一步/) ? 'way' : 'rumor' }))]));
+      if (has(t, /送|赠|礼/) && it) add('把' + W().itemName(it) + '送给' + nm, toQ([dd({ verb: 'talk', npc: q.id, aim: 'chat', gift: it })]));
+      if (!cands.length) {
+        add('拜访' + nm, toQ([{ k: 'do', type: 'befriend', npc: q.id }]));
+        add('与' + nm + '叙话', toQ([dd({ verb: 'talk', npc: q.id, aim: 'chat' })]));
+      }
+      if (q.locationId !== p.locationId) add('先赶到' + s.places[q.locationId].name + '找' + nm, [{ k: 'go', to: q.locationId }]);
+    } else if (m.q) add('打听' + m.q.name + '的下落', [dd({ verb: 'inquire', topic: 'person', npc: m.q.id })]);
+    if (m.item) {
+      const nm = W().itemName(m.item);
+      if (has(t, /买|购|入手/)) add('买' + nm, [{ k: 'do', type: 'buy', item: m.item }]);
+      if (has(t, /卖/) && !q) add('卖掉' + nm, [{ k: 'do', type: 'sell', item: m.item }]);
+      if (has(t, /服|吃|用/)) add('服用' + nm, [{ k: 'do', type: 'use', item: m.item }]);
+      if (has(t, /研习|修习|学|参悟/) && m.item.startsWith('tech:')) add('研习' + nm, [{ k: 'do', type: 'learn', item: m.item }]);
+      if (it) add('打听' + nm + '哪里有', (m.place && m.place.id !== p.locationId ? [{ k: 'go', to: m.place.id }] : []).concat([dd({ verb: 'inquire', topic: 'item', item: it })]));
+    }
+    if (m.place && m.place.id !== p.locationId) {
+      const tail = has(t, /游历|历练|逛/) ? [{ k: 'do', type: 'explore' }] : has(t, /打工|营生|差事|挣/) ? [{ k: 'do', type: 'work' }] : has(t, /闭关|修炼/) ? [{ k: 'do', type: 'cultivate' }] : [];
+      add('前往' + m.place.name, [{ k: 'go', to: m.place.id }].concat(tail));
+      if (has(t, /打听|情形|怎样|如何/)) add('打听' + m.place.name + '的情形', [dd({ verb: 'inquire', topic: 'place', place: m.place.id })]);
+    }
+    if (has(t, /冲关|突破|筑基|紫府|金丹|元神/)) add('冲关', [{ k: 'do', type: 'breakthrough' }]);
+    if (has(t, /闭关|修炼|打坐|吐纳/)) add('闭关修炼', [{ k: 'do', type: 'cultivate' }]);
+    if (has(t, /游历|历练|逛逛|转转|走走/)) add('在此地游历', [{ k: 'do', type: 'explore' }]);
+    if (has(t, /打工|营生|差事|挣钱|赚钱|干活/)) add('做营生挣符钱', [{ k: 'do', type: 'work' }]);
+    if (has(t, /养伤|静养|疗伤/)) add('静养', [{ k: 'do', type: 'rest' }]);
+    if (has(t, /卡|缺|下一步|怎么办|去哪/)) add('打听眼下卡关的来路', [dd({ verb: 'inquire', topic: 'way' })]);
+    if (has(t, /打听|传闻|消息|新鲜事/) && !q && !m.item) add('在此地打听近来的传闻', [dd({ verb: 'inquire', topic: 'rumor' })]);
+    // 去重，先放走得通的
+    const seen = new Set();
+    const out = [];
+    for (const c of cands) {
+      const k = JSON.stringify(c.steps);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      c.check = Intent.preview(s, c.steps);
+      out.push(c);
+    }
+    out.sort((a, b) => b.check.ok - a.check.ok);
+    return out.slice(0, 3);
+  };
+
+  FX.Intent = Intent;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---------- core/save.js ---------- */
@@ -6339,6 +7147,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
       narrations: (s) => FX.Prop.narrations(s),
       mark: (s) => 'h' + s.nextHistId,
     },
+    // 自由输入：AI 提案的打包与校验、没有 AI 时的关键词匹配、预览与执行（见 intent.js）
+    intent: {
+      job: (s, text) => FX.Intent.job(s, text),
+      parse: (s, job, raw) => FX.Intent.parse(s, job, raw),
+      match: (s, text) => FX.Intent.match(s, text),
+      preview: (s, steps) => FX.Intent.preview(s, steps),
+      exec: (s, plan) => { const r = FX.Intent.exec(s, plan); FX.Sim.checkEnd(s); return r; },
+    },
   };
 
   FX.Game = Game;
@@ -6585,7 +7401,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 
   const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
-  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接' };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '还没调用过';
@@ -6594,7 +7410,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   /* ---------- 底层调用 ---------- */
   // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
-  AI.call = async (kind, messages, maxTokens) => {
+  AI.call = async (kind, messages, maxTokens, timeoutMs) => {
     const r = AI.ready();
     if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
     const c = AI.config();
@@ -6603,7 +7419,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     let timer = null;
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     try {
-      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, c.timeoutMs); });
+      const ms = timeoutMs || c.timeoutMs;
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, ms); });
       const req = AI.env.fetch(c.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
@@ -6624,7 +7441,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       setStatus(kind, true);
       return { ok: true, text: text.trim() };
     } catch (e) {
-      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil(c.timeoutMs / 1000) + ' 秒）' : '网络错误';
+      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil((timeoutMs || c.timeoutMs) / 1000) + ' 秒）' : '网络错误';
       setStatus(kind, false, reason);
       return { ok: false, reason };
     } finally {
@@ -6683,6 +7500,23 @@ button.wide { width: 100%; margin-bottom: .6em; }
   // 生平：写一篇小传（玩家点了才写）
   AI.life = (s) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'life')) : Promise.resolve(null));
   AI.lifeKey = (s) => { const j = FX.Game.ai.job(s, 'life'); return j ? j.key : null; };
+
+  // 自由输入：理解玩家的一句话。玩家在等，至多等 8 秒；不行就交给关键词匹配
+  // 返回 { ok:true, plan } | { ok:true, ask } | { ok:true, cannot } | { ok:false, reason }
+  AI.intentTimeoutMs = 8000;
+  AI.intent = async (s, text) => {
+    const r = AI.ready();
+    if (!r.ok) return { ok: false, reason: r.reason };
+    const job = FX.Game.intent.job(s, text);
+    const res = await AI.call('intent', job.messages, job.maxTokens, Math.min(AI.intentTimeoutMs, AI.config().timeoutMs));
+    if (!res.ok) { notify(); return { ok: false, reason: res.reason }; }
+    const v = FX.Game.intent.parse(s, job, res.text);
+    if (!v.ok) { setStatus('intent', false, '校验没过：' + v.why); reject('intent', v.why, res.text); notify(); return { ok: false, reason: 'AI 的理解不合规（' + v.why + '）' }; }
+    notify();
+    if (v.ask) return { ok: true, ask: v.ask };
+    if (v.cannot) return { ok: true, cannot: v.cannot };
+    return { ok: true, plan: { say: v.say, steps: v.steps, via: 'ai', input: job.input } };
+  };
 
   AI.testConnection = async () => {
     return AI.call('test', [{ role: 'user', content: '请只回复：通' }], 5);
@@ -7036,7 +7870,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
       if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
     }
     const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
+    // 自由输入：说一句想做什么，先看预览再照做
+    const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
+    const sayBox = disabled ? '' : `<div class="say-box"><div class="row say-row"><input id="say-in" type="text" maxlength="200" enterkeyhint="go" autocomplete="off" placeholder="想做什么，直接说（如：去坊市打听丹母砂哪里有）" value="${esc(UI.sayText || '')}" ${UI.sayBusy ? 'disabled' : ''}><button class="primary" data-act="say" ${UI.sayBusy ? 'disabled' : ''}>${UI.sayBusy ? 'AI 理解中…' : '说'}</button></div><div class="muted small">${aiReady ? 'AI 理解你的话，拆成规则认得的几步，先给你看再做' : 'AI 没开，按地名、人名、物名找最像的几种做法'}</div></div>`;
     const actCard = `<div class="card acts"><h3>做什么</h3>${disabled ? `<p class="warn">眼前的事要先处理。 ${s.pending.length ? '<button class="link" data-act="openEvent">去处理</button>' : ''}</p>` : ''}
+        ${sayBox}
         ${sagaMini}
         ${big.length ? `<div class="act-group"><span class="warn">大事</span><div class="row">${big.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div></div>` : ''}
         ${tabs.length > 1 ? `<div class="row tabs acts-tabs">${tabs.map((g) => { const n = listOf(g).filter((a) => a.ok).length; return `<button class="${g === tab ? 'on' : ''}" data-act="subTab" data-key="actTab" data-k="${g}">${g}${g !== tab && n ? ' <span class="muted small">' + n + '</span>' : ''}</button>`; }).join('')}</div>` : ''}
@@ -7651,6 +8489,31 @@ button.wide { width: 100%; margin-bottom: .6em; }
       return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
         ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
     },
+    // 自由输入的预览：每步的耗时、花费、成功率由规则算；确认后才结算
+    intent(m) {
+      const s = UI.s;
+      const num = '①②③④⑤';
+      const plans = m.plans || [];
+      const row = (r, i) => {
+        const bits = [];
+        if (r.days) bits.push(T.dur(r.days));
+        if (r.cost) bits.push('花 ' + n0(r.cost) + ' 符钱');
+        if (r.chance !== null && r.chance !== undefined) bits.push('成功率 ' + r.chance + '%');
+        return `<div class="${r.ok ? '' : 'bad'}">${num[i] || i + 1} ${esc(r.label || '')}${bits.length ? ' <span class="muted small">· ' + esc(bits.join(' · ')) + '</span>' : ''}${r.ok ? '' : '<br><span class="small">做不到：' + esc(r.reason || '') + '</span>'}${r.ok && (r.gain || r.risk) ? `<br><span class="muted small">${esc([r.gain, r.risk].filter(Boolean).join('；'))}</span>` : ''}${r.warn ? `<br><span class="warn small">${esc(r.warn)}</span>` : ''}</div>`;
+      };
+      const card = (pl, i) => {
+        const c = pl.check;
+        return `<div class="card intent-plan${i === 0 && c.ok ? ' hl' : ''}"><b>${esc(pl.say || '这样做')}</b>${pl.via === 'ai' ? ' <span class="muted small">AI 的理解</span>' : ''}
+          <div class="intent-steps">${c.rows.map(row).join('')}</div>
+          ${c.ok ? `<div class="row between"><span class="muted small">${c.days ? '共约 ' + esc(T.dur(c.days)) : ''}${c.cost ? ' · 花 ' + n0(c.cost) + ' 符钱' : ''}${c.rows.length > 1 ? ' · 路上出事就停' : ''}</span><button class="primary" data-act="intentGo" data-i="${i}">照做</button></div>` : ''}</div>`;
+      };
+      return `<div class="row between"><h2>你说</h2><button data-act="close">✕</button></div>
+        <p class="say-quote">“${esc(m.input)}”</p>
+        ${m.note ? `<p class="${m.noteCls || 'muted'}">${esc(m.note)}</p>` : ''}
+        ${plans.map(card).join('')}
+        ${!plans.length ? '<p class="muted">没找到对得上的做法。换个说法试试，提到具体的人名、地名或东西更好认。</p>' : ''}
+        <div class="row"><button data-act="close" autofocus>换个说法</button></div>`;
+    },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
     },
@@ -7747,6 +8610,42 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;
       pushModal({ type: 'confirm', title: a.label, text: '这一步回不了头，确定吗？', onYes: () => { const r = Game.act(UI.s, a); toast(r.ok ? r.text || '已办' : '✗ ' + r.error); if (r.ok) afterAction(); } });
+    },
+    // 自由输入：先问 AI（至多 8 秒），不行就按关键词匹配
+    async say() {
+      const s = UI.s;
+      const inp = $('#say-in');
+      const text = ((inp && inp.value) || UI.sayText || '').trim();
+      UI.sayText = text;
+      if (!text) { toast('先写一句想做什么'); return; }
+      if (!s || s.ended || s.pending.length || UI.sayBusy) return;
+      const local = () => Game.intent.match(s, text);
+      const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
+      const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
+      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      UI.sayBusy = true; render();
+      let r;
+      try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }
+      UI.sayBusy = false;
+      if (UI.s !== s || s.pending.length) { render(); return; }
+      if (r.ok && r.plan) {
+        const pl = withCheck(r.plan);
+        // AI 的拆法走不通时，把关键词匹配的几种也列出来
+        pushModal({ type: 'intent', input: text, plans: pl.check.ok ? [pl] : [pl].concat(local().filter((c) => c.check.ok).slice(0, 2)) });
+      } else if (r.ok && r.ask) pushModal({ type: 'intent', input: text, note: 'AI 想问清楚：' + r.ask, noteCls: 'warn', plans: local() });
+      else if (r.ok && r.cannot) pushModal({ type: 'intent', input: text, note: '做不到：' + r.cannot, noteCls: 'bad', plans: local() });
+      else pushModal({ type: 'intent', input: text, note: 'AI 没接上（' + (r.reason || '未知') + '），先按字面找了几种做法。', plans: local() });
+    },
+    intentGo(d) {
+      const m = UI.modals[UI.modals.length - 1];
+      const pl = m && m.plans && m.plans[Number(d.i)];
+      if (!pl) return;
+      UI.modals.pop();
+      const r = Game.intent.exec(UI.s, pl);
+      UI.sayText = '';
+      const msg = r.texts.join('；') || (r.done ? '办完了' : '');
+      toast((r.stopped ? (r.done ? '做了 ' + r.done + '/' + r.total + ' 步，停下：' + r.stopped : '✗ ' + r.stopped) + (msg ? '。' + msg : '') : msg), 5000);
+      afterAction();
     },
     doN(d) {
       const a = Game.actions(UI.s)[Number(d.i)];
@@ -7846,8 +8745,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
+  // 输入框里的字在重画时不丢
+  document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'say-in') UI.sayText = ev.target.value; });
   document.addEventListener('keydown', (ev) => {
     const m = UI.modals[UI.modals.length - 1];
+    if (!m && ev.key === 'Enter' && ev.target && ev.target.id === 'say-in' && !ev.isComposing) { ev.preventDefault(); ACT.say(); return; }
     if (!m) {
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset && ['pickOrigin', 'place'].includes(ev.target.dataset.act)) { ev.preventDefault(); ACT[ev.target.dataset.act](ev.target.dataset); }
       return;
