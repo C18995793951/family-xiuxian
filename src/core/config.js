@@ -193,7 +193,7 @@
       qiju: { name: '聚气丹', price: 30, desc: '服用后三个月修炼速度 +30%' },
       heal: { name: '疗伤丹', price: 20, desc: '加快伤势恢复' },
       zhuji: { name: '筑基丹', price: 420, desc: '冲击筑基时成功率 +25%，没有则 −25%' },
-      ningdan: { name: '凝丹灵物', price: 2400, desc: '冲击金丹必需' },
+      ningdan: { name: '凝丹灵物', price: 2400, desc: '结金丹的必需之物，冲关时耗掉一份，成功率 +20%。只在坊市、宗门的货架上偶尔出现（每年换货），约 2400 灵石' },
       yanshou: { name: '延寿丹', price: 900, desc: '寿元 +10 年（每人至多 3 颗，效果递减）' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
       rareHerb: { name: '稀有灵药', price: 60, desc: '难得的灵药，可卖钱' },

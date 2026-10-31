@@ -178,6 +178,7 @@
       ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>冲击${esc(bt.target)}</h3>
         <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死</span>` : ''} · 需 ${T.dur(bt.days)}</p>
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
+        <div class="reqs">${FX.CU.requirements(s, me).map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>
         ${bt.can.ok ? '' : `<p class="bad">暂不能冲关：${esc(bt.can.reason)}</p>`}</div>` : ''}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
         ${['修炼', '外出', '营生', '物品'].map((g) => grp(g).length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${grp(g).map(btn).join('')}</div></div>` : '').join('')}

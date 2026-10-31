@@ -140,6 +140,7 @@ svg.map .pname { fill: var(--text); font-size: 12px; text-anchor: middle; }
 .t-clan circle, .legend.t-clan { fill: #5b9a85; color: #5b9a85; }
 .t-wild circle, .legend.t-wild { fill: #8a7a5a; color: #8a7a5a; }
 .t-danger circle, .legend.t-danger { fill: #b5412f; color: #b5412f; }
+.reqs { margin: .4em 0; display: grid; gap: .15em; }
 .mtop { display: none; }
 @media (max-width: 720px) { .mtop { display: block; color: var(--muted); font-size: .9em; margin-bottom: .6em; } }
 label { display: inline-flex; gap: .4em; align-items: center; }

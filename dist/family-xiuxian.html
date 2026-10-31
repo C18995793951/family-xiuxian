@@ -147,6 +147,7 @@ svg.map .pname { fill: var(--text); font-size: 12px; text-anchor: middle; }
 .t-clan circle, .legend.t-clan { fill: #5b9a85; color: #5b9a85; }
 .t-wild circle, .legend.t-wild { fill: #8a7a5a; color: #8a7a5a; }
 .t-danger circle, .legend.t-danger { fill: #b5412f; color: #b5412f; }
+.reqs { margin: .4em 0; display: grid; gap: .15em; }
 .mtop { display: none; }
 @media (max-width: 720px) { .mtop { display: block; color: var(--muted); font-size: .9em; margin-bottom: .6em; } }
 label { display: inline-flex; gap: .4em; align-items: center; }
@@ -353,7 +354,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       qiju: { name: '聚气丹', price: 30, desc: '服用后三个月修炼速度 +30%' },
       heal: { name: '疗伤丹', price: 20, desc: '加快伤势恢复' },
       zhuji: { name: '筑基丹', price: 420, desc: '冲击筑基时成功率 +25%，没有则 −25%' },
-      ningdan: { name: '凝丹灵物', price: 2400, desc: '冲击金丹必需' },
+      ningdan: { name: '凝丹灵物', price: 2400, desc: '结金丹的必需之物，冲关时耗掉一份，成功率 +20%。只在坊市、宗门的货架上偶尔出现（每年换货），约 2400 灵石' },
       yanshou: { name: '延寿丹', price: 900, desc: '寿元 +10 年（每人至多 3 颗，效果递减）' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
       rareHerb: { name: '稀有灵药', price: 60, desc: '难得的灵药，可卖钱' },
@@ -1072,9 +1073,27 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (k === 'jindan') {
       if (t.capMajor === 2) return { ok: false, reason: t.name + '残缺，无法冲击金丹' };
       if (CU.qiFor(s, p) < C().breakthrough.jindan.minQi) return { ok: false, reason: '需在灵气 ' + C().breakthrough.jindan.minQi + ' 级以上之地结丹' };
-      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物' };
+      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物（结丹必需，坊市偶有出售，约 2400 灵石）' };
     }
     return { ok: true, kind: k };
+  };
+
+  // 冲关的前置条件清单（界面逐条打勾）
+  CU.requirements = (s, p) => {
+    const k = CU.gateKind(p);
+    if (!k) return [];
+    const B = C().breakthrough;
+    const out = [{ label: '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
+    if (k === 'zhuji') out.push({ label: '筑基丹（可选：有则 +' + B.zhuji.pill + '%，没有则 −' + B.zhuji.noPillPenalty + '%）', ok: P().isPlayer(s, p) && s.player.inv.zhuji > 0, optional: true, note: '坊市稀有货，约 ' + C().items.zhuji.price + ' 灵石' });
+    if (k === 'jindan') {
+      const t = P().techOf(s, p);
+      out.push({ label: '功法能通往金丹', ok: t.capMajor !== 2, note: t.capMajor === 2 ? '《' + t.name + '》是残卷，止步筑基' : '' });
+      out.push({ label: '在灵气 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '凝丹灵物', ok: P().isPlayer(s, p) && s.player.inv.ningdan > 0, note: '坊市、宗门偶有出售，约 ' + C().items.ningdan.price + ' 灵石' });
+    }
+    out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
+    if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
+    return out;
   };
 
   // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有筑基丹
@@ -1094,7 +1113,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       if (hasPill) parts.push({ label: '服用筑基丹', value: B.zhuji.pill });
       else parts.push({ label: '无筑基丹', value: -B.zhuji.noPillPenalty });
     }
-    if (k === 'jindan') parts.push({ label: '凝丹灵物', value: B.jindan.pill });
+    if (k === 'jindan' && (!P().isPlayer(s, p) || inv(s, p).ningdan > 0)) parts.push({ label: '凝丹灵物', value: B.jindan.pill });
     const qi = CU.qiFor(s, p);
     if (qi >= B.qiBonusMin) parts.push({ label: '灵气 ' + qi + ' 级之地', value: B.qiBonus });
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
@@ -2843,6 +2862,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>冲击${esc(bt.target)}</h3>
         <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死</span>` : ''} · 需 ${T.dur(bt.days)}</p>
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
+        <div class="reqs">${FX.CU.requirements(s, me).map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>
         ${bt.can.ok ? '' : `<p class="bad">暂不能冲关：${esc(bt.can.reason)}</p>`}</div>` : ''}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
         ${['修炼', '外出', '营生', '物品'].map((g) => grp(g).length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${grp(g).map(btn).join('')}</div></div>` : '').join('')}

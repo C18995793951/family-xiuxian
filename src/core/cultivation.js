@@ -119,9 +119,27 @@
     if (k === 'jindan') {
       if (t.capMajor === 2) return { ok: false, reason: t.name + '残缺，无法冲击金丹' };
       if (CU.qiFor(s, p) < C().breakthrough.jindan.minQi) return { ok: false, reason: '需在灵气 ' + C().breakthrough.jindan.minQi + ' 级以上之地结丹' };
-      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物' };
+      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物（结丹必需，坊市偶有出售，约 2400 灵石）' };
     }
     return { ok: true, kind: k };
+  };
+
+  // 冲关的前置条件清单（界面逐条打勾）
+  CU.requirements = (s, p) => {
+    const k = CU.gateKind(p);
+    if (!k) return [];
+    const B = C().breakthrough;
+    const out = [{ label: '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
+    if (k === 'zhuji') out.push({ label: '筑基丹（可选：有则 +' + B.zhuji.pill + '%，没有则 −' + B.zhuji.noPillPenalty + '%）', ok: P().isPlayer(s, p) && s.player.inv.zhuji > 0, optional: true, note: '坊市稀有货，约 ' + C().items.zhuji.price + ' 灵石' });
+    if (k === 'jindan') {
+      const t = P().techOf(s, p);
+      out.push({ label: '功法能通往金丹', ok: t.capMajor !== 2, note: t.capMajor === 2 ? '《' + t.name + '》是残卷，止步筑基' : '' });
+      out.push({ label: '在灵气 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '凝丹灵物', ok: P().isPlayer(s, p) && s.player.inv.ningdan > 0, note: '坊市、宗门偶有出售，约 ' + C().items.ningdan.price + ' 灵石' });
+    }
+    out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
+    if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
+    return out;
   };
 
   // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有筑基丹
@@ -141,7 +159,7 @@
       if (hasPill) parts.push({ label: '服用筑基丹', value: B.zhuji.pill });
       else parts.push({ label: '无筑基丹', value: -B.zhuji.noPillPenalty });
     }
-    if (k === 'jindan') parts.push({ label: '凝丹灵物', value: B.jindan.pill });
+    if (k === 'jindan' && (!P().isPlayer(s, p) || inv(s, p).ningdan > 0)) parts.push({ label: '凝丹灵物', value: B.jindan.pill });
     const qi = CU.qiFor(s, p);
     if (qi >= B.qiBonusMin) parts.push({ label: '灵气 ' + qi + ' 级之地', value: B.qiBonus });
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
