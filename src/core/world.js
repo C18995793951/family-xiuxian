@@ -235,6 +235,7 @@
     if (realm.major === 5) age = Math.max(age, R.int(r, 150, 320));
     if (realm.major === 6) age = Math.max(age, R.int(r, 300, 900));
     if (realm.major === 7) age = Math.max(age, R.int(r, 900, 2200));
+    if (realm.major === 7) age = Math.max(age, 900 + realm.stage * R.int(r, 40, 110));
     if (realm.major === 8) age = Math.max(age, R.int(r, 2500, 5000));
     return Math.min(age, life - R.int(r, 3, 25));
   };
@@ -248,8 +249,8 @@
     sect2_leader: RM(6, 1, 2),
     sect2_elder: (r) => (R.chance(r, 0.4) ? RM(5, 1, 2)(r) : RM(4, 1, 3)(r)),
     sect2_member: (r) => (R.chance(r, 0.12) ? RM(3, 1, 2)(r) : L(R.int(r, 2, 9))),
-    // 八派六宗：掌门元神，长老金丹，门人多是筑基、紫府
-    sect3_leader: RM(7, 1, 1),
+    // 八派六宗：掌门元神（多已破了好几重障关），长老金丹，门人多是筑基、紫府
+    sect3_leader: RM(7, 4, 10),
     sect3_elder: (r) => (R.chance(r, 0.6) ? RM(6, 1, 3)(r) : RM(5, 2, 3)(r)),
     sect3_member: (r) => (R.chance(r, 0.1) ? RM(6, 1, 2)(r) : R.chance(r, 0.3) ? RM(4, 1, 3)(r) : R.chance(r, 0.6) ? RM(3, 1, 3)(r) : L(R.int(r, 6, 9))),
     clan_leader: RM(3, 1, 2),

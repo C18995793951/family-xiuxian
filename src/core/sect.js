@@ -27,7 +27,7 @@
   Sect.hasHouse = (f) => !!f && (f.type === 'sect' || f.type === 'clan');
   Sect.mine = (s) => { const p = me(s); const f = p.factionId ? s.factions[p.factionId] : null; return Sect.hasHouse(f) ? f : null; };
   Sect.library = (f) => Sect.def(f).library || [];
-  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : (!x.minTier || f.tier >= x.minTier) && (!x.only || x.only === f.key)));
+  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : (!x.minTier || f.tier >= x.minTier) && (!x.only || [].concat(x.only).includes(f.key))));
   Sect.atSeat = (s, f) => me(s).locationId === f.seatId;
   Sect.awayReason = (s, f) => '要回到' + s.places[f.seatId].name + '才能办';
   Sect.taskMerit = (p) => HS().taskMerit[p.realm.major] || 0;

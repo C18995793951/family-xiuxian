@@ -89,11 +89,14 @@
 
   CU.updateLifespan = (s, p) => { p.lifespanMax = P().lifespanMaxFor(p.realm.major, p.realm.stage); };
 
+  // 返虚这一段修满时有没有一关（按所选道途；第十三段修满是纯阳三灾的风灾）
+  CU.isFanxuGate = (p) => p.realm.major === 8 && (p.realm.stage >= C().realms.maxStage[8] || P().fanxuPath(p).gates.includes(p.realm.stage));
   // 修为封顶（到了要冲关、或缺练炁术的地方）
   CU.capped = (p) => {
     const m = p.realm.major;
     if (m === 1) return !P().lianqiOf(p);
     if (m === 2) return p.realm.stage === 9;
+    if (m === 8) return CU.isFanxuGate(p);
     return true;
   };
 
@@ -115,6 +118,13 @@
       n++;
       if (isPlayer) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'realm_up', params: { name: p.name, realm: P().realmName(p) }, severity: 2, pov: true });
     }
+    // 返虚：九等轮转、玄中三限两途，没有劫关的那几段修满便自然接续
+    while (p.realm.major === 8 && !CU.isFanxuGate(p) && p.progress >= P().need(p) && n < 20) {
+      p.progress -= P().need(p);
+      p.realm.stage++;
+      CU.updateLifespan(s, p);
+      n++;
+    }
     const rk = P().realmRank(p);
     if (rk > p.peakRank) p.peakRank = rk;
     return n;
@@ -124,8 +134,8 @@
   CU.total = (p) => {
     const cf = C().realms;
     let b = 0;
-    for (let m = 0; m < p.realm.major; m++) for (const x of cf.need[m]) b += x;
-    for (let i = 0; i < p.realm.stage - 1; i++) b += cf.need[p.realm.major][i];
+    for (let m = 0; m < p.realm.major; m++) for (let st = 1; st <= cf.maxStage[m]; st++) b += P().needAt(p, m, st);
+    for (let st = 1; st < p.realm.stage; st++) b += P().needAt(p, p.realm.major, st);
     return b + p.progress;
   };
 
@@ -146,24 +156,58 @@
     if (m === 0) return 'taixi';
     if (m === 2 && st === 9) return 'zhuji';
     if (m >= 3 && m <= 6) return st < 3 ? 'minor' : ['zifu', 'dongxuan', 'jindan', 'yuanshen'][m - 3];
-    if (m === 7) return 'fanxu';
-    if (m === 8) return 'chunyang';
+    const ms = C().realms.maxStage;
+    if (m === 7) return st < ms[7] ? 'zhangguan' : 'fanxu';
+    if (m === 8) return st >= ms[8] ? 'chunyang' : CU.isFanxuGate(p) ? 'mizhang' : null;
     if (m === 9) return st < 3 ? 'sanzai' : 'hedao';
+    if (m === 10) return 'jiunan';
     return null;
   };
   const NEXT = { taixi: { major: 1, stage: 1 }, zhuji: { major: 3, stage: 1 }, zifu: { major: 4, stage: 1 }, dongxuan: { major: 5, stage: 1 }, jindan: { major: 6, stage: 1 }, yuanshen: { major: 7, stage: 1 }, fanxu: { major: 8, stage: 1 }, chunyang: { major: 9, stage: 1 }, hedao: { major: 10, stage: 1 } };
-  // 返虚以后每一关都要在自家洞天里冲
-  const IN_DONGTIAN = ['fanxu', 'chunyang', 'sanzai', 'hedao'];
+  // 返虚、渡劫、合道九难都要在自家洞天里；返虚破障另有灵脉的讲究（见 mizhangSite）
+  const IN_DONGTIAN = ['fanxu', 'chunyang', 'sanzai', 'hedao', 'jiunan'];
+  // 冲关的说法
+  const VERB = { taixi: '参悟', zhangguan: '坐关破', mizhang: '破', jiunan: '渡' };
+  // 返虚道途：冲返虚时要选的那一条（NPC 一律走十二迷障）
+  CU.pathOk = (s, p, key) => {
+    const fp = C().realms.fanxuPaths[key];
+    if (!fp) return { ok: false, reason: '没有这条道途' };
+    if (!P().isPlayer(s, p)) return { ok: key === 'shier', reason: key === 'shier' ? '' : '没有门路' };
+    if (fp.needItem && !(s.player.inv[fp.needItem] > 0)) return { ok: false, reason: '没有吃透' + C().items[fp.needItem].name + '（' + C().items[fp.needItem].where + '）' };
+    if (fp.minXiang && (p.xiang || 0) < fp.minXiang) return { ok: false, reason: '感悟不足：要' + C().realms.xiangNames[fp.minXiang] + '以上才敢试天考' };
+    return { ok: true, reason: '' };
+  };
+  // 返虚破障的灵脉：在自家洞天、或用得上的灵窟里；玉宸门人凭天谷符诏可进宵明大泽的天谷
+  CU.mizhangSite = (s, p) => {
+    const B = C().breakthrough.mizhang;
+    if (!P().isPlayer(s, p)) return { ok: true, mult: 1, chance: 0, label: '' };
+    const place = s.places[p.locationId];
+    const qi = CU.qiFor(s, p);
+    if (place && place.key === 'yuchen' && qi >= B.minQi && s.player.inv.tiangu > 0) return { ok: true, tiangu: true, mult: B.tiangu.death, chance: B.tiangu.chance, label: '宵明大泽天谷（先天奇府、太乙含真）' };
+    if (qi < B.minQi) return { ok: false, qi, mult: 1, chance: 0, label: '' };
+    const home = s.player.dongtian === p.locationId;
+    return { ok: true, mult: B.deathByQi[Math.min(7, qi)] || 1, chance: 0, label: home ? '自家洞天' : '灵机 ' + qi + ' 级的灵窟' };
+  };
   // 此人眼下要渡的是哪一灾（纯阳：返虚冲纯阳是风灾，纯阳一重渡火灾，二重渡雷灾）
   CU.zaiName = (p) => { const k = CU.gateKind(p); return k === 'chunyang' ? C().breakthrough.sanzaiNames[0] : k === 'sanzai' ? C().breakthrough.sanzaiNames[p.realm.stage] : ''; };
   // 元神的「地」、返虚的洞天
   CU.diNote = '大派山门（八派六宗各占一座灵窟，门人才用得上），或在鹤鸣山、九危山这样的六级无主福地开辟洞府';
-  CU.nextRealm = (p) => { const k = CU.gateKind(p); return k === 'minor' || k === 'sanzai' ? { major: p.realm.major, stage: p.realm.stage + 1 } : NEXT[k] || null; };
-  CU.targetName = (p) => {
+  CU.nextRealm = (p) => {
+    const k = CU.gateKind(p);
+    if (k === 'minor' || k === 'sanzai' || k === 'zhangguan' || k === 'mizhang') return { major: p.realm.major, stage: p.realm.stage + 1 };
+    if (k === 'jiunan') return p.realm.stage < C().realms.maxStage[10] ? { major: 10, stage: p.realm.stage + 1 } : { major: 11, stage: 1 };
+    // 给一份拷贝：境界对象之后会被原地改（小境界 +1），不能和常量表共用
+    return NEXT[k] ? Object.assign({}, NEXT[k]) : null;
+  };
+  CU.targetName = (p, path) => {
     const n = CU.nextRealm(p);
     if (!n) return '';
     const k = CU.gateKind(p);
     if (k === 'sanzai' || k === 'chunyang') return C().realms.names[n.major] + (k === 'sanzai' ? C().realms.stageNames[9][n.stage - 1] : '') + '（渡' + CU.zaiName(p) + '）';
+    if (k === 'zhangguan') return '元神第' + P().cn(n.stage) + '重障关';
+    if (k === 'mizhang') { const fp = P().fanxuPath(p), i = P().fanxuPassed(p) + 1; return '返虚第' + P().cn(i) + (fp.unit === '障' ? '重迷障' : fp.unit === '等' ? '等轮转' : '限天考'); }
+    if (k === 'jiunan') return '合道第' + P().cn(p.realm.stage) + '难';
+    if (k === 'fanxu') return '返虚' + (path ? '（' + C().realms.fanxuPaths[path].name + '）' : '');
     return k === 'minor' ? P().realmTitle({ realm: n }) : C().realms.names[n.major];
   };
   // 本重修到下一重需要的外药
@@ -180,6 +224,7 @@
     if (!k) {
       if (p.realm.major === 1) return { ok: false, reason: P().lianqiOf(p) ? '胎息壮大到头，便自然转入练炁' : '缺一门练炁术，胎息壮大到头也转不进练炁' };
       if (p.realm.major === 2) return { ok: false, reason: '练炁一至八层没有关隘，修满自动晋升' };
+      if (p.realm.major === 8) return { ok: false, reason: P().fanxuPath(p).name + '这一段没有劫关，修满自然接续' };
       return { ok: false, reason: '已到本版境界上限' };
     }
     if (!P().isFull(p)) return { ok: false, reason: (k === 'taixi' ? '气感尚浅' : '修为未圆满') + '（' + Math.floor(p.progress) + '/' + P().need(p) + '）' };
@@ -202,6 +247,11 @@
       if (!s.player.dongtian) return { ok: false, reason: (k === 'fanxu' ? '返虚' : '渡劫') + '要先在东海开辟一座洞天' };
       if (p.locationId !== s.player.dongtian) return { ok: false, reason: '要回到自家洞天里' + (k === 'fanxu' ? '冲关' : '渡劫') };
     }
+    if (k === 'fanxu') {
+      const po = CU.pathOk(s, p, (opts && opts.path) || 'shier');
+      if (!po.ok) return { ok: false, reason: po.reason };
+    }
+    if (k === 'mizhang' && !CU.mizhangSite(s, p).ok) return { ok: false, reason: '破障要以灵脉护住法躯：回自家洞天，或到你用得上的灵窟里（灵机 ' + B.mizhang.minQi + ' 级以上）' };
     return { ok: true, kind: k };
   };
 
@@ -240,6 +290,14 @@
       out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
       if (has('xudu')) out.push({ label: I.xudu.name + '（可选：+' + B.xuduPill + '%）', ok: true, optional: true, note: '丹元大会魁首所得' });
     }
+    if (k === 'zhangguan' && P().isPlayer(s, p)) out.push({ label: I.dadong.name + '（可选：服下助长感悟）', ok: has('dadong'), optional: true, note: '元神第一外药，修为 +本重所需的三成。' + I.dadong.where });
+    // 返虚三途在界面上单列（见 app.js 的 fanxuPaths），这里只提玄中三限的门槛
+    if (k === 'fanxu' && P().isPlayer(s, p)) { const po = CU.pathOk(s, p, 'sanxian'); out.push({ label: '可选「玄中三限」：' + I.xuanzhong.name + '，' + C().realms.xiangNames[C().realms.fanxuPaths.sanxian.minXiang] + '以上', ok: po.ok, optional: true, note: po.ok ? '' : po.reason }); }
+    if (k === 'mizhang') {
+      const site = CU.mizhangSite(s, p);
+      out.push({ label: '以灵脉护住法躯：自家洞天，或用得上的灵窟', ok: site.ok, note: site.ok ? site.label + (site.tiangu ? '，失道之祸大减' : '') : '此处你能借到 ' + CU.qiFor(s, p) + ' 级灵机' });
+      if (P().isPlayer(s, p) && p.factionId && s.factions[p.factionId] && s.factions[p.factionId].key === 'yuchen') out.push({ label: I.tiangu.name + '（可选：在宵明大泽破障）', ok: has('tiangu'), optional: true, note: I.tiangu.desc });
+    }
     if (IN_DONGTIAN.includes(k)) {
       const dt = P().isPlayer(s, p) && s.player.dongtian;
       out.push({ label: '一座自家洞天', ok: !!dt, note: dt ? '在' + s.places[dt].name : '元神真人可在东海开辟洞天，要 ' + C().dongtian.cost + ' 符钱、三年工夫' });
@@ -259,7 +317,12 @@
     const isPlayer = P().isPlayer(s, p);
     const parts = [];
     const cfg = B[k];
-    parts.push({ label: '基础成功率', value: cfg.base });
+    const path = k === 'fanxu' ? (opts && opts.path) || 'shier' : null;
+    const fp = P().fanxuPath(p);
+    const site = k === 'mizhang' ? CU.mizhangSite(s, p) : null;
+    if (k === 'zhangguan' || k === 'jiunan') parts.push({ label: '基础成功率（第' + P().cn(k === 'zhangguan' ? p.realm.stage + 1 : p.realm.stage) + (k === 'zhangguan' ? '重' : '难') + '）', value: cfg.base - cfg.perStage * (p.realm.stage - 1) });
+    else if (k === 'mizhang') parts.push({ label: '基础成功率（' + fp.name + '）', value: fp.base });
+    else parts.push({ label: '基础成功率', value: cfg.base });
     parts.push({ label: '资质 ' + p.aptitude, value: U.round1((p.aptitude - 50) * (cfg.aptFactor || B.aptitudeFactor)) });
     if (k === 'taixi') {
       if (p.nearDeathT !== null && s.t - p.nearDeathT <= cfg.lifeDeathYears * C().daysPerYear) parts.push({ label: '借生死得胎息', value: cfg.lifeDeath });
@@ -289,11 +352,13 @@
       hasXudu = isPlayer && inv(s, p).xudu > 0;
       if (hasXudu) parts.push({ label: '服下' + C().items.xudu.name, value: B.xuduPill });
     }
-    if (IN_DONGTIAN.includes(k) && p.xiang) parts.push({ label: P().xiangName(p), value: (p.xiang - 2) * C().realms.xiangBreak });
+    if ((IN_DONGTIAN.includes(k) || k === 'zhangguan' || k === 'mizhang') && p.xiang) parts.push({ label: P().xiangName(p), value: (p.xiang - 2) * C().realms.xiangBreak });
+    if (site && site.chance) parts.push({ label: site.label, value: site.chance });
     if (k === 'fanxu' && p.flags.includes('yanxi')) parts.push({ label: '得颜熙真君指点', value: C().saga.yanxi.fanxu });
     if (k === 'chunyang' || k === 'sanzai') {
       hasXudu = isPlayer && inv(s, p).xudu > 0;
       if (hasXudu) parts.push({ label: '服下' + C().items.xudu.name + '（天运青睐）', value: B.xuduZai });
+      if (fp.zai) parts.push({ label: '以' + fp.name + '证就返虚，劫力削减、天运垂青', value: fp.zai });
     }
     if (k !== 'taixi') {
       const qi = CU.qiFor(s, p);
@@ -310,8 +375,10 @@
     let total = parts.reduce((a, x) => a + x.value, 0);
     const max = k === 'minor' ? B.max : B.majorMax;
     total = U.clamp(total, B.min, max);
-    const death = cfg.deathChance || 0;
-    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, usesShen: hasShen, usesXudu: hasXudu, kaifu, days: cfg.days };
+    let death = cfg.deathChance || 0;
+    if (site) death = fp.death * site.mult;
+    if ((k === 'chunyang' || k === 'sanzai') && p.realm.major >= 8) death *= fp.zaiDeath;
+    return { kind: k, target: CU.targetName(p, opts && opts.path), verb: VERB[k] || '冲击', path, chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, usesShen: hasShen, usesXudu: hasXudu, usesTiangu: !!(site && site.tiangu), kaifu, days: cfg.days };
   };
 
   CU.attempt = (s, p, opts) => {
@@ -329,9 +396,10 @@
       if (ch.kind === 'jindan') s.player.inv.ningdan--;
       if (ch.usesShen) s.player.inv.dingshen--;
       if (ch.usesXudu) s.player.inv.xudu--;
+      if (ch.usesTiangu) s.player.inv.tiangu--;
     }
     const success = R.next(r) * 100 < ch.chance;
-    const res = { ok: true, success, chance: ch.chance, target, kind: ch.kind };
+    const res = { ok: true, success, chance: ch.chance, target, kind: ch.kind, verb: ch.verb };
     const causes = (opts && opts.causeIds) || [];
     const fac = P().factionName(s, p);
     const known = isPlayer || P().relValue(s, p.id, s.player.id) !== 0;
@@ -342,18 +410,30 @@
       if (ch.kind === 'minor' && p.realm.major === 5 && p.realm.stage === 2) p.jinhong = CU.jinhongFor(p, R.int(r, 0, 1));
       if (ch.kind === 'jindan') p.danPin = CU.danPinFor(p, R.int(r, 0, 2));
       if (ch.kind === 'yuanshen') p.xiang = CU.xiangFor(p, R.int(r, 0, 3));
-      p.progress = 0;
+      if (ch.kind === 'fanxu') p.fanxuPath = ch.path || 'shier';
+      // 小境界里的关：圆满多出来的那点修为接着用（元神障关、返虚破障、合道九难）
+      const carry = ch.kind === 'zhangguan' || ch.kind === 'mizhang' || ch.kind === 'jiunan' ? Math.max(0, p.progress - P().need(p)) : 0;
+      p.progress = carry;
       p.realm = next;
       p.fullDays = 0;
       p.failCount = 0;
+      // 成就元神时破开第一重障关、显化法相；极少数天骄感悟已足，能接连破开两道
+      const two = ch.kind === 'yuanshen' && R.chance(r, B.twoGates[p.xiang] || 0);
+      if (two) p.realm.stage = 2;
       CU.updateLifespan(s, p);
+      if (p.realm.major === 8) CU.autoAdvance(s, p);
       if (P().realmRank(p) > p.peakRank) p.peakRank = P().realmRank(p);
-      const extra = ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.kind === 'jindan' ? '，扛过了天罚，丹成' + P().danPinName(p) : ch.kind === 'yuanshen' ? '，扛过了天罚，凝出' + P().xiangName(p) : ch.kind === 'chunyang' ? '，渡过风灾，初成纯阳' : ch.kind === 'sanzai' ? '，渡过' + C().breakthrough.sanzaiNames[p.realm.stage - 1] : ch.kind === 'hedao' ? '，九难尽过，与道合真，成就道君，自此寿与天齐' : p.jinhong && p.realm.major === 5 && p.realm.stage === 3 ? '，凝成' + P().jinhongName(p) : ch.tianfa ? '，扛过了天罚' : '';
+      const extra = ch.kind === 'zhangguan' ? '，感悟已足，法力自然而动，粉碎了这一重障关；法力浑厚了一层，命寿也拔高一筹' + (p.realm.stage === C().realms.maxStage[7] ? '。十二重障关破尽，元神功满' : p.realm.stage === 6 ? '。元神之功已成其半' : '')
+        : ch.kind === 'fanxu' ? '，窥破返虚之谜，自判道途「' + P().fanxuPath(p).name + '」'
+        : ch.kind === 'mizhang' ? '，扛过了' + (ch.usesTiangu ? '（天谷护住法躯）' : '') + '心魔外魔，' + (p.realm.stage >= C().realms.maxStage[8] ? P().fanxuPath(p).name + '尽数过了，见得本来面目' + (p.fanxuPath === 'sanxian' ? '，从此是一尊御极子' : '') : '道行又进一步')
+        : ch.kind === 'jiunan' ? (p.realm.major === 11 ? '，九难尽过，道与身合，功成飞仙，仙业自显，自此寿与天齐' : '，又过一难，道与身合更深一层')
+        : ch.kind === 'yuanshen' && two ? '，扛过了天罚，凝出' + P().xiangName(p) + '，又借着感悟接连破开第二重障关'
+        : ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.kind === 'jindan' ? '，扛过了天罚，丹成' + P().danPinName(p) : ch.kind === 'yuanshen' ? '，扛过了天罚，凝出' + P().xiangName(p) : ch.kind === 'chunyang' ? '，渡过风灾，初成纯阳' : ch.kind === 'sanzai' ? '，渡过' + C().breakthrough.sanzaiNames[p.realm.stage - 1] : ch.kind === 'hedao' ? '，三灾渡尽，与道合真，成就道君；前头还有合道九难' : p.jinhong && p.realm.major === 5 && p.realm.stage === 3 ? '，凝成' + P().jinhongName(p) : ch.tianfa ? '，扛过了天罚' : '';
       if (isPlayer) {
         res.hid = H().add(s, {
           type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_ok' : 'break_ok', pov: true,
           params: { name: p.name, target: ch.kind === 'minor' ? target : P().realmTitle(p), chance: ch.chance, life: P().lifespanTotal(p), extra, ok: true },
-          severity: ch.kind === 'minor' ? 3 : 5, causeIds: causes,
+          severity: ch.kind === 'minor' ? 3 : ch.kind === 'zhangguan' || ch.kind === 'mizhang' ? 4 : 5, causeIds: causes,
         });
         H().markFirst(s, 'break_' + ch.kind, res.hid);
       } else if (ch.kind !== 'minor') {
@@ -374,7 +454,12 @@
       } else if (cfg.mild) {
         const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
         p.progress = Math.floor(p.progress * (1 - frac));
-        loss = '那一点气感又散了大半，只能从头再养';
+        loss = ch.kind === 'zhangguan' ? '感悟还欠一丝火候，这一回坐关没能破开障关，白耗了些感悟（修为 -' + Math.round(frac * 100) + '%），并无祸患' : '那一点气感又散了大半，只能从头再养';
+      } else if (ch.kind === 'mizhang') {
+        const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
+        p.progress = Math.floor(p.progress * (1 - frac));
+        P().injure(s, p, 'heavy');
+        loss = '为心魔外魔所趁，走火入魔：修为丧失 ' + Math.round(frac * 100) + '%，神智混沌，身受重伤';
       } else {
         const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
         p.progress = Math.floor(p.progress * (1 - frac));
@@ -388,7 +473,7 @@
         });
       }
       if (ch.death && R.chance(r, ch.death / 100)) {
-        P().kill(s, p, '冲击' + target + '失败' + (ch.tianfa ? '，殒于天罚' : ''), res.hid ? [res.hid] : [], { key: 'break' });
+        P().kill(s, p, ch.kind === 'mizhang' ? '破' + target + '时元灵迷失，沦为守尸之鬼（失道之祸）' : '冲击' + target + '失败' + (ch.tianfa ? '，殒于天罚' : ''), res.hid ? [res.hid] : [], { key: 'break' });
         res.died = true;
       }
     }

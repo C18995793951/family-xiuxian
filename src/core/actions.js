@@ -45,15 +45,19 @@
       add({ type: 'cultivate', coin: true, days: d, cost, label: '以符钱修行 ' + T().dur(d) + '（' + cost + ' 符钱）', group: '修炼', ok: s.player.stone >= cost, reason: s.player.stone >= cost ? '' : '符钱不够（需 ' + cost + '）' });
     }
     // 突破
-    const can = CU().canAttempt(s, p);
-    if (CU().gateKind(p)) {
-      const ch = CU().chance(s, p);
-      add({ type: 'breakthrough', days: ch.days, label: (ch.kind === 'taixi' ? '参悟胎息' : '冲击' + ch.target) + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
+    const gk = CU().gateKind(p);
+    // 返虚关隘前自判道途：三条各是一个选择
+    for (const path of gk === 'fanxu' ? cf.realms.fanxuPathOrder : [undefined]) {
+      if (!gk) break;
+      const can = CU().canAttempt(s, p, { path });
+      const ch = CU().chance(s, p, { path });
+      add({ type: 'breakthrough', path, days: ch.days, label: (ch.kind === 'taixi' ? '参悟胎息' : ch.verb + ch.target) + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
     }
     // 服药、研习练炁术
     for (const k of cf.usable) if (s.player.inv[k] > 0) {
       const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '再服已无效'
-        : k === 'zhengyang' && p.realm.major !== 6 ? '只对金丹真人有用' : k === 'zhengyang' && P().isFull(p) ? '丹力已经圆满，先冲关' : k === 'xudu' && p.realm.major < 7 ? '留着冲元神时服（冲关时自动服下）' : k === 'xudu' && P().isFull(p) ? '修为已经圆满' : '';
+        : k === 'zhengyang' && p.realm.major !== 6 ? '只对金丹真人有用' : k === 'zhengyang' && P().isFull(p) ? '丹力已经圆满，先冲关' : k === 'xudu' && p.realm.major < 7 ? '留着冲元神时服（冲关时自动服下）' : k === 'xudu' && P().isFull(p) ? '修为已经圆满'
+        : k === 'dadong' && p.realm.major !== 7 ? '是元神至药，只对元神真人有用' : k === 'dadong' && P().isFull(p) ? '感悟已足，先去破障关' : '';
       add({ type: 'use', item: k, days: 0, label: '服用' + cf.items[k].name, group: '物品', ok: !why, reason: why });
     }
     for (const t of s.player.manuals) {
@@ -105,7 +109,7 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
@@ -155,10 +159,11 @@
     const p = me(s);
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p) || s.pending.length) return { text: '闭关冲关途中出了变故', interrupted: true };
-    const res = CU().attempt(s, p);
+    const res = CU().attempt(s, p, { path: a.path });
     if (!res.ok) return { text: res.error };
     seek(s, res.success);
-    return { text: res.success ? `冲击${res.target}成功` : `冲击${res.target}失败${res.died ? '，身死道消' : ''}`, success: res.success, used: r.used };
+    const v = res.verb || '冲击';
+    return { text: res.success ? `${v}${res.target}成功` : `${v}${res.target}失败${res.died ? '，身死道消' : ''}`, success: res.success, used: r.used };
   };
 
   Act.DO.use = (s, a) => {
@@ -168,6 +173,7 @@
     if (a.item === 'qiju') { s.player.qijuUntil = Math.max(s.player.qijuUntil, s.t) + cf.cultivation.qijuDays; effect = '此后修炼加快，药力持续到 ' + T().fmt(s.player.qijuUntil); }
     else if (a.item === 'heal') { const healed = P().heal(p, cf.life.healPillDays); effect = healed ? '伤势痊愈' : '伤势好转，还需 ' + T().dur(p.health.days); }
     else if (a.item === 'zhengyang' || a.item === 'xudu') { const g = CU().addProgress(s, p, a.item === 'xudu' ? cf.xuduGain : cf.zhengyangGain); effect = '丹力推升，修为 +' + Math.round(g); }
+    else if (a.item === 'dadong') { const g = CU().addProgress(s, p, Math.round(P().need(p) * cf.dadongFrac)); effect = '感悟元神之妙，修为 +' + Math.round(g); }
     else { const y = cf.yanshouYears[p.yanshouTaken]; p.yanshouTaken++; p.lifespanBonus += y; effect = '寿元 +' + y + ' 年'; }
     H().add(s, { type: 'item', tags: ['物品'], actors: [p.id], key: 'use_item', pov: true, severity: 1, params: { name: p.name, item: cf.items[a.item].name, effect } });
     return { text: effect };

@@ -29,15 +29,27 @@
   P.isOld = (s, p) => P.lifespanLeft(s, p) < P.lifespanTotal(p) * C().life.oldFrac;
 
   /* ---------- 境界 ---------- */
+  const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+  P.cn = (n) => CN[n] || String(n);
+  // 返虚道途：没选过的（NPC、旧档）按世人多半走的十二迷障算
+  P.fanxuPath = (p) => { const F = C().realms.fanxuPaths; return F[p.fanxuPath] || F.shier; };
+  // 返虚已过几关（按所选道途）
+  P.fanxuPassed = (p) => (p.realm.major === 8 ? P.fanxuPath(p).gates.filter((g) => g < p.realm.stage).length : 0);
   P.realmName = (p) => {
     const cf = C().realms;
+    if (p.realm.major === 8) {
+      const n = P.fanxuPassed(p), fp = P.fanxuPath(p);
+      return cf.names[8] + (n ? (fp.unit === '障' ? '破' : '过') + P.cn(n) + fp.unit : '');
+    }
     return cf.names[p.realm.major] + cf.stageNames[p.realm.major][p.realm.stage - 1];
   };
-  // 带小境界名号，如“筑基二重「大小如意」”；金丹另注金丹品第，元神以后另注法相
+  // 带小境界名号，如“筑基二重「大小如意」”；金丹另注金丹品第，元神以后另注法相；返虚另注道途
   P.realmTitle = (p) => {
-    const t = C().realms.stageTitles[p.realm.major];
+    const ts = C().realms.stageTitles[p.realm.major];
+    let t = ts ? ts[p.realm.stage - 1] : '';
+    if (p.realm.major === 8) t = P.fanxuPath(p).name + (p.realm.stage === C().realms.maxStage[8] ? '功满' : '');
     const tag = p.realm.major >= 7 && p.xiang ? P.xiangName(p) : p.realm.major >= 6 && p.danPin ? P.danPinName(p) : '';
-    return P.realmName(p) + (t ? '「' + t[p.realm.stage - 1] + '」' : '') + (tag ? '·' + tag : '');
+    return P.realmName(p) + (t ? '「' + t + '」' : '') + (tag ? '·' + tag : '');
   };
   P.danPinName = (p) => (p.danPin ? C().realms.danPinNames[p.danPin] : '');
   P.jinhongName = (p) => (p.jinhong ? C().realms.jinhongNames[p.jinhong] : '');
@@ -45,8 +57,10 @@
   // 一路下来的根底成色：道基、紫府异象、先天金汞、金丹品第、元神法相
   P.rootNames = (p) => [p.daoji ? C().daojiNames[p.daoji] : '', p.yixiang ? C().yixiangNames[p.yixiang] : '', P.jinhongName(p), P.danPinName(p), P.xiangName(p)].filter(Boolean);
   // 名位：羽士、高功、炼师、真人
-  P.title = (p) => C().realms.titles[p.realm.major] || '';
-  // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20–22，元神 23，返虚 24
+  // 以天考之法（玄中三限）证就返虚的，又称御极子
+  P.title = (p) => (p.fanxuPath === 'sanxian' && (p.realm.major === 9 || (p.realm.major === 8 && p.realm.stage === C().realms.maxStage[8])) ? '御极子' : C().realms.titles[p.realm.major] || '');
+  // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20–22，
+  // 元神一至十二重 23–34，返虚 35–47，纯阳 48–50，合道 51–59，大冶 60
   const offsets = () => {
     const ms = C().realms.maxStage;
     const o = [];
@@ -62,7 +76,11 @@
     return { major: 0, stage: 1 };
   };
   P.maxRank = () => P.rankOf(C().realms.names.length - 1, C().realms.maxStage[C().realms.names.length - 1]);
-  P.need = (p) => C().realms.need[p.realm.major][p.realm.stage - 1];
+  P.needAt = (p, major, stage) => {
+    const n = C().realms.need[major][stage - 1];
+    return major === 8 ? Math.round(n * P.fanxuPath(p).need) : n;
+  };
+  P.need = (p) => P.needAt(p, p.realm.major, p.realm.stage);
   P.isFull = (p) => p.progress >= P.need(p);
 
   P.healthCoef = (p) => (p.health.state === 'heavy' ? 0.3 : p.health.state === 'light' ? 0.7 : 1);

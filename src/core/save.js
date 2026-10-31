@@ -104,6 +104,47 @@
       st.schemaVersion = 8;
       return st;
     },
+    // v8 → v9：按原著细分后期境界。元神分十二重障关、返虚分三途（旧档一律按十二迷障）、合道分九难，九难之后是大冶。
+    // 旧档里元神、返虚都只有一格（满数 200000、400000）：按比例摊进新的小境界，停在那一重的圆满处。
+    8: (st) => {
+      const CF = FX.CONFIG, R9 = CF.realms;
+      // 旧的境界序号 → 新的：旧布局每个大境界的格数
+      const oldMax = [1, 1, 9, 3, 3, 3, 3, 1, 1, 3, 1];
+      const fromOldRank = (rk) => {
+        let acc = 0;
+        for (let m = 0; m < oldMax.length; m++) {
+          if (rk < acc + oldMax[m] || m === oldMax.length - 1) return FX.P.rankOf(m, Math.min(R9.maxStage[m], rk - acc + 1));
+          acc += oldMax[m];
+        }
+        return rk;
+      };
+      const spread = (p, major, oldFull) => {
+        const ms = R9.maxStage[major];
+        let total = 0;
+        for (let st = 1; st <= ms; st++) total += FX.P.needAt(p, major, st);
+        let left = Math.min(1, (p.progress || 0) / oldFull) * total, stg = 1;
+        while (stg < ms && left >= FX.P.needAt(p, major, stg)) { left -= FX.P.needAt(p, major, stg); stg++; }
+        p.realm.stage = stg;
+        p.progress = Math.min(Math.round(left), FX.P.needAt(p, major, stg));
+      };
+      for (const p of Object.values(st.people)) {
+        // 主角的最高境界记录按旧布局换算；NPC 只按眼下境界重记（迁移途中新生成的人物已是新布局）
+        p.peakRank = p.id === st.player.id ? fromOldRank(p.peakRank || 0) : 0;
+        if (p.realm.major === 7 && p.realm.stage === 1) spread(p, 7, 200000);
+        else if (p.realm.major === 8 && p.realm.stage === 1) { p.fanxuPath = p.fanxuPath || 'shier'; spread(p, 8, 400000); }
+        else if (p.realm.major === 10) p.progress = Math.min(p.progress || 0, FX.P.need(p));
+        // 原著人物按新设定摆回位置（君尧元神第七重、颜熙返虚破九障）
+        const d = p.notable && CF.notables.find((x) => x.key === p.notable);
+        if (d && FX.P.alive(p) && p.realm.major === d.realm[0] && p.realm.stage < d.realm[1]) { p.realm.stage = d.realm[1]; p.progress = 0; }
+        FX.CU.updateLifespan(st, p);
+        const rk = FX.P.realmRank(p);
+        if (rk > p.peakRank) p.peakRank = rk;
+      }
+      // 坊市补上大洞精玉
+      for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
+      st.schemaVersion = 9;
+      return st;
+    },
   };
 
   const REQUIRED = {

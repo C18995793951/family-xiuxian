@@ -17,7 +17,9 @@ const FX = loadCore();
 const ORIGINS = Object.keys(FX.CONFIG.origins);
 const STRATS = Object.keys(STRATEGIES);
 const results = [];
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 function check(no, name, fn) {
+  if (ONLY && !ONLY.includes(no)) return;
   const t0 = Date.now();
   try {
     const detail = fn();
@@ -567,7 +569,7 @@ check('15', '金丹以后：东弥州腹地、三家大派、道脉改投、金�
   while (s.pending.length) choose(s);
   assert(FX.CU.qiFor(s, p) === 6 && FX.CU.canAttempt(s, p).ok, '福地洞府里冲不了元神');
   // 6. 元神在东海开洞天，在洞天里冲返虚
-  p.realm = { major: 7, stage: 1 }; p.progress = FX.P.need(p);
+  p.realm = { major: 7, stage: CF.realms.maxStage[7] }; p.progress = FX.P.need(p);
   assert(!FX.CU.canAttempt(s, p).ok, '没有洞天也能冲返虚');
   const sea = outer.find((x) => x.type === 'sea');
   p.locationId = sea.id; s.player.stone = 500000;
@@ -700,6 +702,8 @@ check('16', '按原著：东弥州方位、原著人物、金丹三重、先天�
   FX.Game.act(s, dt);
   while (s.pending.length && !s.ended) choose(s);
   heal(p); p.locationId = s.player.dongtian;
+  // 元神十二重障关破尽（障关的事见第 18 项），从元神功满往上冲
+  p.realm = { major: 7, stage: CF.realms.maxStage[7] };
   const path = [];
   for (let i = 0; i < 400 && p.realm.major < 10; i++) {
     heal(p); p.locationId = s.player.dongtian; p.progress = FX.P.need(p);
@@ -708,8 +712,9 @@ check('16', '按原著：东弥州方位、原著人物、金丹三重、先天�
     assert(r.ok, '冲关被拒：' + k + ' ' + r.error);
     if (r.success) path.push(k);
   }
-  assert(p.realm.major === 10 && FX.P.title(p) === '道君' && path.join(',') === 'fanxu,chunyang,sanzai,sanzai,hedao', '没能一路走到合道：' + path.join(','));
-  assert(FX.P.lifespanTotal(p) > 100000, '道君寿元不对');
+  const want = ['fanxu'].concat(Array(12).fill('mizhang'), ['chunyang', 'sanzai', 'sanzai', 'hedao']).join(',');
+  assert(p.realm.major === 10 && FX.P.title(p) === '道君' && path.join(',') === want, '没能一路走到合道：' + path.join(','));
+  assert(FX.P.lifespanTotal(p) >= 100000, '道君寿元不对');
   p.locationId = south.id;
   const away = Object.values(s.places).find((x) => x.id !== s.player.dongtian);
   // 12. v6 存档迁移：腹地换成原著方位，原著人物入世，金丹修为摊到三重
@@ -734,7 +739,7 @@ check('16', '按原著：东弥州方位、原著人物、金丹三重、先天�
   assert(jd2.realm.stage === 2 && jd2.jinhong >= 1, '迁移后金丹修为没摊到三重：' + JSON.stringify(jd2.realm));
   assert(ms.saga.danyuan && ms.saga.liuhuo, '迁移后丹元大会、流火宏化洞天没排期');
   for (let y = 0; y < 10 && !ms.ended; y++) { FX.Sim.passDays(ms, CF.daysPerYear, 'rest'); while (ms.pending.length && !ms.ended) choose(ms); }
-  return `宵明大泽（东域）、鹿台山（北域）、怙照宗（西域）、鹤鸣山均照原著；怀悟洞主、苗南老祖、君尧、颜熙入世；先天金汞、金丹三重、元神法相、正阳丹砂、捐输、劫修分寸、丹元大会（打了 ${rounds} 场）、流火宏化洞天、拜谒颜熙均正常；返虚→纯阳三灾→合道一路走通；v6 迁移正常`;
+  return `宵明大泽（东域）、鹿台山（北域）、怙照宗（西域）、鹤鸣山均照原著；怀悟洞主、苗南老祖、君尧、颜熙入世；先天金汞、金丹三重、元神法相、正阳丹砂、捐输、劫修分寸、丹元大会（打了 ${rounds} 场）、流火宏化洞天、拜谒颜熙均正常；返虚十二迷障→纯阳三灾→合道一路走通；v6 迁移正常`;
 });
 
 check('17', '法器与道术、神通：炼形与禁制、器灵炼化、宝材重铸、道术参习进境、神通门槛、遁法赶路、NPC 随身法器、缴获、v7 存档迁移', () => {
@@ -864,6 +869,160 @@ check('17', '法器与道术、神通：炼形与禁制、器灵炼化、宝材�
   assert(FX.P.living(ms).filter((q) => q.realm.major >= 4).every((q) => Array.isArray(q.gear) && q.arts), '迁移后 NPC 没配法器、道术');
   for (let y = 0; y < 5 && !ms.ended; y++) FX.Sim.passDays(ms, CF.daysPerYear, 'rest');
   return `${arts.length} 门道术神通、${Object.keys(CF.items).filter((x) => CF.items[x].gear).length} 种符器法器都有稳定来路；飞剑从下品符器一路炼形、祭炼、熔弥罗铁重铸到下品法器（战力 ×${Math.round(atk4 * 100) / 100}）；玉景飞宫炼化器灵；飞梭省赶路、法衣减伤；庚金剑气术参习到${A.levelName(A.level(p2, 'gengjin'))}；极光大遁要引子；四山斗决助冲紫府；神通要金丹、看品第、两卷合一；君尧、苗南老祖的法器照原著；夺下劫修法器；v7 迁移正常`;
+});
+
+check('18', '按全本细分后期：元神十二重障关、大洞精玉、返虚三途（十二迷障、九等轮转、玄中三限）与失道之祸、天谷、合道九难与大冶、v8 存档迁移', () => {
+  const CF = FX.CONFIG, B = CF.breakthrough, CU = FX.CU, P = FX.P;
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  const heal = (p) => { p.restUntil = 0; p.health = { state: 'healthy', days: 0 }; };
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'quanben' });
+  const p = P.player(s);
+  const fac = (k) => Object.values(s.factions).find((f) => f.key === k);
+  const yc = fac('yuchen');
+  p.factionId = yc.id; p.locationId = yc.seatId; p.aptitude = 80; p.daoji = 3; p.yixiang = 3; p.jinhong = 3; p.danPin = 3; p.xiang = 3;
+  // 1. 成就元神：近九成九只破开第一重障关，天骄能连破两重
+  p.realm = { major: 6, stage: 3 }; p.progress = P.need(p); heal(p);
+  const keep2 = B.twoGates; B.twoGates = { 1: 1, 2: 1, 3: 1, 4: 1 };
+  for (let i = 0; i < 50 && p.realm.major === 6; i++) { heal(p); p.progress = P.need(p); CU.attempt(s, p); }
+  B.twoGates = keep2;
+  assert(p.realm.major === 7 && p.realm.stage === 2, '成就元神时没能连破两重障关：' + JSON.stringify(p.realm));
+  // 2. 元神障关：只看感悟，没破开也无祸患；越往后越难；每破一重法力、命寿都涨
+  p.realm = { major: 7, stage: 1 }; p.progress = P.need(p); heal(p);
+  const c1 = CU.chance(s, p), life1 = P.lifespanTotal(p), pow1 = P.power(s, p);
+  assert(c1.kind === 'zhangguan' && c1.death === 0 && /第二重障关/.test(c1.target), '元神一重的关不是障关或有身死之险：' + c1.kind + ' ' + c1.death + ' ' + c1.target);
+  let fails = 0, hurt = 0;
+  for (let i = 0; i < 400 && p.realm.major === 7 && p.realm.stage < 12; i++) {
+    heal(p); p.progress = P.need(p);
+    const r = CU.attempt(s, p);
+    assert(r.ok && !r.died, '障关冲关出错或死了');
+    if (!r.success) { fails++; if (p.health.state !== 'healthy') hurt++; assert(p.progress >= P.need(p) * 0.79, '障关失败丢的感悟太多'); }
+  }
+  assert(p.realm.stage === 12 && P.realmTitle(p).includes('元神功满') && CU.gateKind(p) === 'fanxu', '元神十二重障关没破尽：' + P.realmTitle(p));
+  assert(hurt === 0, '障关失败受了伤');
+  p.realm = { major: 7, stage: 11 };
+  const c11 = CU.chance(s, p).parts[0].value;
+  p.realm = { major: 7, stage: 12 };
+  assert(c11 < c1.parts[0].value && P.lifespanTotal(p) > life1 && P.power(s, p) > pow1, '后面的障关没更难或命寿、法力没涨');
+  // 3. 大洞精玉：玉宸库藏可换，元神服下修为 +本重所需三成
+  const rd = FX.Game.actions(s).find((a) => a.type === 'redeem' && a.item === 'dadong');
+  assert(rd, '八派六宗库藏里没有大洞精玉');
+  p.realm = { major: 7, stage: 3 }; p.progress = 0; s.player.inv.dadong = 1;
+  const use = FX.Game.actions(s).find((a) => a.type === 'use' && a.item === 'dadong');
+  assert(use && use.ok, '元神服不了大洞精玉');
+  FX.Game.act(s, use);
+  assert(Math.abs(p.progress - Math.round(P.need(p) * CF.dadongFrac)) <= 1 && !s.player.inv.dadong, '大洞精玉药力不对：' + p.progress);
+  // 4. 返虚关隘：三条道途；玄中三限要经义和上等以上法相
+  s.player.stone = 500000; p.realm = { major: 7, stage: 12 };
+  const sea = Object.values(s.places).find((x) => x.type === 'sea');
+  p.locationId = sea.id;
+  const dt = FX.Game.actions(s).find((a) => a.type === 'dongtian');
+  FX.Game.act(s, dt);
+  while (s.pending.length && !s.ended) choose(s);
+  heal(p); p.locationId = s.player.dongtian; p.progress = P.need(p);
+  const paths = () => FX.Game.actions(s).filter((a) => a.type === 'breakthrough');
+  assert(paths().map((a) => a.path).join(',') === 'shier,jiudeng,sanxian', '冲返虚时没有三条道途可选');
+  assert(!paths().find((a) => a.path === 'sanxian').ok, '没有经义也能选玄中三限');
+  assert(CF.house.store.some((x) => x.item === 'xuanzhong'), '玄中三限经义没有来路');
+  s.player.inv.xuanzhong = 1;
+  assert(paths().find((a) => a.path === 'sanxian').ok, '有经义、上等法相却选不了玄中三限');
+  // 九等轮转：九关，修为折七成五；没有劫关的几段修满自然接续
+  const snap = JSON.stringify(s);
+  const climb = (key) => {
+    const g = JSON.parse(snap), q = P.player(g);
+    let gates = 0, deaths = 0;
+    const log = [];
+    for (let i = 0; i < 600 && q.realm.major < 9; i++) {
+      heal(q); if (!P.alive(q)) { q.status = 'alive'; deaths++; }
+      q.locationId = g.player.dongtian;
+      const k = CU.gateKind(q);
+      if (!k) { CU.addProgress(g, q, P.need(q) - q.progress); continue; }
+      q.progress = P.need(q);
+      const r = CU.attempt(g, q, { path: key });
+      assert(r.ok, '返虚冲关被拒：' + k + ' ' + r.error);
+      if (r.success && k === 'mizhang') gates++;
+      if (r.died) deaths++;
+      log.push(k + q.realm.stage + (r.success ? '+' : '-') + (r.died ? 'D' : '') + (q.fanxuPath || ''));
+    }
+    return { g, q, gates, deaths, log: log.join(' ') };
+  };
+  const J = climb('jiudeng');
+  assert(J.q.realm.major === 9 && J.q.fanxuPath === 'jiudeng' && J.gates === 9, '九等轮转不是九关：' + J.gates);
+  const T = climb('sanxian');
+  assert(T.q.realm.major === 9 && T.gates === 3 && P.title(T.q) === '御极子', '玄中三限不是三关或没称御极子：' + T.gates + ' ' + P.title(T.q));
+  const S = climb('shier');
+  assert(S.gates === 12, '十二迷障不是十二关：' + S.gates + ' ' + S.log);
+  // 道途越险越省时日；纯阳三灾劫力削减
+  const totalNeed = (key) => CF.realms.need[8].reduce((a, n) => a + Math.round(n * CF.realms.fanxuPaths[key].need), 0);
+  assert(totalNeed('sanxian') < totalNeed('jiudeng') && totalNeed('jiudeng') < totalNeed('shier'), '道途关数少的没省时日');
+  const zc = (Q) => { Q.q.realm = { major: 9, stage: 1 }; Q.q.progress = P.need(Q.q); return CU.chance(Q.g, Q.q); };
+  const zS = zc(S), zJ = zc(J), zT = zc(T);
+  assert(zJ.chance > zS.chance && zT.chance > zJ.chance && zT.death < zS.death, '九等轮转、玄中三限没削减纯阳劫力');
+  // 5. 失道之祸：没有灵脉护身破不了障；关数越少一关越凶；天谷大减其祸
+  const g2 = JSON.parse(snap), q2 = P.player(g2);
+  q2.realm = { major: 8, stage: 1 }; q2.fanxuPath = 'shier'; q2.progress = P.need(q2); heal(q2);
+  q2.locationId = Object.values(g2.places).find((x) => x.qi <= 3).id;
+  assert(!CU.canAttempt(g2, q2).ok, '在三级之地也能破返虚迷障');
+  q2.locationId = g2.player.dongtian;
+  const dS = CU.chance(g2, q2).death;
+  q2.fanxuPath = 'sanxian'; q2.realm.stage = 4; q2.progress = P.need(q2);
+  const dT = CU.chance(g2, q2).death;
+  assert(dT > dS * 2, '玄中三限每一关不比十二迷障凶');
+  q2.fanxuPath = 'shier'; q2.realm.stage = 1; q2.progress = P.need(q2);
+  q2.locationId = g2.factions[q2.factionId].seatId;
+  const lingku = CU.chance(g2, q2);
+  assert(CU.canAttempt(g2, q2).ok && lingku.death > dS, '玉宸门人在灵窟里破不了障，或灵窟不比洞天险');
+  g2.player.inv.tiangu = 1;
+  const tg = CU.chance(g2, q2);
+  assert(tg.usesTiangu && tg.death < dS && tg.chance > lingku.chance, '天谷没护住法躯');
+  for (let i = 0; i < 50 && g2.player.inv.tiangu; i++) { heal(q2); q2.progress = P.need(q2); CU.attempt(g2, q2); }
+  assert(!g2.player.inv.tiangu, '在天谷破障没用掉天谷符诏');
+  // 失败：走火入魔，修为丧失过半，重伤
+  let mf = null;
+  for (let i = 0; i < 200 && !mf; i++) {
+    const g3 = JSON.parse(snap), q3 = P.player(g3);
+    q3.realm = { major: 8, stage: 4 }; q3.fanxuPath = 'sanxian'; q3.progress = P.need(q3); heal(q3); q3.locationId = g3.player.dongtian;
+    for (let j = 0; j <= i; j++) FX.RNG.next(g3.rng); // 每回换一个骰点
+    const r = CU.attempt(g3, q3);
+    if (!r.success) mf = { r, q3, need: P.need(q3) };
+  }
+  assert(mf && mf.q3.progress <= mf.need * 0.5 && (mf.r.died || mf.q3.health.state === 'heavy'), '破障失败没有走火入魔');
+  // 6. 合道九难：道君再过九难，仙业自显，成大冶仙人
+  const g4 = JSON.parse(snap), q4 = P.player(g4);
+  q4.realm = { major: 10, stage: 1 }; CU.updateLifespan(g4, q4);
+  assert(CU.gateKind(q4) === 'jiunan' && P.lifespanTotal(q4) < 1000000, '合道没有九难，或道君已寿与天齐');
+  let nan = 0;
+  for (let i = 0; i < 500 && q4.realm.major === 10; i++) {
+    heal(q4); if (!P.alive(q4)) q4.status = 'alive';
+    q4.locationId = g4.player.dongtian; q4.progress = P.need(q4);
+    const r = CU.attempt(g4, q4);
+    assert(r.ok, '九难冲关被拒：' + r.error);
+    if (r.success) nan++;
+  }
+  assert(q4.realm.major === 11 && nan === 9 && P.title(q4) === '仙人' && P.lifespanTotal(q4) >= 1e8, '九难之后没成大冶仙人：' + nan + ' ' + P.realmTitle(q4));
+  assert(!CU.gateKind(q4) && !CU.canAttempt(g4, q4).ok && FX.Game.actions(g4).length > 0, '大冶之后还有关，或没了行动');
+  for (let y = 0; y < 3 && !g4.ended; y++) { FX.Sim.passDays(g4, CF.daysPerYear, 'rest'); while (g4.pending.length && !g4.ended) choose(g4); }
+  // 7. v8 存档迁移：元神、返虚按比例摊进新小境界，原著人物摆回位置
+  const g8 = FX.Game.newGame({ origin: 'sect', seed: 'mig9' });
+  const t8 = JSON.parse(FX.Save.serialize(g8));
+  const st = t8.state, sp = st.people[st.player.id];
+  sp.realm = { major: 7, stage: 1 }; sp.progress = 100000; sp.peakRank = 23;
+  const yx = Object.values(st.people).find((q) => q.notable === 'yanxi');
+  yx.realm = { major: 8, stage: 1 }; yx.progress = 0;
+  const jy = Object.values(st.people).find((q) => q.notable === 'junyao');
+  jy.realm = { major: 7, stage: 1 }; jy.progress = 0;
+  const fx = Object.values(st.people).find((q) => q.id !== sp.id && !q.notable && q.realm.major < 7);
+  fx.realm = { major: 8, stage: 1 }; fx.progress = 200000;
+  st.schemaVersion = 8; t8.schemaVersion = 8; delete t8.checksum;
+  const mg = FX.Save.deserialize(t8);
+  assert(mg.ok, 'v8 存档迁移失败：' + mg.error);
+  const ms = mg.state, mp = ms.people[sp.id];
+  assert(mp.realm.major === 7 && mp.realm.stage >= 9 && mp.realm.stage <= 11 && mp.progress <= P.need(mp), '迁移后元神修为没摊进障关：' + JSON.stringify(mp.realm));
+  assert(mp.peakRank === P.realmRank(mp) && mp.lifespanMax > 3000, '迁移后最高境界、寿元没换算');
+  assert(ms.people[yx.id].realm.stage === 10 && ms.people[jy.id].realm.stage === 7, '迁移后颜熙、君尧没摆回位置');
+  const mfx = ms.people[fx.id];
+  assert(mfx.realm.major === 8 && mfx.realm.stage >= 5 && mfx.fanxuPath === 'shier', '迁移后返虚修为没摊进迷障：' + JSON.stringify(mfx.realm));
+  for (let y = 0; y < 5 && !ms.ended; y++) FX.Sim.passDays(ms, CF.daysPerYear, 'rest');
+  return `成就元神可连破两重；障关 ${fails} 回没破开都无祸患；大洞精玉推修为三成；返虚三途：十二迷障 ${S.gates} 关、九等轮转 ${J.gates} 关、玄中三限 ${T.gates} 关（称御极子），纯阳风灾成功率 ${zS.chance}/${zJ.chance}/${zT.chance}%；无灵脉破不了障，天谷护身；九难过尽成大冶仙人；v8 迁移正常`;
 });
 
 const failed = results.filter((r) => !r.ok);

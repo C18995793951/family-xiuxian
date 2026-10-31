@@ -43,7 +43,16 @@
     return '逃遁 +' + Math.round(v('dunFlee')) + '、赶路省 ' + Math.round(v('dunTravel') * 100) + '%' + weak;
   };
   const techLine = (t) => t.kind === 'shu' ? `${CF.shuRankNames[t.rank]} · ${typeLine(t)}` : t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
-  const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : '修为');
+  // 返虚关隘前的三条道途：各自的成功率、劫关数、将来渡三灾的好处
+  const fanxuPaths = (A) => {
+    const FP = CF.realms.fanxuPaths;
+    const rows = CF.realms.fanxuPathOrder.map((k) => {
+      const fp = FP[k], a = A.find((x) => x.type === 'breakthrough' && x.path === k);
+      return `<div class="stat"><span><b>${esc(fp.name)}</b> <span class="muted">${fp.gates.length} 关 · 每关基础 ${fp.base}% · 失败身死约 ${Math.round(fp.death * 1000) / 10}% · 修为折 ${Math.round(fp.need * 100)}%${fp.zai ? ' · 渡三灾 +' + fp.zai : ''}</span><br><span class="muted">${esc(fp.desc)}</span>${a && !a.ok && a.reason && !/修为未圆满|休养|重伤|洞天/.test(a.reason) ? `<br><span class="bad">${esc(a.reason)}</span>` : ''}</span>${a ? `<button style="white-space:nowrap" data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || '')}">选它</button>` : ''}</div>`;
+    }).join('');
+    return `<p class="muted" style="margin-bottom:.3em">返虚能自判关隘：道劫总量不增不减，关数越少每一关越酷烈，却越省时日。冲关成败与道途无关，选定后不能再改。</p>${rows}`;
+  };
+  const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : m === 7 ? '修为（感悟）' : '修为');
 
   function toast(msg, ms) {
     let box = document.getElementById('toasts');
@@ -185,7 +194,7 @@
     const bt = ov.breakthrough;
     const place = ov.place;
     const pv = Game.view.place(s, place.id);
-    const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a && a.ok ? '' : 'disabled'} title="${esc(a ? a.reason : '')}">${esc(to.name)} <span class="muted">${l.days} 天 · ${DANGER[to.danger]}${to.region && to.region !== place.region ? ' · ' + esc(to.region) : ''}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}${a && !a.ok ? ' · ' + esc(CF.realms.names[l.minMajor] || '') + '以后才过得去' : ''}</span></button>`; }).join('');
+    const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a && a.ok ? '' : 'disabled'} title="${esc(a ? a.reason : '')}">${esc(to.name)} <span class="muted">${a ? a.days : l.days} 天 · ${DANGER[to.danger]}${to.region && to.region !== place.region ? ' · ' + esc(to.region) : ''}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}${a && !a.ok ? ' · ' + esc(CF.realms.names[l.minMajor] || '') + '以后才过得去' : ''}</span></button>`; }).join('');
     const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>`;
     const fit = ov.fit;
     const disabled = s.ended || s.pending.length;
@@ -218,8 +227,9 @@
           <h3 style="margin-top:.8em">道路</h3><div class="col">${travel || '<span class="muted">无路可走</span>'}</div>
         </div>
       </div>
-      ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : '冲击' + esc(bt.target)}</h3>
-        <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.tianfa ? '（天罚）' : ''}</span>` : ''} · 需 ${T.dur(bt.days)}</p>
+      ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : esc(bt.verb + bt.target)}</h3>
+        <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.kind === 'mizhang' ? '（失道之祸）' : bt.tianfa ? '（天罚）' : ''}</span>` : bt.kind === 'zhangguan' ? ' · <span class="good">障关只看感悟，没破开也无祸患</span>' : ''} · 需 ${T.dur(bt.days)}</p>
+        ${bt.kind === 'fanxu' ? fanxuPaths(A) : ''}
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
         ${reqList(ov.reqs)}
         ${bt.can.ok ? '' : `<p class="bad">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}</div>` : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : ''}
