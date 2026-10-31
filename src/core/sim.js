@@ -115,7 +115,7 @@
     const p = P().player(s);
     const cf = C();
     let left = Math.max(0, Math.floor(days));
-    let used = 0, gained = 0, interrupted = false, pills = 0;
+    let used = 0, gained = 0, interrupted = false, pills = 0, saga = null;
     while (left > 0 && P().alive(p) && !s.pending.length && !s.ended) {
       const toMonthEnd = cf.daysPerMonth - (s.t % cf.daysPerMonth);
       const step = Math.min(left, toMonthEnd);
@@ -124,7 +124,8 @@
       if (P().heal(p, step * healMult)) H().add(s, { type: 'health', tags: ['伤愈'], actors: [p.id], key: 'injury_heal', pov: true, params: { name: p.name }, severity: 1 });
       if (mode === 'cultivate') {
         // 药力过了就自动续服一颗中孚丹（行囊里可以关掉）
-        if (s.player.autoPill !== false && p.realm.major >= 2 && s.player.qijuUntil <= s.t && (s.player.inv.qiju || 0) > 0) {
+        // 修为已经圆满、再修也不涨的时候不吃
+        if (s.player.autoPill !== false && p.realm.major >= 2 && s.player.qijuUntil <= s.t && (s.player.inv.qiju || 0) > 0 && !(P().isFull(p) && CU().capped(p))) {
           s.player.inv.qiju--;
           s.player.qijuUntil = s.t + cf.cultivation.qijuDays;
           pills++;
@@ -138,12 +139,15 @@
       S.syncYear(s);
       if (s.t % cf.daysPerMonth === 0) {
         if (S.monthly(s, mode, opts)) interrupted = true;
-        if (s.t % cf.daysPerYear === 0) S.yearly(s);
+        // 闭关中起了和你沾边的天下大事：出关去看看，免得一闭关就错过
+        if (s.t % cf.daysPerYear === 0) { const w = S.yearly(s); if (w && mode === 'cultivate' && opts.interruptible && left > 0) { interrupted = true; saga = w; } }
       }
       if (interrupted) break;
+      // 闭关到圆满：修满了就出关，不白耗寿元
+      if (opts.untilFull && mode === 'cultivate' && P().isFull(p) && CU().capped(p)) break;
     }
     S.checkEnd(s);
-    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length), pills };
+    return { used, gained: Math.round(gained * 10) / 10, interrupted: interrupted || (used < days && !!s.pending.length), pills, saga };
   };
 
   // 月末：主角的重伤风险、闭关被打扰。返回是否打断当前行动
@@ -188,7 +192,7 @@
     // 主角：寿元、俸禄
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
     FX.Sect.payStipend(s);
-    FX.Saga.yearly(s);
+    const woke = FX.Saga.yearly(s);
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
     const npcs = P().living(s).filter((p) => p.id !== pl.id).sort((a, b) => (Number(a.id.slice(1)) - Number(b.id.slice(1))));
     for (const p of npcs) {
@@ -206,6 +210,7 @@
     W().replenish(s);
     FX.Ev.prune(s);
     S.check(s);
+    return woke;
   };
 
   /* ---------- 结局 ---------- */

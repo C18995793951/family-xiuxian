@@ -41,13 +41,20 @@
     // 一口气修到圆满：按眼下的修炼速度估出要几个月（中途被打扰就停下）
     const left = P().need(p) - p.progress;
     if (left > 0 && isFinite(left)) {
-      const pill = s.player.qijuUntil > s.t || (p.realm.major >= 2 && s.player.autoPill !== false && (s.player.inv.qiju || 0) > 0);
-      const sp = CU().breakdown(s, p, { pill }).total;
-      if (sp > 0) {
-        const m = cf.daysPerMonth, cap = Math.max(m, Math.floor(P().lifespanLeft(s, p)) * cf.daysPerYear);
-        const d = Math.max(m, Math.min(Math.ceil((left / sp) * cf.daysPerYear / m) * m, cf.actions.untilFullMax, cap));
+      // 逐月估：中孚丹药力只管得了一段，伤好了速度也会回来
+      const pillDays = Math.max(0, s.player.qijuUntil - s.t) + (p.realm.major >= 2 && s.player.autoPill !== false ? (s.player.inv.qiju || 0) * cf.cultivation.qijuDays : 0);
+      const memo = {}, rate = (pill, hurt) => { const k = pill + '|' + hurt; return k in memo ? memo[k] : (memo[k] = CU().breakdown(s, p, { pill, healthy: !hurt }).total); };
+      const m = cf.daysPerMonth, cap = Math.max(m, Math.min(cf.actions.untilFullMax, Math.floor(P().lifespanLeft(s, p)) * cf.daysPerYear));
+      if (rate(false, false) > 0) {
+        let d = 0, got = 0, pd = pillDays, hd = p.health.state === 'healthy' ? 0 : p.health.days;
+        while (got < left && d < cap) { got += (rate(pd > 0, hd > 0) * m) / cf.daysPerYear; pd -= m; hd -= m; d += m; }
+        d = Math.max(m, d);
         add({ type: 'cultivate', until: true, days: d, label: (verb ? verb.trim() : '闭关') + '到圆满（约 ' + T().dur(d) + '）', group: '修炼' });
       }
+    } else if (left <= 0 && p.restUntil > s.t && CU().gateKind(p)) {
+      // 圆满了但上回冲关失败还在休养：一键静修到能再冲
+      const m = cf.daysPerMonth, d = Math.max(m, Math.ceil((p.restUntil - s.t) / m) * m);
+      add({ type: 'cultivate', until: true, wait: true, days: d, label: '静修到能再冲关（' + T().dur(d) + '）', group: '修炼' });
     }
     // 以符钱修行（练炁以上）
     const cpy = CU().coinPerYear(p);
@@ -75,7 +82,10 @@
       const tc = cf.techniques[t];
       if (tc.kind !== 'lianqi' || t === p.techniqueId) continue;
       const why = p.realm.major === 0 ? '尚未证得胎息' : p.realm.major >= 3 ? '道基已成，练炁术不能再换' : '';
-      add({ type: 'learn', tech: t, days: 30, label: (p.techniqueId ? '改修《' : '研习《') + tc.name + '》', group: '修炼', ok: !why, reason: why });
+      // 练炁时改修要折修为，界面上先问一句
+      const lose = p.techniqueId && p.realm.major === 2 && p.progress > 0 ? Math.floor(p.progress) - Math.floor(p.progress * (1 - cf.switchLoss)) : 0;
+      add({ type: 'learn', tech: t, days: 30, label: (p.techniqueId ? '改修《' : '研习《') + tc.name + '》', group: '修炼', ok: !why, reason: why,
+        warn: lose ? '真炁性质不同，改修会折去 ' + Math.round(cf.switchLoss * 100) + '% 修为（' + Math.floor(p.progress) + ' → ' + (Math.floor(p.progress) - lose) + '）。' : '' });
     }
     // 游历
     for (const d of cf.actions.exploreDays) add({ type: 'explore', days: d, label: '在' + place.name + '游历 ' + T().dur(d), group: '外出' });
@@ -121,7 +131,7 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && !!x.until === !!a.until && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
@@ -154,7 +164,12 @@
   Act.DO.cultivate = (s, a) => {
     const p = me(s), place = here(s);
     if (a.coin) s.player.stone -= a.cost; // 符钱先炼进去，被打断也回不来
-    const r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90, coin: !!a.coin });
+    let r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90, coin: !!a.coin, untilFull: !!a.until && !a.wait });
+    // 闭关到圆满：估的时日是按眼下速度算的，丹药续不上时会差一点，差多少再补几个月（至多两年）
+    for (let k = 0; a.until && k < 24 && P().alive(p) && !r.interrupted && !s.pending.length && !P().isFull(p); k++) {
+      const r2 = Sim().passDays(s, C().daysPerMonth, 'cultivate', { interruptible: true, untilFull: true });
+      r = { used: r.used + r2.used, gained: Math.round((r.gained + r2.gained) * 10) / 10, pills: (r.pills || 0) + (r2.pills || 0), interrupted: r2.interrupted, saga: r2.saga };
+    }
     if (!P().alive(p)) return { text: '' };
     const dur = T().dur(r.used);
     let key = a.coin ? 'cultivate_coin' : 'cultivate';
@@ -163,8 +178,14 @@
     const what = ['气感', '胎息'][p.realm.major] || '修为';
     const verb = ['静坐', '温养胎息'][p.realm.major] || (a.days >= 360 ? '闭关' : '修炼');
     const pills = r.pills ? '，其间服下' + C().items.qiju.name + ' ' + r.pills + ' 颗' : '';
-    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb, pills } });
-    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}${pills}`, interrupted: r.interrupted };
+    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.until && !r.interrupted ? r.used : a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb, pills } });
+    const woke = r.saga ? '。「' + r.saga + '」起了，先出关看看' : '';
+    if (a.wait) return { text: `静修 ${dur}${woke || (r.interrupted ? '，中途被打断' : p.restUntil <= s.t ? '，休养已满，可以再冲关' : '')}`, interrupted: r.interrupted };
+    if (r.gained <= 0 && P().isFull(p) && CU().capped(p) && CU().gateKind(p)) {
+      const B = C().breakthrough, acc = Math.min(B.accumMax, Math.floor(p.fullDays / C().daysPerYear) * B.accumPerYear);
+      return { text: `${verb} ${dur}，${what}早已圆满，只是打磨根基${acc ? '：冲关把握 +' + acc + '%' + (acc >= B.accumMax ? '，已到头' : '') : ''}${woke}`, interrupted: r.interrupted };
+    }
+    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}${pills}${woke}`, interrupted: r.interrupted };
   };
 
   Act.DO.breakthrough = (s, a) => {
@@ -452,6 +473,7 @@
       const d = Math.max(1, place.danger);
       const E = C().encounter;
       const power = Math.round(E.dangerPower[d] * R.range(s.rng, E.beastSwing[0], E.beastSwing[1]) * 10) / 10;
+      if (power * E.beastDare < P().power(s, me(s))) return false;
       FX.Ev.spawn(s, 'BEAST', { place: place.id, _beast: R.pick(s.rng, FX.Combat.beastNames[d]), _power: power, _danger: d, _why: '闭关时洞府外闯来一头' }, []);
       return true;
     }
@@ -465,6 +487,7 @@
     if (R.chance(s.rng, 0.6)) {
       const d = Math.max(1, place.danger);
       const power = Math.round(E.dangerPower[d] * R.range(s.rng, E.beastSwing[0], E.beastSwing[1]) * 10) / 10;
+      if (power * E.beastDare < P().power(s, me(s))) return false;
       FX.Ev.spawn(s, 'BEAST', { place: place.id, _beast: R.pick(s.rng, FX.Combat.beastNames[d]), _power: power, _danger: d, _why: why + '一头' }, causeIds);
       return true;
     }

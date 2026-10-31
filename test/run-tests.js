@@ -1348,6 +1348,63 @@ check('23', '玉宸九殿职权：元神入殿任职、转殿要隔六十年、�
   return '元神才入殿、九殿各有门槛；功德殿捐输多记、道录殿传功七折参习快、丹符殿十年一枚大洞精玉、道兵殿加战力、十方殿灵岛与俸禄、大知殿清修；转殿隔 ' + HD.every + ' 年；长老→副殿主→殿主随境界升';
 });
 
+check('24', '试玩后的修正：闭关到圆满修满即出关、估时算上丹药与伤势；圆满后不白吃中孚丹、闭关打磨添把握；休养期一键静修；天下大事一起就出关；弱小妖物不扰强者', () => {
+  const P = FX.P, CF = FX.CONFIG, D = CF.daysPerYear;
+  const until = (s) => FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.until);
+  const mk = (seed) => { const s = FX.Game.newGame({ origin: 'sect', seed }); const p = P.player(s); s.pending = []; p.realm = { major: 3, stage: 1 }; p.progress = 0; p.lifespanMax = 2000; p.health = { state: 'healthy', days: 0 }; return { s, p }; };
+  // 1. 重伤时估的时日算上伤好以后的速度，不会估出几十年；修满了就出关，不在圆满处空耗
+  let { s, p } = mk('fix1');
+  p.health = { state: 'heavy', days: 540 };
+  const a = until(s);
+  const naive = Math.ceil((P.need(p) / FX.CU.breakdown(s, p).total) * D);
+  assert(a && a.days < naive * 0.6, '重伤时闭关到圆满还按伤时速度估：' + a.days + ' 天，按伤时速度 ' + naive + ' 天');
+  const t0 = s.t;
+  let r = FX.Game.act(s, a);
+  if (!r.interrupted && !s.pending.length) {
+    assert(P.isFull(p), '闭关到圆满没修满');
+    assert(p.fullDays < CF.daysPerMonth, '修满了还接着闭关：圆满后又过了 ' + p.fullDays + ' 天');
+  }
+  // 2. 估的“闭关到圆满”和普通闭关天数相同时也不会混成普通闭关
+  ({ s, p } = mk('fix2'));
+  const u = until(s);
+  const hit = FX.Act.find(s, Object.assign({}, u));
+  assert(hit && hit.until, '闭关到圆满被认成了普通闭关');
+  const plain = FX.Act.find(s, { type: 'cultivate', days: 360 });
+  assert(plain && !plain.until, '普通闭关被认成了闭关到圆满');
+  // 3. 圆满后闭关不吃中孚丹，但每年添把握，至多到头
+  ({ s, p } = mk('fix3'));
+  p.realm = { major: 3, stage: 3 }; p.progress = P.need(p); p.fullDays = 0;
+  s.player.inv.qiju = 6; s.player.qijuUntil = 0;
+  const c0 = FX.CU.chance(s, p).chance;
+  r = FX.Game.act(s, FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.days === 360 * 5 && !x.coin));
+  while (s.pending.length) { const v = FX.Game.pendingEvents(s)[0]; FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); }
+  assert(s.player.inv.qiju >= 6, '修为圆满了闭关还在吃中孚丹：剩 ' + s.player.inv.qiju);
+  const c1 = FX.CU.chance(s, p).chance;
+  assert(c1 > c0 || r.interrupted, '圆满后闭关打磨没添把握：' + c0 + '→' + c1);
+  // 4. 冲关失败在休养：给一键静修到能再冲
+  p.restUntil = s.t + 400;
+  const w = until(s);
+  assert(w && w.wait && /静修到能再冲关/.test(w.label), '休养期没有“静修到能再冲关”');
+  r = FX.Game.act(s, w);
+  while (s.pending.length) { const v = FX.Game.pendingEvents(s)[0]; FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); }
+  assert(r.interrupted || s.t >= p.restUntil, '静修完还在休养');
+  // 5. 闭关中起了和你沾边的天下大事：出关
+  ({ s, p } = mk('fix5'));
+  p.realm = { major: 4, stage: 1 }; p.progress = 0;
+  const tm = s.saga.tianmo; tm.open = null; tm.next = s.year + 1;
+  r = FX.Game.act(s, FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.days === 3600 && !x.coin));
+  assert(r.interrupted && FX.Saga.openYear(s, 'tianmo') !== null && /天魔潮/.test(r.text), '闭关十年把天魔潮整段错过了：' + r.text);
+  // 6. 战力远高于妖物：赶路、闭关时妖物不来扰
+  ({ s, p } = mk('fix6'));
+  p.realm = { major: 7, stage: 1 };
+  const wild = Object.values(s.places).find((x) => x.type === 'wild' && x.danger >= 1 && x.danger <= 3);
+  let beasts = 0;
+  for (let i = 0; i < 30; i++) { s.pending = []; FX.Act.spawnDanger(s, wild, '赶路途中，', []); FX.Act.disturb(s, wild); beasts += s.pending.filter((e) => e.defId === 'BEAST').length; }
+  assert(beasts === 0, '元神还被' + wild.name + '的小妖拦路 ' + beasts + ' 回');
+  s.pending = [];
+  return `重伤时估 ${Math.round(a.days / 30)} 个月（按伤时速度要 ${Math.round(naive / 30)} 个月），修满即出关；闭关到圆满不与普通闭关混淆；圆满后闭关五年不吃丹、把握 ${c0}%→${c1}%；休养期可一键静修；闭关撞上天魔潮会出关；元神赶路不再被小妖拦`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

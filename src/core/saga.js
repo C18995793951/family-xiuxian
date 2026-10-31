@@ -42,8 +42,10 @@
   // 本次大事正在进行（返回开始的年份），否则 null
   Saga.openYear = (s, k) => (s.saga[k].open && s.year <= s.saga[k].open.until ? s.saga[k].open.from : null);
 
+  // 返回今年起了的、和主角沾边的大事名（闭关时据此出关）
   Saga.yearly = (s) => {
     const n = SG().notice;
+    let woke = null;
     for (const k of KINDS) {
       const st = s.saga[k], cfg = SG()[k];
       if (st.open && s.year > st.open.until) {
@@ -61,10 +63,12 @@
         st.open = { from: s.year, until: s.year + cfg.years - 1 };
         st.count++;
         H().add(s, { type: 'saga', tags: ['大事'], key: 'saga_open_' + k, pov: rel, severity: rel ? 4 : 2, params: { what: cfg.name, hint: Saga.hint(s, k) } });
+        if (rel && !woke) woke = cfg.name;
       }
     }
     Saga.revengeYear(s);
     Sect().tuijuYear(s);
+    return woke;
   };
 
   // 这件大事和主角眼下沾不沾边
@@ -98,8 +102,22 @@
     const st = s.saga[k], cfg = SG()[k];
     const open = Saga.openYear(s, k) !== null;
     const known = open || k === 'jiaokao' || st.next - s.year <= SG().notice;
-    return { kind: k, name: cfg.name, open, known, relevant: Saga.relevant(s, k), year: open ? st.open.from : st.next, until: open ? st.open.until : null, done: open && st.done === st.open.from, hint: Saga.hint(s, k) };
+    return { kind: k, name: cfg.name, open, known, relevant: Saga.relevant(s, k), year: open ? st.open.from : st.next, until: open ? st.open.until : null, done: open && st.done === st.open.from, hint: Saga.hint(s, k), at: open || st.next - s.year <= SG().notice ? Saga.where(s, k) : null };
   });
+
+  // 赴这件大事要去哪里（界面上给“赶过去”用）；天魔潮有几处，给离得最近的
+  Saga.where = (s, k) => {
+    const cf = SG()[k], mf = Sect().mine(s), p = me(s);
+    if (k === 'diyuan' || k === 'liuhuo') { const pl = placeByName(s, cf.place); return pl ? pl.id : null; }
+    if (k === 'xiefang' || k === 'jiaokao') { const f = factionByKey(s, cf.faction); return f ? f.seatId : null; }
+    if (k === 'danyuan' || k === 'dabi') return mf ? mf.seatId : null;
+    if (k === 'tianmo') {
+      let best = null;
+      for (const n of cf.places) { const pl = placeByName(s, n); const r = pl && FX.World.route(s, p.locationId, pl.id, p); if (r && (!best || r.days < best.days)) best = { id: pl.id, days: r.days }; }
+      return best ? best.id : null;
+    }
+    return null;
+  };
 
   /* ---------- 行动清单（由 Act.list 调用）---------- */
   Saga.list = (s, add) => {

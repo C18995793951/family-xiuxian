@@ -87,7 +87,7 @@
       if (dz) F.push({ label: '大知殿清修', value: 1 + 0.1 * dz });
     }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
-    if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
+    if (!(opts && opts.healthy) && (p.health.state === 'light' || p.health.state === 'heavy')) F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
     let total = 1;
     for (const f of F) total *= f.value;
     return { total: Math.round(total * 100) / 100, factors: F };
@@ -312,7 +312,7 @@
       if ((k === 'chunyang' || k === 'sanzai') && has('xudu')) out.push({ label: I.xudu.name + '（可选：+' + B.xuduZai + '%）', ok: true, optional: true, note: '天运青睐，消弭些灾数' });
     }
     out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
-    if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
+    if (p.restUntil > s.t) out.push({ label: '上回冲关失败，还在休养', ok: false, note: '到 ' + FX.T.fmt(p.restUntil) + ' 才能再冲' });
     return out;
   };
 

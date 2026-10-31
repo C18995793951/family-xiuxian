@@ -12,7 +12,7 @@
 
   FX.CONFIG = {
     schemaVersion: 12,
-    gameVersion: '0.10.0-xianye10',
+    gameVersion: '0.10.1-xianye10',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -903,6 +903,7 @@
       herbQty: [1, 4],
       rareHerbChance: 0.15,
       dangerPower: [1, 2.5, 5, 9, 16, 40, 1800, 6000], // 六、七级是东弥州腹地的凶地，金丹、元神才去得
+      beastDare: 30,    // 赶路、闭关时，妖物战力不到你的 1/30 就不敢来扰（自己去游历另说）
       beastSwing: [0.6, 1.4],
       winChanceMin: 5,
       winChanceMax: 95,

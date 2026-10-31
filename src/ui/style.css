@@ -27,7 +27,7 @@ a { color: var(--accent); }
 .good { color: var(--good); } .bad { color: var(--danger); } .warn { color: var(--accent); }
 button, select, input, textarea { font: inherit; color: var(--text); }
 button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: .45em .9em; cursor: pointer; min-height: 36px; }
-button:hover:not(:disabled) { background: #3a2c1e; }
+@media (hover: hover) { button:hover:not(:disabled) { background: #3a2c1e; } } /* 手机上点过的按钮不留“悬停”底色 */
 button.primary { background: #6b4a1f; border-color: var(--accent); color: #fff3dc; font-weight: 600; }
 button.danger { border-color: var(--danger); color: #f0b2a6; }
 button:disabled { opacity: .45; cursor: not-allowed; }
