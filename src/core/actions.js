@@ -345,7 +345,8 @@
     }
     const danger = Math.max(from.danger, to.danger);
     const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
-    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger)) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
+    const member = !!FX.Sect.mine(s);
+    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger * (member ? C().world.travelMemberMult : 1))) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
     }
     return { text: '抵达' + to.name };

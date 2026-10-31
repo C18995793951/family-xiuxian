@@ -79,8 +79,8 @@
     if (!st) return { stone: 0, qiju: 0 };
     const hall = Sect.perkOf(s, p, 'zhouxing') ? 2 : Sect.perkOf(s, p, 'shifang') ? 1.5 : 1;
     const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)] * hall;
-    const stone = Math.round((st.stone[p.realm.major] || 0) * mult);
-    return { stone, qiju: p.realm.major >= 2 ? st.qiju || 0 : 0 };
+    const stone = Math.min(st.cap || Infinity, Math.round((st.stone[p.realm.major] || 0) * mult));
+    return { stone, qiju: p.realm.major >= 2 && p.realm.major <= (st.qijuMaxMajor || 99) ? st.qiju || 0 : 0 };
   };
 
   // 每年：职位升了写一笔；修为远超掌门时，门中推举你接任

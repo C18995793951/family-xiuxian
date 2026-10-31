@@ -662,7 +662,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
       },
       linkExtra: 0.35,     // 在最小连通树之外多连的比例
       daysPerUnit: 4,      // 地图上一格的赶路天数
-      travelEncounterPerDanger: 0.06, // 每段路每级危险度的遭遇概率
+      travelEncounterPerDanger: 0.035, // 每段路每级危险度的遭遇概率
+      travelMemberMult: 0.5,           // 宗门、家族中人赶路：有师门撑腰，劫修妖物多半不来招惹
       npcCount: 80,
       factionMembers: { sect: [12, 16], clan: [6, 9], league: [5, 7], evil: [4, 6] },
       looseMin: 14,        // 至少保留的散修数
@@ -823,13 +824,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
         },
       },
       // 门中职位：按境界自然升任，掌门另由推举或接任。俸禄按职位加成
-      posts: { sect: ['弟子', '执事', '长老', '掌门'], clan: ['族人', '管事', '族老', '家主'], minMajor: [0, 3, 4], stipendMult: [1, 1.5, 2.5, 4] },
+      posts: { sect: ['弟子', '执事', '长老', '掌门'], clan: ['族人', '管事', '族老', '家主'], minMajor: [0, 3, 4], stipendMult: [1, 1.5, 1.8, 2.5] },
       // 修为远超掌门时，门中推举你接任：至少紫府，且高出掌门 tuijuGap 个小境界；推辞后 tuijuAgain 年内不再提
       tuijuMinMajor: 4, tuijuGap: 3, tuijuAgain: 20,
-      // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁以上另发中孚丹
+      // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁到洞玄另发中孚丹。
+      // 俸禄只够贴补日用，涨得慢、有上限：关隘外药、法器这些大开销仍要自己挣、拿道功换（cap 是一年至多多少符钱）
       stipend: {
-        sect: { stone: [0, 6, 24, 60, 200, 500, 1200, 3000, 6000, 12000, 20000, 30000], tierMult: [0, 1, 1.5, 2], qiju: 2 },
-        clan: { stone: [0, 6, 18, 45, 150, 400, 1000, 2500, 5000, 10000, 16000, 24000], qiju: 1 },
+        sect: { stone: [0, 6, 24, 60, 120, 220, 400, 800, 1500, 2500, 3500, 5000], tierMult: [0, 1, 1.5, 2], qiju: 2, qijuMaxMajor: 5, cap: 10000 },
+        clan: { stone: [0, 6, 18, 45, 100, 180, 320, 650, 1200, 2000, 2800, 4000], qiju: 1, qijuMaxMajor: 5, cap: 8000 },
       },
     },
 
@@ -3750,7 +3752,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     const danger = Math.max(from.danger, to.danger);
     const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
-    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger)) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
+    const member = !!FX.Sect.mine(s);
+    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger * (member ? C().world.travelMemberMult : 1))) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
     }
     return { text: '抵达' + to.name };
@@ -4057,8 +4060,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (!st) return { stone: 0, qiju: 0 };
     const hall = Sect.perkOf(s, p, 'zhouxing') ? 2 : Sect.perkOf(s, p, 'shifang') ? 1.5 : 1;
     const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)] * hall;
-    const stone = Math.round((st.stone[p.realm.major] || 0) * mult);
-    return { stone, qiju: p.realm.major >= 2 ? st.qiju || 0 : 0 };
+    const stone = Math.min(st.cap || Infinity, Math.round((st.stone[p.realm.major] || 0) * mult));
+    return { stone, qiju: p.realm.major >= 2 && p.realm.major <= (st.qijuMaxMajor || 99) ? st.qiju || 0 : 0 };
   };
 
   // 每年：职位升了写一笔；修为远超掌门时，门中推举你接任

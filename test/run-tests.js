@@ -1484,6 +1484,46 @@ check('26', '冲关失败一致：每一关都“屡败渐有心得”（失败�
   return '失败两回后：' + rows.join('，') + '；屡败心得封顶；代价写明跌多少修为、重伤、歇几年、耗掉的外药、身死几率';
 });
 
+check('27', '后期俸禄放缓封顶、宗门弟子跑图少遇险：前期拮据照旧，洞玄以后俸禄不再成倍涨；赶路遇险率宗门弟子减半', () => {
+  const P = FX.P, S = FX.Sect, CF = FX.CONFIG;
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'stipend' });
+  const p = P.player(s), f = S.mine(s);
+  const at = (major) => { p.realm = { major, stage: 1 }; return S.stipend(s, f); };
+  const zj = at(3), dx = at(5), jd = at(6);
+  assert(zj.stone >= 60 && zj.stone <= 120, '筑基俸禄变了：' + zj.stone);
+  assert(dx.stone <= 500, '洞玄俸禄还是太多：' + dx.stone);
+  assert(jd.stone / zj.stone <= 12, '金丹俸禄比筑基涨得太快：' + zj.stone + '→' + jd.stone);
+  assert(jd.qiju === 0 && zj.qiju > 0, '金丹以后还在发中孚丹');
+  p.realm = { major: 11, stage: 1 };
+  assert(S.stipend(s, f).stone <= CF.house.stipend.sect.cap, '俸禄没有上限');
+  // 赶路：同一段有些凶险的路来回走，宗门弟子遇事少一半左右
+  const legs = (member) => {
+    let hit = 0, n = 0;
+    for (let i = 0; i < 6 && n < 300; i++) {
+      const t = FX.Game.newGame({ origin: member ? 'sect' : 'loose', seed: 'road' + i });
+      const q = P.player(t); q.lifespanMax = 100000; q.realm = { major: 3, stage: 1 };
+      const a = Object.values(t.places).find((x) => x.danger === 2 && x.links.some((l) => t.places[l.to].danger <= 2 && !l.minMajor));
+      const b = t.places[a.links.find((l) => t.places[l.to].danger <= 2 && !l.minMajor).to];
+      q.locationId = a.id;
+      for (let k = 0; k < 50; k++) {
+        t.pending = []; q.health = { state: 'healthy', days: 0 };
+        const to = q.locationId === a.id ? b.id : a.id;
+        const act = FX.Game.actions(t).find((x) => x.type === 'travel' && x.to === to);
+        if (!act || !act.ok) break;
+        FX.Game.act(t, act); n++;
+        if (t.pending.length) hit++;
+        q.locationId = to;
+      }
+    }
+    return { hit, n };
+  };
+  const m = legs(true), l = legs(false);
+  const rm = m.hit / m.n, rl = l.hit / l.n;
+  assert(rl <= 0.12, '散修走有些凶险的路遇事还太多：' + Math.round(rl * 100) + '%');
+  assert(rm < rl, '宗门弟子赶路没比散修少遇事：' + Math.round(rm * 100) + '% / ' + Math.round(rl * 100) + '%');
+  return `俸禄 筑基 ${zj.stone}、洞玄 ${dx.stone}、金丹 ${jd.stone} 符钱一年（上限 ${CF.house.stipend.sect.cap}），金丹以后不发中孚丹；有些凶险的路每段遇事：散修 ${Math.round(rl * 100)}%（${l.n} 段）、宗门弟子 ${Math.round(rm * 100)}%（${m.n} 段）`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
