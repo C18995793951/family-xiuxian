@@ -47,7 +47,7 @@
     const note = '外药 ' + wh.length + '/6' + (wMiss.length ? '（缺' + wMiss.join('、') + '：荒山、险地、海外寻药，金谷墟市可托人代寻，宗门库藏可换）' : '') +
       '；内药 ' + nh.length + '/7' + (nMiss.length ? '（缺' + nMiss.join('、') + '：洞玄三重温养自然凝成' + (nh.includes('zhanran') || (s.player.inv.zhanranfa || 0) > 0 ? '' : '，湛然虚精炁要先得修法') + '）' : '') +
       '。十三味不齐丹成不了上三品；外药结丹时耗掉';
-    return { label: '金丹十三味大药（可选：采得 ' + n + ' 味）', ok: n >= DC().total, optional: true, note };
+    return { label: '金丹十三味大药（可选：采得 ' + n + ' 味）', items: DC().wai.filter((k) => !wh.includes(k)), ok: n >= DC().total, optional: true, note };
   };
 
   /* ---------- 内药：在洞玄三重温养，年数够了自然凝成 ---------- */

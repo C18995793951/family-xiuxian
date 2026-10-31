@@ -188,3 +188,53 @@ svg.map .road { stroke-width: 3; }
 }
 .stat > span:first-child:has(+ b) { flex: 0 0 auto; white-space: nowrap; }
 .stat > b { text-align: right; }
+
+/* 此刻页：行动分页签、时长小格子、快捷栏 */
+button.wide { width: 100%; margin-bottom: .6em; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.4em, 1fr)); gap: .4em; }
+.chips.long { grid-template-columns: repeat(auto-fill, minmax(10em, 1fr)); }
+.chips .chip { padding: .3em .4em; min-height: 40px; white-space: nowrap; }
+.acts-tabs { gap: .3em; margin: .2em 0 .7em; }
+.acts-tabs button { flex: 1 1 0; padding: .35em .3em; min-height: 40px; white-space: nowrap; }
+.qbar { display: none; }
+.qbar button { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qbar button.risky { background: #5c2a1c; border-color: var(--danger); }
+@media (max-width: 720px) {
+  .qbar { display: flex; gap: 8px; position: fixed; left: 0; right: 0; bottom: calc(53px + env(safe-area-inset-bottom, 0px)); padding: 8px calc(12px + env(safe-area-inset-right, 0px)) 6px calc(12px + env(safe-area-inset-left, 0px)); background: linear-gradient(to top, var(--bg) 75%, rgba(23, 19, 15, 0)); z-index: 39; }
+  .qbar button { min-height: 48px; }
+  main.p-now { padding-bottom: calc(6em + 64px + env(safe-area-inset-bottom, 0px)); }
+  body:has(main.p-now .qbar) #toasts { bottom: calc(128px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* 手机横屏：导航改成左侧竖条；此刻页左栏人物与冲关，右栏做什么（钉在屏上，单独滚动） */
+@media (orientation: landscape) and (max-height: 520px) {
+  body { padding-left: 0; padding-right: 0; }
+  .app, .app.no-aside { display: block; }
+  nav.side, aside.right { display: none; }
+  nav.bottom { display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; right: auto; width: calc(64px + env(safe-area-inset-left, 0px)); padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); border-top: none; border-right: 1px solid var(--line); background: var(--panel); z-index: 40; }
+  nav.bottom button { flex: 1 1 0; min-height: 0; border: none; border-radius: 0; background: transparent; font-size: .85em; padding: 0; }
+  nav.bottom button.on { color: var(--accent); background: var(--panel-2); }
+  main, main.p-now { margin-left: calc(64px + env(safe-area-inset-left, 0px)); padding: .5em calc(12px + env(safe-area-inset-right, 0px)) calc(1.5em + env(safe-area-inset-bottom, 0px)) 12px; }
+  .mtop { display: block; color: var(--muted); font-size: .9em; margin-bottom: .4em; }
+  .now-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "a b" "c b"; gap: 0 12px; align-items: start; }
+  .col-a { grid-area: a; }
+  .col-c { grid-area: c; }
+  .col-c .grid { grid-template-columns: 1fr; }
+  .col-b { grid-area: b; position: sticky; top: 0; max-height: 100vh; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; padding-top: .2em; }
+  .col-b { display: flex; flex-direction: column; }
+  .qbar { display: flex; order: -1; gap: 8px; position: static; margin-bottom: .6em; padding: 0; background: none; }
+  .qbar .dup { display: none; }
+  .qbar:has(> .dup:only-child) { display: none; }
+  .qbar button { min-height: 44px; }
+  #toasts, body:has(main.p-now .qbar) #toasts { bottom: calc(1em + env(safe-area-inset-bottom, 0px)); left: calc(50% + 32px); }
+  .modal-bg { padding: .5em calc(.5em + env(safe-area-inset-right, 0px)) .5em calc(.5em + env(safe-area-inset-left, 0px)); }
+  .modal { max-height: 96vh; max-height: 96dvh; }
+  .map-wrap { max-height: 78vh; max-height: 78dvh; }
+  button { min-height: 40px; }
+}
+
+/* 采买与冲关来路 */
+.reqs .src { margin: .25em 0 .35em 1.2em; gap: .35em; }
+.reqs .src button { min-height: 34px; padding: .2em .6em; font-size: .9em; }
+.saga-mini { border-left: 3px solid var(--accent); padding: .2em .6em; margin-bottom: .7em; background: var(--panel-2); border-radius: 0 4px 4px 0; }
+.saga-mini > div { margin: .15em 0; }

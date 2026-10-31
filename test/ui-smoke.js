@@ -49,7 +49,7 @@ const { chromium } = require('playwright');
   }
   const year = await page.evaluate(() => FX.UI.s.year);
 
-  for (const p of ['map', 'people', 'bag', 'chron', 'sys', 'now']) {
+  for (const p of ['map', 'shop', 'bag', 'chron', 'sys', 'now']) {
     await page.click(`nav.side [data-act="page"][data-p="${p}"]`);
     await page.screenshot({ path: path.join(out, 'page-' + p + '.png'), fullPage: true });
   }
@@ -59,7 +59,8 @@ const { chromium } = require('playwright');
   await page.screenshot({ path: path.join(out, 'place.png') });
   await page.keyboard.press('Escape');
   // 人物卡
-  await page.click('nav.side [data-act="page"][data-p="people"]');
+  await page.click('nav.side [data-act="page"][data-p="chron"]');
+  await page.click('main [data-act="page"][data-p="people"]');
   const pbtn = await page.$('main [data-act="person"]');
   if (pbtn) { await pbtn.click(); await page.screenshot({ path: path.join(out, 'person.png') }); await page.keyboard.press('Escape'); }
 
@@ -79,8 +80,8 @@ const { chromium } = require('playwright');
   await mp.goto('file://' + path.join(__dirname, '..', 'dist', 'family-xiuxian.html'));
   await mp.click('[data-act="newGame"]');
   const overflow = [];
-  for (const p of ['now', 'map', 'people', 'bag', 'chron', 'sys']) {
-    await mp.click(`nav.bottom [data-act="page"][data-p="${p}"]`);
+  for (const p of ['now', 'shop', 'map', 'bag', 'sect', 'chron', 'people', 'sagas', 'sys']) {
+    await mp.click(['people', 'sagas'].includes(p) ? `main [data-act="page"][data-p="${p}"]` : `nav.bottom [data-act="page"][data-p="${p}"]`);
     const w = await mp.evaluate(() => document.documentElement.scrollWidth);
     if (w > 376) overflow.push(p + ':' + w);
     if (p === 'now') await mp.screenshot({ path: path.join(out, 'mobile-now.png'), fullPage: true });

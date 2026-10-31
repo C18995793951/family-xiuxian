@@ -280,30 +280,30 @@
       const near = p.nearDeathT !== null && s.t - p.nearDeathT <= B.taixi.lifeDeathYears * C().daysPerYear;
       out.push({ label: '近 ' + B.taixi.lifeDeathYears + ' 年在生死之间走过一遭（可选：+' + B.taixi.lifeDeath + '%）', ok: near, optional: true, note: '死生畏怖，神明自得；身受重伤后活下来的人更容易悟得胎息' });
     }
-    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', ok: has('zhuji'), optional: true, note: I.zhuji.where + '，约 ' + I.zhuji.price + ' 符钱' });
+    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', item: 'zhuji', ok: has('zhuji'), optional: true, note: I.zhuji.where + '，约 ' + I.zhuji.price + ' 符钱' });
     const need = CU.minorNeed(p);
-    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), ok: has(need.item, need.qty), note: need.why + '。' + I[need.item].where + '，约 ' + I[need.item].price + ' 符钱一份' });
+    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), item: need.item, ok: has(need.item, need.qty), note: need.why + '。' + I[need.item].where + '，约 ' + I[need.item].price + ' 符钱一份' });
     if (k === 'zifu') {
       const kf = P().isPlayer(s, p) ? CU.bestKaifu(s) : null;
-      out.push({ label: '一篇开府真法', ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '金谷墟市常备下乘开府真法；宗门弟子筑基后可向长老房请授；上乘的只在大派世族流转' });
+      out.push({ label: '一篇开府真法', kaifu: true, ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '金谷墟市常备下乘开府真法；宗门弟子筑基后可向长老房请授；上乘的只在大派世族流转' });
     }
     if (k === 'jindan') {
       out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
-      out.push({ label: I.ningdan.name, ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
+      out.push({ label: I.ningdan.name, item: 'ningdan', ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
       if (P().isPlayer(s, p)) out.push(FX.Yao.requirement(s, p));
     }
     if (k === 'yuanshen') {
       out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
-      out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
+      out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', item: 'dingshen', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
       if (has('xudu')) out.push({ label: I.xudu.name + '（可选：+' + B.xuduPill + '%）', ok: true, optional: true, note: '丹元大会魁首所得' });
     }
-    if (k === 'zhangguan' && P().isPlayer(s, p)) out.push({ label: I.dadong.name + '（可选：服下助长感悟）', ok: has('dadong'), optional: true, note: '元神第一外药，修为 +本重所需的三成。' + I.dadong.where });
+    if (k === 'zhangguan' && P().isPlayer(s, p)) out.push({ label: I.dadong.name + '（可选：服下助长感悟）', item: 'dadong', ok: has('dadong'), optional: true, note: '元神第一外药，修为 +本重所需的三成。' + I.dadong.where });
     // 返虚三途在界面上单列（见 app.js 的 fanxuPaths），这里只提玄中三限的门槛
-    if (k === 'fanxu' && P().isPlayer(s, p)) { const po = CU.pathOk(s, p, 'sanxian'); out.push({ label: '可选「玄中三限」：' + I.xuanzhong.name + '，' + C().realms.xiangNames[C().realms.fanxuPaths.sanxian.minXiang] + '以上', ok: po.ok, optional: true, note: po.ok ? '' : po.reason }); }
+    if (k === 'fanxu' && P().isPlayer(s, p)) { const po = CU.pathOk(s, p, 'sanxian'); out.push({ label: '可选「玄中三限」：' + I.xuanzhong.name + '，' + C().realms.xiangNames[C().realms.fanxuPaths.sanxian.minXiang] + '以上', item: (s.player.inv.xuanzhong || 0) > 0 ? null : 'xuanzhong', ok: po.ok, optional: true, note: po.ok ? '' : po.reason }); }
     if (k === 'mizhang') {
       const site = CU.mizhangSite(s, p);
       out.push({ label: '以灵脉护住法躯：自家洞天，或用得上的灵窟', ok: site.ok, note: site.ok ? site.label + (site.tiangu ? '，失道之祸大减' : '') : '此处你能借到 ' + CU.qiFor(s, p) + ' 级灵机' });
-      if (P().isPlayer(s, p) && p.factionId && s.factions[p.factionId] && s.factions[p.factionId].key === 'yuchen') out.push({ label: I.tiangu.name + '（可选：在宵明大泽破障）', ok: has('tiangu'), optional: true, note: I.tiangu.desc });
+      if (P().isPlayer(s, p) && p.factionId && s.factions[p.factionId] && s.factions[p.factionId].key === 'yuchen') out.push({ label: I.tiangu.name + '（可选：在宵明大泽破障）', item: 'tiangu', ok: has('tiangu'), optional: true, note: I.tiangu.desc });
     }
     if (IN_DONGTIAN.includes(k)) {
       const dt = P().isPlayer(s, p) && s.player.dongtian;
