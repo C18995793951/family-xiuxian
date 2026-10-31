@@ -5,111 +5,81 @@
   'use strict';
   const FX = (G.FX = G.FX || {});
   const P = FX.P;
-
-  const guardArrange = (s) => {
-    if (s.ended) return '本局已结束';
-    if (s.phase !== 'arrange') return '推进中途有待决断的事件，请先处理';
-    return null;
-  };
-  const wrap = (fn) => (s, ...args) => {
-    const g = guardArrange(s);
-    if (g) return { ok: false, error: g };
-    return fn(s, ...args);
-  };
+  const C = () => FX.CONFIG;
 
   const Game = {
     newGame: (opts) => FX.Sim.newGame(opts || {}),
-    advance: (s) => FX.Sim.advance(s),
-    // 中断后继续完成本回合剩余年份
-    resume: (s) => FX.Sim.advance(s),
-    resolveEvent: (s, instId, optId) => {
-      const r = FX.Ev.resolve(s, instId, optId);
-      if (r.ok) FX.Sim.checkEnd(s);
-      return r;
-    },
+    // 此刻规则允许的行动（界面按钮、测试策略、以后的 AI 意图解析都从这里挑）
+    actions: (s) => FX.Act.list(s),
+    act: (s, a) => FX.Act.run(s, a),
+    buy: (s, item, qty) => FX.Act.run(s, { type: 'buy', item, qty }),
+    sell: (s, item, qty) => FX.Act.run(s, { type: 'sell', item, qty }),
     pendingEvents: (s) => s.pending.map((i) => FX.Ev.view(s, i)),
-
-    setDuty: wrap(FX.Sim.setDuty),
-    batchSetDuty: wrap(FX.Sim.batchSetDuty),
-    confirmDuty: wrap(FX.Sim.confirmDuty),
-    applySuggestions: wrap((s, all) => FX.Sim.suggestAll(s, all)),
-    breakthroughPreview: (s, id) => {
-      const p = s.people[id];
-      if (!p) return null;
-      const can = FX.CU.canAttempt(s, p);
-      return Object.assign({ can }, FX.CU.chance(s, p) || {});
-    },
-    attemptBreakthrough: wrap((s, id) => FX.CU.attempt(s, s.people[id])),
-    upgrade: wrap(FX.Econ.upgrade),
-    buy: wrap(FX.Econ.buy),
-    sell: wrap(FX.Econ.sell),
-    setSetting: wrap((s, key, val) => {
-      if (!(key in s.family.settings)) return { ok: false, error: '无此设置' };
-      if (key === 'herbPlots') val = Math.max(0, Math.min(s.family.buildings.field || 0, Math.floor(val)));
-      s.family.settings[key] = val;
-      return { ok: true };
-    }),
-    designateHeir: wrap(FX.Family.designateHeir),
-    abdicate: wrap(FX.Family.abdicate),
-    changeRule: wrap(FX.Family.changeRule),
-    setFocus: wrap(FX.Family.setFocus),
-    answerRequest: wrap(FX.Family.answerRequest),
-    useYanshou: wrap((s, id) => ({ ok: true, text: FX.Sim.takeYanshou(s, s.people[id]) })),
-    seal: (s) => FX.Sim.seal(s),
-    // 记一笔玩家侧决策说明（如 AI 托管的理由）：只进历史，不影响任何规则数值
-    note: (s, text, tag) => {
-      const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-      if (!t) return { ok: false, error: '空说明' };
-      return { ok: true, hid: FX.H.add(s, { type: 'agent', tags: [tag || 'AI 家主'], key: 'agent', params: { text: t }, severity: 1 }) };
+    choose: (s, instId, optId) => {
+      if (s.ended) return { ok: false, error: '这一生已经结束' };
+      const r = FX.Ev.resolve(s, instId, optId);
+      if (r.ok && r.days && FX.P.alive(FX.P.player(s))) FX.Sim.passDays(s, r.days, 'other');
+      FX.Sim.checkEnd(s);
+      return r;
     },
 
     /* ---------- 视图数据（只读）---------- */
     view: {
       overview(s) {
-        const top = FX.Family.strongest(s);
-        const head = s.people[s.family.headId];
+        const p = P.player(s);
+        const place = s.places[p.locationId];
+        const bt = FX.CU.gateKind(p) ? FX.CU.chance(s, p) : null;
         return {
-          year: s.year, turn: s.turn, yearInTurn: s.yearInTurn, phase: s.phase,
-          surname: s.family.surname, origin: FX.CONFIG.origins[s.family.origin].name,
-          ancestor: top ? { id: top.id, name: top.name, realm: P.realmName(top), left: P.lifespanLeft(s, top), power: Math.round(P.power(s, top) * 10) / 10 } : null,
-          successors: FX.Family.successorCultivators(s).slice(0, 3).map((p) => ({ id: p.id, name: p.name, realm: P.realmName(p), left: P.lifespanLeft(s, p) })),
-          head: head ? { id: head.id, name: head.name, realm: P.realmName(head), age: P.age(s, head), prestige: Math.round(s.family.headAuthority.prestige) } : null,
-          heir: s.family.heirId ? { id: s.family.heirId, name: P.name(s, s.family.heirId) } : null,
-          branches: s.family.branches,
-          resources: s.family.resources,
-          edge: s.family.edge,
-          edgeTarget: FX.Family.edgeTarget(s),
-          defense: FX.Family.defensePower(s),
-          population: P.living(s).length,
-          natives: P.natives(s).length,
-          prestige: Math.round(s.family.prestige),
-          deficit: s.family.deficit,
-          attention: FX.Sim.needsAttention(s).length,
-          requests: s.family.requests.length,
-          pending: s.pending.length,
-          forecast: FX.Econ.forecast(s),
-          ended: s.ended,
+          t: s.t, year: s.year, date: FX.T.fmt(s.t),
+          me: p, age: P.age(s, p), realm: P.realmName(p), need: P.need(p), full: P.isFull(p),
+          left: P.lifespanLeft(s, p), lifespan: P.lifespanTotal(p),
+          speed: FX.CU.breakdown(s, p, { pill: s.player.qijuUntil > s.t }),
+          power: P.powerBreakdown(s, p),
+          tech: P.techOf(s, p), fit: FX.CU.techFit(s, p),
+          faction: p.factionId ? s.factions[p.factionId] : null,
+          place, stone: s.player.stone, inv: s.player.inv, manuals: s.player.manuals,
+          pillUntil: s.player.qijuUntil > s.t ? s.player.qijuUntil : null,
+          breakthrough: bt ? Object.assign({ can: FX.CU.canAttempt(s, p) }, bt) : null,
+          pending: s.pending.length, ended: s.ended, stats: s.player.stats,
+        };
+      },
+      place(s, id) {
+        const pl = s.places[id];
+        if (!pl) return null;
+        const me = P.player(s);
+        return {
+          place: pl,
+          typeName: C().world.placeTypes[pl.type].name,
+          faction: pl.factionId ? s.factions[pl.factionId] : null,
+          visited: s.player.visited.includes(id),
+          here: me.locationId === id,
+          route: FX.World.route(s, me.locationId, id),
+          people: P.at(s, id).filter((q) => q.id !== me.id).map((q) => ({ id: q.id, name: q.name, realm: P.realmName(q), faction: P.factionName(s, q), rel: P.relValue(s, me.id, q.id) })),
+          market: FX.World.hasMarket(s, id) ? s.markets[id] : null,
         };
       },
       person(s, id) {
         const p = s.people[id];
         if (!p) return null;
+        const me = P.player(s);
+        const isMe = p.id === me.id;
         return {
-          p,
+          p, isMe,
           age: P.age(s, p),
           realm: P.realmName(p),
           need: P.need(p),
           left: P.lifespanLeft(s, p),
-          status: FX.Sim.dutyStatus(s, p),
-          power: Math.round(P.power(s, p) * 10) / 10,
-          speed: FX.CU.breakdown(s, p),
-          relations: P.relationsOf(s, p.id).map((r) => ({ other: r.a === p.id ? r.b : r.a, name: P.name(s, r.a === p.id ? r.b : r.a), type: r.type, strength: r.strength, tags: r.tags })),
+          power: P.power(s, p),
+          faction: P.factionName(s, p),
+          place: s.places[p.locationId].name,
+          rel: isMe ? null : P.relationBetween(s, me.id, p.id),
+          relations: isMe ? P.relationsOf(s, p.id).map((r) => ({ other: r.a === p.id ? r.b : r.a, name: P.name(s, r.a === p.id ? r.b : r.a), type: r.type, strength: r.strength, tags: r.tags })) : [],
           life: FX.H.lifeSummary(s, p),
-          loyaltyBase: Math.round(FX.Family.loyaltyBaseline(s, p)),
-          history: s.history.filter((e) => e.actors.includes(p.id)).slice(-30).map((e) => ({ id: e.id, year: e.year, text: FX.H.text(e) })),
+          history: s.history.filter((e) => e.actors.includes(p.id) && (e.pov || isMe)).slice(-30).map((e) => ({ id: e.id, t: e.t, text: FX.H.text(e) })),
         };
       },
-      chronicle: (s, turn) => FX.H.chronicle(s, turn),
+      feed: (s, n) => FX.H.feed(s, n),
+      rating: (s) => FX.Sim.rating(s),
       historyText: (e) => FX.H.text(e),
     },
 

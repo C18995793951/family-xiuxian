@@ -117,8 +117,29 @@ nav.bottom { display: none; }
   .modal { padding: 1em; }
 }
 
-/* AI 润色（表现层） */
-.ai-text p { margin: .2em 0 .6em; text-indent: 2em; }
-.ai-text h3 { margin-top: .8em; }
-.ai-bar { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; font-size: .88em; margin: .2em 0 .6em; }
-.tag.ai-tag { border-color: #7a8fb5; color: #b8c8e8; }
+/* 个人主角 */
+.col { display: flex; flex-direction: column; gap: .4em; }
+.col button { text-align: left; }
+.act-group { margin-bottom: .7em; }
+.act-group > .muted { display: block; font-size: .88em; margin-bottom: .25em; }
+.tabs { margin-bottom: .8em; }
+.tabs button.on { border-color: var(--accent); color: var(--accent); background: var(--panel-2); }
+.log p.rumor, .rumor { color: var(--muted); }
+.map-wrap { overflow-x: auto; padding: .5em; }
+svg.map { width: 100%; min-width: 560px; height: auto; display: block; }
+svg.map .road { stroke: var(--line-soft); stroke-width: 2; }
+svg.map .days { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+svg.map .node { cursor: pointer; }
+svg.map .node circle { stroke: var(--bg); stroke-width: 2; }
+svg.map .node.seen circle { stroke: var(--accent); }
+svg.map .node.here circle { stroke: #fff3dc; stroke-width: 3; }
+svg.map .node:focus-visible circle { stroke: #fff; stroke-width: 4; }
+svg.map .pname { fill: var(--text); font-size: 12px; text-anchor: middle; }
+.t-town circle, .legend.t-town { fill: #c9a25a; color: #c9a25a; }
+.t-sect circle, .legend.t-sect { fill: #7a8fb5; color: #7a8fb5; }
+.t-clan circle, .legend.t-clan { fill: #5b9a85; color: #5b9a85; }
+.t-wild circle, .legend.t-wild { fill: #8a7a5a; color: #8a7a5a; }
+.t-danger circle, .legend.t-danger { fill: #b5412f; color: #b5412f; }
+.mtop { display: none; }
+@media (max-width: 720px) { .mtop { display: block; color: var(--muted); font-size: .9em; margin-bottom: .6em; } }
+label { display: inline-flex; gap: .4em; align-items: center; }
