@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 10,
-    gameVersion: '0.8.0-xianye8',
+    schemaVersion: 11,
+    gameVersion: '0.9.0-xianye9',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -172,6 +172,8 @@
       dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.2, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备；比下乘开府真法强，不如上乘的' },
       dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九还、炼神还虚的中乘道书，中域坊市常备，大派长老房可用道功换' },
       dao_high: { kind: 'dao', name: '太上元神真解', grade: 3, mult: 1.6, price: 250000, desc: '直指元神、返虚的根本道典，只在八派六宗的真传之间流转' },
+      // 玉宸二十五正法（三经、五典、八功、九书）里三经之首，原著称“玄中经箓，其位最崇”
+      xuanzhongjing: { kind: 'dao', name: '玄中太无自然开元经箓', grade: 4, mult: 1.9, price: 0, desc: '玉宸二十五正法中三经之首，九州之冠的修道宝典。只在道录殿，四院大比的魁首凭符诏可取，上宗弟子要立下海量功劳才换得' },
 
       /* 道术与神通（kind: 'shu'）：照原著，正统仙道里道术分下、中、上三乘，道术之上才是神通；
        * 金丹真人的法力才撑得起神通的损耗，洞玄以下斗法只能用道术。玉宸派的八功九书是神通里的无上大神通。
@@ -203,7 +205,7 @@
       lianjian: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '炼剑成丝', price: 0, merge: 'jianqi', desc: '赤明派剑道的极境之一，剑炼成丝，无物不断。要先修过剑气雷音' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
-    gradeNames: ['', '下乘', '中乘', '上乘'],
+    gradeNames: ['', '下乘', '中乘', '上乘', '玄门至典'],
     shuRankNames: ['', '下乘道术', '中乘道术', '上乘道术', '神通', '无上大神通'],
     daojiNames: ['', '下品道基', '中品道基', '上品道基'],
     yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
@@ -408,8 +410,9 @@
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
           { tech: 'sishan', merit: 800 }, { tech: 'pili', merit: 1500 }, { tech: 'zqsl_up', merit: 2000, minDaoji: 2 },
           { tech: 'zqsl', merit: 6000, minMajor: 6, minPin: 4, needTech: 'zqsl_up' }, { tech: 'beidou', merit: 9000, minMajor: 6, minPin: 3 },
-          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2 }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3 },
-          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3 }],
+          // zf：玉宸二十五正法（三经、五典、八功、九书），收在道录殿；四院大比魁首凭道录殿符诏可任取一门
+          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2, zf: '八功' }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3, zf: '八功' },
+          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3, zf: '八功' }, { tech: 'xuanzhongjing', merit: 80000, minMajor: 7, minXiang: 3, zf: '三经' }],
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
@@ -549,6 +552,12 @@
         foes: ['斗枢派', '太符宫', '中乙剑派', '北极苑', '阴景派', '九真教', '神御宗', '血河宗', '先天魔宗', '瘟癀宗', '玄酆洞', '玉宸派', '赤明派', '怙照宗'],
         // 按胜场：0 落选，1–2 有名次，3 前列，4 魁首
         reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2, miluo: 1 }, { merit: 600, zhengyang: 3, dingshen: 1, huanghua: 1, dadong: 1 }, { merit: 1200, xudu: 1, zhengyang: 3, huanghua: 1, dadong: 3 }] },
+      // 玉宸四院大比：青阳、长赢、白商、玄英四大下院的年轻弟子在齐云山比斗，前十为「十大弟子」、拜入上宗，
+      // 魁首得道录殿符诏，可从二十五正法里任取一门。本游戏里玉宸门人金丹以后才见得到，便让年轻的金丹门人赴会
+      dabi: { name: '玉宸四院大比', every: [40, 70], first: [5, 25], years: 1, faction: 'yuchen', major: 6, maxAge: 700, days: 60,
+        rounds: 5, foeBase: 2000, foeMult: [1, 1.25, 1.6, 2.0, 2.6], yuan: ['青阳院', '长赢院', '白商院', '玄英院'],
+        // 按胜场：3 场以上入十大弟子，5 场全胜为魁首
+        reward: [{ merit: 30 }, { merit: 100 }, { merit: 200 }, { merit: 500 }, { merit: 900 }, { merit: 1500, dulu: 1 }], shida: 3 },
       // 流火宏化洞天：旁门纯阳火霞老祖开辟的下等洞天，漂泊万载后落回胥都天，悬在鹤鸣山上空。
       // 玉宸派与赤明派赌斗三场赢下了它，每隔些年门户显世，玉宸门人可入内寻造化（原著里是四院弟子去，这里金丹以上的门人才放进去）
       liuhuo: { name: '流火宏化洞天显世', every: [20, 35], first: [8, 20], years: 3, place: '鹤鸣山', faction: 'yuchen', minMajor: 6, days: 120,
@@ -634,6 +643,7 @@
       // 返虚三途里的「玄中三限」要先吃透它的经义
       xuanzhong: { name: '玄中三限经义', price: 0, book: true, desc: '讲返虚天考之法的玄书。有它，又有上等以上的元神法相，冲返虚时才能选「玄中三限」一途（书不会耗掉）', where: '八派六宗库藏，元神真人以重道功换' },
       // 宵明大泽灵窟的中枢正位，又名先天奇府、太乙含真：宇宙间最适宜突破返虚道劫的场地
+      dulu: { name: '道录殿符诏', price: 0, desc: '玉宸四院大比魁首所得的鱼形符诏。凭它进道录殿，从二十五正法里任取一门，不论道功、品第（取了便收回）', where: '只有玉宸四院大比的魁首才有' },
       tiangu: { name: '天谷符诏', price: 0, desc: '玉宸派准你进宵明大泽灵窟「天谷」破一回返虚迷障的符诏：天谷护住法躯，失道之祸大减（在宵明大泽破障时自动用掉）', where: '玉宸派库藏，返虚真君以道功换' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
       rareHerb: { name: '人面芝', price: 60, desc: '生在阴气浓郁之地的珍贵外药，可卖钱' },

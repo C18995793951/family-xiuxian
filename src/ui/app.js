@@ -369,10 +369,11 @@
     }
     const f = v.faction, clan = f.type === 'clan';
     const lib = v.library.map((e) => {
-      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech);
+      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && !x.zf);
+      const zfa = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && x.zf);
       const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
-      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true);
-      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
+      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true) + (zfa ? btn(zfa, '凭符诏取', true) : '');
+      return `<div class="stat"><span>《${esc(e.t.name)}》${e.zf ? ' <span class="tag">二十五正法·' + esc(e.zf) + '</span>' : ''} <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);

@@ -186,8 +186,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 10,
-    gameVersion: '0.8.0-xianye8',
+    schemaVersion: 11,
+    gameVersion: '0.9.0-xianye9',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -347,6 +347,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.2, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备；比下乘开府真法强，不如上乘的' },
       dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九还、炼神还虚的中乘道书，中域坊市常备，大派长老房可用道功换' },
       dao_high: { kind: 'dao', name: '太上元神真解', grade: 3, mult: 1.6, price: 250000, desc: '直指元神、返虚的根本道典，只在八派六宗的真传之间流转' },
+      // 玉宸二十五正法（三经、五典、八功、九书）里三经之首，原著称“玄中经箓，其位最崇”
+      xuanzhongjing: { kind: 'dao', name: '玄中太无自然开元经箓', grade: 4, mult: 1.9, price: 0, desc: '玉宸二十五正法中三经之首，九州之冠的修道宝典。只在道录殿，四院大比的魁首凭符诏可取，上宗弟子要立下海量功劳才换得' },
 
       /* 道术与神通（kind: 'shu'）：照原著，正统仙道里道术分下、中、上三乘，道术之上才是神通；
        * 金丹真人的法力才撑得起神通的损耗，洞玄以下斗法只能用道术。玉宸派的八功九书是神通里的无上大神通。
@@ -378,7 +380,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       lianjian: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '炼剑成丝', price: 0, merge: 'jianqi', desc: '赤明派剑道的极境之一，剑炼成丝，无物不断。要先修过剑气雷音' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
-    gradeNames: ['', '下乘', '中乘', '上乘'],
+    gradeNames: ['', '下乘', '中乘', '上乘', '玄门至典'],
     shuRankNames: ['', '下乘道术', '中乘道术', '上乘道术', '神通', '无上大神通'],
     daojiNames: ['', '下品道基', '中品道基', '上品道基'],
     yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
@@ -583,8 +585,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
           { tech: 'sishan', merit: 800 }, { tech: 'pili', merit: 1500 }, { tech: 'zqsl_up', merit: 2000, minDaoji: 2 },
           { tech: 'zqsl', merit: 6000, minMajor: 6, minPin: 4, needTech: 'zqsl_up' }, { tech: 'beidou', merit: 9000, minMajor: 6, minPin: 3 },
-          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2 }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3 },
-          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3 }],
+          // zf：玉宸二十五正法（三经、五典、八功、九书），收在道录殿；四院大比魁首凭道录殿符诏可任取一门
+          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2, zf: '八功' }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3, zf: '八功' },
+          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3, zf: '八功' }, { tech: 'xuanzhongjing', merit: 80000, minMajor: 7, minXiang: 3, zf: '三经' }],
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
@@ -724,6 +727,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         foes: ['斗枢派', '太符宫', '中乙剑派', '北极苑', '阴景派', '九真教', '神御宗', '血河宗', '先天魔宗', '瘟癀宗', '玄酆洞', '玉宸派', '赤明派', '怙照宗'],
         // 按胜场：0 落选，1–2 有名次，3 前列，4 魁首
         reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2, miluo: 1 }, { merit: 600, zhengyang: 3, dingshen: 1, huanghua: 1, dadong: 1 }, { merit: 1200, xudu: 1, zhengyang: 3, huanghua: 1, dadong: 3 }] },
+      // 玉宸四院大比：青阳、长赢、白商、玄英四大下院的年轻弟子在齐云山比斗，前十为「十大弟子」、拜入上宗，
+      // 魁首得道录殿符诏，可从二十五正法里任取一门。本游戏里玉宸门人金丹以后才见得到，便让年轻的金丹门人赴会
+      dabi: { name: '玉宸四院大比', every: [40, 70], first: [5, 25], years: 1, faction: 'yuchen', major: 6, maxAge: 700, days: 60,
+        rounds: 5, foeBase: 2000, foeMult: [1, 1.25, 1.6, 2.0, 2.6], yuan: ['青阳院', '长赢院', '白商院', '玄英院'],
+        // 按胜场：3 场以上入十大弟子，5 场全胜为魁首
+        reward: [{ merit: 30 }, { merit: 100 }, { merit: 200 }, { merit: 500 }, { merit: 900 }, { merit: 1500, dulu: 1 }], shida: 3 },
       // 流火宏化洞天：旁门纯阳火霞老祖开辟的下等洞天，漂泊万载后落回胥都天，悬在鹤鸣山上空。
       // 玉宸派与赤明派赌斗三场赢下了它，每隔些年门户显世，玉宸门人可入内寻造化（原著里是四院弟子去，这里金丹以上的门人才放进去）
       liuhuo: { name: '流火宏化洞天显世', every: [20, 35], first: [8, 20], years: 3, place: '鹤鸣山', faction: 'yuchen', minMajor: 6, days: 120,
@@ -809,6 +818,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       // 返虚三途里的「玄中三限」要先吃透它的经义
       xuanzhong: { name: '玄中三限经义', price: 0, book: true, desc: '讲返虚天考之法的玄书。有它，又有上等以上的元神法相，冲返虚时才能选「玄中三限」一途（书不会耗掉）', where: '八派六宗库藏，元神真人以重道功换' },
       // 宵明大泽灵窟的中枢正位，又名先天奇府、太乙含真：宇宙间最适宜突破返虚道劫的场地
+      dulu: { name: '道录殿符诏', price: 0, desc: '玉宸四院大比魁首所得的鱼形符诏。凭它进道录殿，从二十五正法里任取一门，不论道功、品第（取了便收回）', where: '只有玉宸四院大比的魁首才有' },
       tiangu: { name: '天谷符诏', price: 0, desc: '玉宸派准你进宵明大泽灵窟「天谷」破一回返虚迷障的符诏：天谷护住法躯，失道之祸大减（在宵明大泽破障时自动用掉）', where: '玉宸派库藏，返虚真君以道功换' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
       rareHerb: { name: '人面芝', price: 60, desc: '生在阴气浓郁之地的珍贵外药，可卖钱' },
@@ -1240,6 +1250,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     saga_open_danyuan: ['胥都天气运大势所趋，「{what}」开期已到：{hint}。'],
     danyuan_enter: ['{name}随{faction}的真传一道，赴胥都天的丹元大会。'],
     danyuan: ['{name}在丹元大会上{what}。'],
+    saga_open_dabi: ['齐云山上云旗招展，「{what}」开场：{hint}。'],
+    dabi_enter: ['{name}以{yuan}门人的身份登上齐云山，赴玉宸四院大比。'],
+    dabi: ['{name}在玉宸四院大比上{what}。'],
     saga_open_liuhuo: ['鹤鸣山上空霞光大作，「{what}」：{hint}。'],
     yanxi: ['{name}到东海拜谒颜熙真君：{what}。'],
     dongtian: ['{name}花了 {cost} 符钱、三年工夫，在{place}开辟出一方洞天。'],
@@ -3302,7 +3315,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
@@ -3767,7 +3780,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     while (i + 1 < mm.length && p.realm.major >= mm[i + 1]) i++;
     return i;
   };
-  Sect.postName = (s, f, p) => (HS().posts[f.type] || HS().posts.sect)[Sect.post(s, f, p)];
+  // 玉宸九殿四院：金丹门人在四大下院（大比入了十大弟子便是上宗真传），元神以后入九殿任长老
+  Sect.hallOf = (p) => (p.xiang >= 3 ? '周行殿' : p.danPin && p.danPin <= 3 ? '丹符殿' : '功德殿');
+  Sect.postName = (s, f, p) => {
+    const i = Sect.post(s, f, p);
+    if (f.key === 'yuchen' && i === 2) return p.realm.major >= 7 ? Sect.hallOf(p) + '长老' : p.flags.includes('shida') ? '上宗真传' : FX.Saga.yuanOf(s, p) + '弟子';
+    return (HS().posts[f.type] || HS().posts.sect)[i];
+  };
 
   // 每年的俸禄（按境界，再按宗门品级、门中职位加成）
   Sect.stipend = (s, f) => {
@@ -3873,6 +3892,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         : e.needTech && !s.player.manuals.includes(e.needTech) ? '要先修过《' + cf.techniques[e.needTech].name + '》'
         : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
       add({ type: 'sect_learn', tech: e.tech, days: HS().learnDays, cost, label: (cost ? '以 ' + cost + ' ' + M() + '换《' : '请授《') + t.name + '》', group: '库藏', ok: !why, reason: why });
+      // 二十五正法：四院大比魁首凭道录殿符诏任取一门，不论道功、品第、法相
+      if (e.zf && (s.player.inv.dulu || 0) > 0) add({ type: 'sect_learn', tech: e.tech, zf: true, days: HS().learnDays, cost: 0, label: '持道录殿符诏取《' + t.name + '》（' + e.zf + '）', group: '库藏', ok: !away, reason: away });
     }
     // 库藏兑换
     for (const e of Sect.store(f)) {
@@ -3927,6 +3948,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     s.player.merit -= a.cost;
+    if (a.zf) s.player.inv.dulu--;
     if (!s.player.manuals.includes(a.tech)) s.player.manuals.push(a.tech);
     const t = C().techniques[a.tech];
     H().add(s, { type: 'learn', tags: ['功法', '宗门'], actors: [p.id], factions: [f.id], key: a.cost ? 'sect_learn_merit' : 'sect_learn', pov: true, severity: 2, params: { name: p.name, faction: f.name, tech: t.name, cost: a.cost, merit: M() } });
@@ -4066,7 +4088,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 
   const Saga = {};
   const SG = () => C().saga;
-  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo', 'danyuan', 'liuhuo'];
+  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo', 'danyuan', 'liuhuo', 'dabi'];
   const me = (s) => P().player(s);
   const pl = (s) => P().player(s);
   const give = (s, k, n) => { s.player.inv[k] = (s.player.inv[k] || 0) + n; };
@@ -4122,6 +4144,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (k === 'tianmo') return m >= SG().tianmo.minMajor;
     if (k === 'danyuan') return m >= 5;
     if (k === 'liuhuo') return !!f && f.key === SG().liuhuo.faction && m >= SG().liuhuo.minMajor;
+    if (k === 'dabi') return !!f && f.key === SG().dabi.faction && m === SG().dabi.major && P().age(s, p) <= SG().dabi.maxAge;
     return true;
   };
 
@@ -4129,6 +4152,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   Saga.hint = (s, k) => {
     const cfg = SG()[k];
     if (k === 'danyuan') return '胥都天八派六宗的金丹天骄争雄斗法，魁首得胥都大丹；八派六宗的金丹门人回本门山门，由本门遣送赴会';
+    if (k === 'dabi') return '玉宸四大下院的年轻弟子在齐云山连斗五场，三场以上入十大弟子，五场全胜的魁首得道录殿符诏、可从二十五正法里任取一门；玉宸的金丹门人（年不过 ' + cfg.maxAge + '）回宵明大泽由本门遣送';
     if (k === 'liuhuo') return '玉宸派金丹以上的门人可到' + cfg.place + '，入洞天寻造化：外层稳得火炁，往深处去要斗法';
     if (k === 'diyuan') { const pl2 = placeByName(s, cfg.place); return '到' + (pl2 ? pl2.name : cfg.place) + '去，练炁以上都能进'; }
     if (k === 'xiefang') { const f = factionByKey(s, cfg.faction); return '无门无派、练炁以上的散修可到' + (f ? s.places[f.seatId].name : '花神府') + '赴宴，要交供奉'; }
@@ -4186,6 +4210,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const done = s.saga.danyuan.done === s.saga.danyuan.open.from;
       const why = done ? '这回丹元大会已经去过了' : p.realm.major !== dy2.major ? '只有金丹真人能赴会' : p.health.state !== 'healthy' ? '带伤赴会是自取其辱' : '';
       add({ type: 'danyuan', days: dy2.days, label: '随本门赴丹元大会（连斗 ' + dy2.rounds + ' 场，可随时认输）', group: '大事', ok: !why, reason: why });
+    }
+    // 玉宸四院大比：玉宸的年轻金丹门人在宵明大泽由本门遣送
+    const db = SG().dabi;
+    if (Saga.openYear(s, 'dabi') !== null && mf && mf.key === db.faction && place.id === mf.seatId) {
+      const done = s.saga.dabi.done === s.saga.dabi.open.from;
+      const why = done ? '这回大比已经去过了' : p.realm.major !== db.major ? '只有金丹门人能赴会' : P().age(s, p) > db.maxAge ? '年岁太大，四院不收' : p.health.state !== 'healthy' ? '带伤赴会是自取其辱' : '';
+      add({ type: 'dabi', days: db.days, label: '赴玉宸四院大比（连斗 ' + db.rounds + ' 场，可随时认输）', group: '大事', ok: !why, reason: why });
     }
     // 流火宏化洞天
     const lh = SG().liuhuo;
@@ -4447,6 +4478,57 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     return o;
   })();
 
+  /* ---------- 玉宸四院大比 ---------- */
+  // 主角落籍的下院（改投、拜入的都先落在白商院，见玉宸派的 transferNote）
+  Saga.yuanOf = () => '白商院';
+  Saga.DO.dabi = (s, a) => {
+    const p = me(s);
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.dabi.done = s.saga.dabi.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没到齐云山就出了变故', interrupted: true };
+    H().add(s, { type: 'saga', tags: ['大事', '四院大比'], actors: [p.id], key: 'dabi_enter', pov: true, severity: 4, params: { name: p.name, yuan: Saga.yuanOf(s, p) } });
+    Saga.dabiRound(s, 1);
+    return { text: '四院大比开场', interrupted: true, used: r.used };
+  };
+  Saga.dabiRound = (s, round) => {
+    const p = me(s), db = SG().dabi, mine = Saga.yuanOf(s, p);
+    const pool = db.yuan.filter((x) => x !== mine);
+    const power = Math.round(db.foeBase * db.foeMult[round - 1] * R.range(s.rng, 0.9, 1.1) * 10) / 10;
+    FX.Ev.spawn(s, 'DABI', { place: p.locationId, _round: round, _foe: R.pick(s.rng, pool) + '的' + (round >= db.rounds ? '头名弟子' : '弟子'), _power: power }, []);
+  };
+  Saga.dabiSettle = (s, wins) => {
+    const p = me(s), db = SG().dabi, rw = db.reward[wins];
+    const names = ['没进前列', '胜了一场', '胜了两场，可惜没进十大弟子', '入了十大弟子', '入了十大弟子，名列前茅', '夺得魁首'];
+    let extra = '';
+    if (wins >= db.shida && !p.flags.includes('shida')) { p.flags.push('shida'); extra += '，拜入玉宸上宗'; }
+    if (rw.dulu) { give(s, 'dulu', rw.dulu); extra += '，得' + C().items.dulu.name + '（可去长老房从二十五正法里任取一门）'; }
+    s.player.merit += rw.merit;
+    const what = '胜 ' + wins + ' 场，' + names[wins] + extra + '，本门记' + C().house.meritName + ' ' + rw.merit;
+    const hid = H().add(s, { type: 'saga', tags: ['大事', '四院大比'], actors: [p.id], key: 'dabi', pov: true, severity: wins >= db.rounds ? 5 : wins >= db.shida ? 4 : 3, params: { name: p.name, what } });
+    if (wins >= db.rounds) H().markFirst(s, 'dabi_win', hid);
+    return what;
+  };
+  const dabiFoe = (s, b) => ({
+    name: b._foe, power: b._power, winText: b._round < SG().dabi.rounds ? '胜了这场，进下一场' : '胜下最后一场，夺魁',
+    onWin(s2, b2) {
+      const db = SG().dabi;
+      if (b2._round < db.rounds) { Saga.dabiRound(s2, b2._round + 1); return '第 ' + b2._round + ' 场胜了，还有 ' + (db.rounds - b2._round) + ' 场'; }
+      return Saga.dabiSettle(s2, db.rounds);
+    },
+  });
+  const dabiFight = (() => {
+    const o = Object.assign({}, Cb().fightOpt(dabiFoe), { label: '出手' });
+    const base = o.apply;
+    o.apply = (s, b, ctx) => {
+      const r = base(s, b, ctx);
+      if (!r.gain && P().alive(pl(s))) r.text += '；' + Saga.dabiSettle(s, b._round - 1);
+      return r;
+    };
+    return o;
+  })();
+
   /* ---------- 流火宏化洞天 ---------- */
   const LH_FOES = { mid: ['火霞门禁卫傀儡', '流火精怪'], deep: ['洞天残灵', '火霞老祖遗下的火龙'] };
   const lhVal = (tbl, p) => tbl[Math.min(8, Math.max(6, p.realm.major))];
@@ -4608,6 +4690,15 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     options: [
       danyuanFight,
       { id: 'quit', label: '认输离场', cost: () => '无', risk: () => '无', outcome: (s, b) => '按已胜的 ' + (b._round - 1) + ' 场排名次', apply(s, b) { return { text: '认输离场，' + Saga.danyuanSettle(s, b._round - 1) }; } },
+    ],
+  };
+
+  EV.DABI = {
+    name: '玉宸四院大比', category: '大事', severity: 4,
+    text: (s, b) => `四院大比第 ${b._round} 场（共 ${SG().dabi.rounds} 场）。对手是${b._foe}（战力 ${b._power}）。你战力 ${P().power(s, pl(s))}。齐云山上九殿的高真都在看着：胜三场入十大弟子，五场全胜的魁首得道录殿符诏。`,
+    options: [
+      dabiFight,
+      { id: 'quit', label: '认输离场', cost: () => '无', risk: () => '无', outcome: (s, b) => '按已胜的 ' + (b._round - 1) + ' 场排名次', apply(s, b) { return { text: '认输离场，' + Saga.dabiSettle(s, b._round - 1) }; } },
     ],
   };
 
@@ -5298,6 +5389,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       st.schemaVersion = 10;
       return st;
     },
+    // v10 → v11：玉宸四院大比排期（二十五正法、九殿职名不改存档结构）
+    10: (st) => {
+      FX.Saga.init(st);
+      st.schemaVersion = 11;
+      return st;
+    },
   };
 
   const REQUIRED = {
@@ -5444,7 +5541,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           return {
             member: true, faction: f, seat: s.places[f.seatId], atSeat: Sect.atSeat(s, f), merit: s.player.merit,
             stipend: Sect.stipend(s, f), taskMerit: Sect.taskMerit(p), missionMerit: Sect.missionMerit(p),
-            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech,
+            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, zf: e.zf || '', minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech,
               req: [e.minPin ? cf.realms.danPinNames[e.minPin] + '以上' : '', e.minXiang ? cf.realms.xiangNames[e.minXiang] + '以上' : '', e.minDaoji ? cf.daojiNames[e.minDaoji] + '以上' : '', e.needTech ? '先修过《' + cf.techniques[e.needTech].name + '》' : ''].filter(Boolean).join('、') })),
             store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
             submit: cf.house.submit,
@@ -5948,10 +6045,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     }
     const f = v.faction, clan = f.type === 'clan';
     const lib = v.library.map((e) => {
-      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech);
+      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && !x.zf);
+      const zfa = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && x.zf);
       const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
-      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true);
-      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
+      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true) + (zfa ? btn(zfa, '凭符诏取', true) : '');
+      return `<div class="stat"><span>《${esc(e.t.name)}》${e.zf ? ' <span class="tag">二十五正法·' + esc(e.zf) + '</span>' : ''} <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);

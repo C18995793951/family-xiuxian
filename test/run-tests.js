@@ -1108,6 +1108,64 @@ check('19', '金丹十三味大药：外出寻药、代寻与库藏、内药温�
   return `荒山寻药 ${tries} 回得 ${found} 回；外药都能代寻、库藏换；温养十六年凝成六味内药，得修法后凝出湛然虚精炁；不齐十三味至多四品，齐了丹成${P.danPinName(q)}；结丹耗外药留内药；v9 迁移正常`;
 });
 
+check('20', '玉宸九殿四院：四院大比（十大弟子、魁首得道录殿符诏）、二十五正法（玄中经箓）、九殿职名、v10 存档迁移', () => {
+  const CF = FX.CONFIG, P = FX.P;
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'dabi' });
+  const p = P.player(s);
+  const yc = Object.values(s.factions).find((f) => f.key === 'yuchen');
+  p.factionId = yc.id; p.locationId = yc.seatId; p.realm = { major: 6, stage: 2 }; p.danPin = 2; p.daoji = 3; p.aptitude = 95;
+  p.birthYear = s.year - 400; p.lifespanMax = 1500;
+  s.player.inv.fuqi3 = 1; s.player.manuals.push('dao_high'); FX.Ars.sync(s);
+  // 1. 排期、提示：玉宸年轻金丹门人才沾边
+  assert(s.saga.dabi && FX.Saga.relevant(s, 'dabi'), '四院大比没排期或与玉宸金丹无关');
+  assert(FX.Sect.postName(s, yc, p) === '白商院弟子', '玉宸金丹门人不在下院：' + FX.Sect.postName(s, yc, p));
+  // 2. 赴会连斗，按胜场定十大弟子、魁首；打不过就认输
+  const keep = CF.saga.dabi.foeBase; CF.saga.dabi.foeBase = 1; // 让对手弱些（斗法胜算至多九成五，不中就下回再来）
+  let rounds = 0, tries = 0;
+  for (; tries < 20 && !s.player.inv.dulu && !s.ended; tries++) {
+    s.saga.dabi.open = { from: s.year, until: s.year }; s.saga.dabi.done = null;
+    p.health = { state: 'healthy', days: 0 };
+    const a = FX.Game.actions(s).find((x) => x.type === 'dabi');
+    assert(a && a.ok, '玉宸金丹门人在宵明大泽去不了四院大比：' + (a && a.reason));
+    FX.Game.act(s, a);
+    rounds = 0;
+    while (s.pending.length && !s.ended) { const v = FX.Game.pendingEvents(s)[0]; if (v.defId === 'DABI') { rounds++; p.health = { state: 'healthy', days: 0 }; } FX.Game.choose(s, v.id, v.defId === 'DABI' ? 'fight' : v.options.find((o) => o.available).id); }
+  }
+  CF.saga.dabi.foeBase = keep;
+  assert(rounds === CF.saga.dabi.rounds && s.player.inv.dulu === 1 && p.flags.includes('shida'), '五场全胜没得道录殿符诏或没入十大弟子：' + rounds);
+  assert(FX.Sect.postName(s, yc, p) === '上宗真传', '十大弟子没成上宗真传');
+  assert(!FX.Game.actions(s).find((x) => x.type === 'dabi' && x.ok), '同一回大比能去两次');
+  // 3. 道录殿符诏：从二十五正法里任取一门，不论道功、法相
+  s.player.merit = 0;
+  const zf = FX.Game.actions(s).filter((x) => x.type === 'sect_learn' && x.zf);
+  assert(zf.length >= 4 && zf.every((x) => x.ok) && zf.some((x) => x.tech === 'xuanzhongjing'), '凭符诏取不了二十五正法');
+  FX.Game.act(s, zf.find((x) => x.tech === 'xuanzhongjing'));
+  assert(s.player.manuals.includes('xuanzhongjing') && !s.player.inv.dulu && P.daoOf(s, p).name === CF.techniques.xuanzhongjing.name, '取了玄中经箓没修上，或符诏没收回');
+  assert(!FX.Game.actions(s).some((x) => x.type === 'sect_learn' && x.zf), '符诏收回了还能取正法');
+  // 不靠大比也有来路：上宗弟子攒够道功可换
+  assert(CF.factionDefs.find((d) => d.key === 'yuchen').library.filter((e) => e.zf).every((e) => e.merit > 0), '二十五正法没有道功来路');
+  // 4. 九殿：元神以后入殿任长老（上等法相进周行殿）
+  p.realm = { major: 7, stage: 1 }; p.xiang = 3;
+  assert(FX.Sect.postName(s, yc, p) === '周行殿长老', '上等法相的元神不在周行殿：' + FX.Sect.postName(s, yc, p));
+  p.xiang = 2; p.danPin = 5;
+  assert(/殿长老$/.test(FX.Sect.postName(s, yc, p)), '元神没入九殿');
+  // 5. 年岁太大的不收
+  const g = FX.Game.newGame({ origin: 'sect', seed: 'dabi2' });
+  const q = P.player(g);
+  const gyc = Object.values(g.factions).find((f) => f.key === 'yuchen');
+  q.factionId = gyc.id; q.locationId = gyc.seatId; q.realm = { major: 6, stage: 1 }; q.birthYear = g.year - 900; q.lifespanMax = 1500;
+  g.saga.dabi.open = { from: g.year, until: g.year };
+  const ga = FX.Game.actions(g).find((x) => x.type === 'dabi');
+  assert(ga && !ga.ok && /年岁/.test(ga.reason), '九百岁的金丹也能赴四院大比');
+  // 6. v10 存档迁移：补上大比排期
+  const t10 = JSON.parse(FX.Save.serialize(FX.Game.newGame({ origin: 'sect', seed: 'mig11' })));
+  delete t10.state.saga.dabi;
+  t10.state.schemaVersion = 10; t10.schemaVersion = 10; delete t10.checksum;
+  const mg = FX.Save.deserialize(t10);
+  assert(mg.ok && mg.state.saga.dabi && mg.state.saga.dabi.next > mg.state.year, 'v10 迁移没补上大比排期');
+  return `五场连胜夺魁、入十大弟子成上宗真传；凭道录殿符诏取了《${CF.techniques.xuanzhongjing.name}》；元神入周行殿任长老；九百岁的不收；v10 迁移正常`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

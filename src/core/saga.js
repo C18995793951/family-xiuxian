@@ -20,7 +20,7 @@
 
   const Saga = {};
   const SG = () => C().saga;
-  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo', 'danyuan', 'liuhuo'];
+  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo', 'danyuan', 'liuhuo', 'dabi'];
   const me = (s) => P().player(s);
   const pl = (s) => P().player(s);
   const give = (s, k, n) => { s.player.inv[k] = (s.player.inv[k] || 0) + n; };
@@ -76,6 +76,7 @@
     if (k === 'tianmo') return m >= SG().tianmo.minMajor;
     if (k === 'danyuan') return m >= 5;
     if (k === 'liuhuo') return !!f && f.key === SG().liuhuo.faction && m >= SG().liuhuo.minMajor;
+    if (k === 'dabi') return !!f && f.key === SG().dabi.faction && m === SG().dabi.major && P().age(s, p) <= SG().dabi.maxAge;
     return true;
   };
 
@@ -83,6 +84,7 @@
   Saga.hint = (s, k) => {
     const cfg = SG()[k];
     if (k === 'danyuan') return '胥都天八派六宗的金丹天骄争雄斗法，魁首得胥都大丹；八派六宗的金丹门人回本门山门，由本门遣送赴会';
+    if (k === 'dabi') return '玉宸四大下院的年轻弟子在齐云山连斗五场，三场以上入十大弟子，五场全胜的魁首得道录殿符诏、可从二十五正法里任取一门；玉宸的金丹门人（年不过 ' + cfg.maxAge + '）回宵明大泽由本门遣送';
     if (k === 'liuhuo') return '玉宸派金丹以上的门人可到' + cfg.place + '，入洞天寻造化：外层稳得火炁，往深处去要斗法';
     if (k === 'diyuan') { const pl2 = placeByName(s, cfg.place); return '到' + (pl2 ? pl2.name : cfg.place) + '去，练炁以上都能进'; }
     if (k === 'xiefang') { const f = factionByKey(s, cfg.faction); return '无门无派、练炁以上的散修可到' + (f ? s.places[f.seatId].name : '花神府') + '赴宴，要交供奉'; }
@@ -140,6 +142,13 @@
       const done = s.saga.danyuan.done === s.saga.danyuan.open.from;
       const why = done ? '这回丹元大会已经去过了' : p.realm.major !== dy2.major ? '只有金丹真人能赴会' : p.health.state !== 'healthy' ? '带伤赴会是自取其辱' : '';
       add({ type: 'danyuan', days: dy2.days, label: '随本门赴丹元大会（连斗 ' + dy2.rounds + ' 场，可随时认输）', group: '大事', ok: !why, reason: why });
+    }
+    // 玉宸四院大比：玉宸的年轻金丹门人在宵明大泽由本门遣送
+    const db = SG().dabi;
+    if (Saga.openYear(s, 'dabi') !== null && mf && mf.key === db.faction && place.id === mf.seatId) {
+      const done = s.saga.dabi.done === s.saga.dabi.open.from;
+      const why = done ? '这回大比已经去过了' : p.realm.major !== db.major ? '只有金丹门人能赴会' : P().age(s, p) > db.maxAge ? '年岁太大，四院不收' : p.health.state !== 'healthy' ? '带伤赴会是自取其辱' : '';
+      add({ type: 'dabi', days: db.days, label: '赴玉宸四院大比（连斗 ' + db.rounds + ' 场，可随时认输）', group: '大事', ok: !why, reason: why });
     }
     // 流火宏化洞天
     const lh = SG().liuhuo;
@@ -401,6 +410,57 @@
     return o;
   })();
 
+  /* ---------- 玉宸四院大比 ---------- */
+  // 主角落籍的下院（改投、拜入的都先落在白商院，见玉宸派的 transferNote）
+  Saga.yuanOf = () => '白商院';
+  Saga.DO.dabi = (s, a) => {
+    const p = me(s);
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.dabi.done = s.saga.dabi.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没到齐云山就出了变故', interrupted: true };
+    H().add(s, { type: 'saga', tags: ['大事', '四院大比'], actors: [p.id], key: 'dabi_enter', pov: true, severity: 4, params: { name: p.name, yuan: Saga.yuanOf(s, p) } });
+    Saga.dabiRound(s, 1);
+    return { text: '四院大比开场', interrupted: true, used: r.used };
+  };
+  Saga.dabiRound = (s, round) => {
+    const p = me(s), db = SG().dabi, mine = Saga.yuanOf(s, p);
+    const pool = db.yuan.filter((x) => x !== mine);
+    const power = Math.round(db.foeBase * db.foeMult[round - 1] * R.range(s.rng, 0.9, 1.1) * 10) / 10;
+    FX.Ev.spawn(s, 'DABI', { place: p.locationId, _round: round, _foe: R.pick(s.rng, pool) + '的' + (round >= db.rounds ? '头名弟子' : '弟子'), _power: power }, []);
+  };
+  Saga.dabiSettle = (s, wins) => {
+    const p = me(s), db = SG().dabi, rw = db.reward[wins];
+    const names = ['没进前列', '胜了一场', '胜了两场，可惜没进十大弟子', '入了十大弟子', '入了十大弟子，名列前茅', '夺得魁首'];
+    let extra = '';
+    if (wins >= db.shida && !p.flags.includes('shida')) { p.flags.push('shida'); extra += '，拜入玉宸上宗'; }
+    if (rw.dulu) { give(s, 'dulu', rw.dulu); extra += '，得' + C().items.dulu.name + '（可去长老房从二十五正法里任取一门）'; }
+    s.player.merit += rw.merit;
+    const what = '胜 ' + wins + ' 场，' + names[wins] + extra + '，本门记' + C().house.meritName + ' ' + rw.merit;
+    const hid = H().add(s, { type: 'saga', tags: ['大事', '四院大比'], actors: [p.id], key: 'dabi', pov: true, severity: wins >= db.rounds ? 5 : wins >= db.shida ? 4 : 3, params: { name: p.name, what } });
+    if (wins >= db.rounds) H().markFirst(s, 'dabi_win', hid);
+    return what;
+  };
+  const dabiFoe = (s, b) => ({
+    name: b._foe, power: b._power, winText: b._round < SG().dabi.rounds ? '胜了这场，进下一场' : '胜下最后一场，夺魁',
+    onWin(s2, b2) {
+      const db = SG().dabi;
+      if (b2._round < db.rounds) { Saga.dabiRound(s2, b2._round + 1); return '第 ' + b2._round + ' 场胜了，还有 ' + (db.rounds - b2._round) + ' 场'; }
+      return Saga.dabiSettle(s2, db.rounds);
+    },
+  });
+  const dabiFight = (() => {
+    const o = Object.assign({}, Cb().fightOpt(dabiFoe), { label: '出手' });
+    const base = o.apply;
+    o.apply = (s, b, ctx) => {
+      const r = base(s, b, ctx);
+      if (!r.gain && P().alive(pl(s))) r.text += '；' + Saga.dabiSettle(s, b._round - 1);
+      return r;
+    };
+    return o;
+  })();
+
   /* ---------- 流火宏化洞天 ---------- */
   const LH_FOES = { mid: ['火霞门禁卫傀儡', '流火精怪'], deep: ['洞天残灵', '火霞老祖遗下的火龙'] };
   const lhVal = (tbl, p) => tbl[Math.min(8, Math.max(6, p.realm.major))];
@@ -562,6 +622,15 @@
     options: [
       danyuanFight,
       { id: 'quit', label: '认输离场', cost: () => '无', risk: () => '无', outcome: (s, b) => '按已胜的 ' + (b._round - 1) + ' 场排名次', apply(s, b) { return { text: '认输离场，' + Saga.danyuanSettle(s, b._round - 1) }; } },
+    ],
+  };
+
+  EV.DABI = {
+    name: '玉宸四院大比', category: '大事', severity: 4,
+    text: (s, b) => `四院大比第 ${b._round} 场（共 ${SG().dabi.rounds} 场）。对手是${b._foe}（战力 ${b._power}）。你战力 ${P().power(s, pl(s))}。齐云山上九殿的高真都在看着：胜三场入十大弟子，五场全胜的魁首得道录殿符诏。`,
+    options: [
+      dabiFight,
+      { id: 'quit', label: '认输离场', cost: () => '无', risk: () => '无', outcome: (s, b) => '按已胜的 ' + (b._round - 1) + ' 场排名次', apply(s, b) { return { text: '认输离场，' + Saga.dabiSettle(s, b._round - 1) }; } },
     ],
   };
 

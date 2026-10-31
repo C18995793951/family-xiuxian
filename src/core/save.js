@@ -156,6 +156,12 @@
       st.schemaVersion = 10;
       return st;
     },
+    // v10 → v11：玉宸四院大比排期（二十五正法、九殿职名不改存档结构）
+    10: (st) => {
+      FX.Saga.init(st);
+      st.schemaVersion = 11;
+      return st;
+    },
   };
 
   const REQUIRED = {

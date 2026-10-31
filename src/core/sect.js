@@ -46,7 +46,13 @@
     while (i + 1 < mm.length && p.realm.major >= mm[i + 1]) i++;
     return i;
   };
-  Sect.postName = (s, f, p) => (HS().posts[f.type] || HS().posts.sect)[Sect.post(s, f, p)];
+  // 玉宸九殿四院：金丹门人在四大下院（大比入了十大弟子便是上宗真传），元神以后入九殿任长老
+  Sect.hallOf = (p) => (p.xiang >= 3 ? '周行殿' : p.danPin && p.danPin <= 3 ? '丹符殿' : '功德殿');
+  Sect.postName = (s, f, p) => {
+    const i = Sect.post(s, f, p);
+    if (f.key === 'yuchen' && i === 2) return p.realm.major >= 7 ? Sect.hallOf(p) + '长老' : p.flags.includes('shida') ? '上宗真传' : FX.Saga.yuanOf(s, p) + '弟子';
+    return (HS().posts[f.type] || HS().posts.sect)[i];
+  };
 
   // 每年的俸禄（按境界，再按宗门品级、门中职位加成）
   Sect.stipend = (s, f) => {
@@ -152,6 +158,8 @@
         : e.needTech && !s.player.manuals.includes(e.needTech) ? '要先修过《' + cf.techniques[e.needTech].name + '》'
         : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
       add({ type: 'sect_learn', tech: e.tech, days: HS().learnDays, cost, label: (cost ? '以 ' + cost + ' ' + M() + '换《' : '请授《') + t.name + '》', group: '库藏', ok: !why, reason: why });
+      // 二十五正法：四院大比魁首凭道录殿符诏任取一门，不论道功、品第、法相
+      if (e.zf && (s.player.inv.dulu || 0) > 0) add({ type: 'sect_learn', tech: e.tech, zf: true, days: HS().learnDays, cost: 0, label: '持道录殿符诏取《' + t.name + '》（' + e.zf + '）', group: '库藏', ok: !away, reason: away });
     }
     // 库藏兑换
     for (const e of Sect.store(f)) {
@@ -206,6 +214,7 @@
     Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     s.player.merit -= a.cost;
+    if (a.zf) s.player.inv.dulu--;
     if (!s.player.manuals.includes(a.tech)) s.player.manuals.push(a.tech);
     const t = C().techniques[a.tech];
     H().add(s, { type: 'learn', tags: ['功法', '宗门'], actors: [p.id], factions: [f.id], key: a.cost ? 'sect_learn_merit' : 'sect_learn', pov: true, severity: 2, params: { name: p.name, faction: f.name, tech: t.name, cost: a.cost, merit: M() } });
