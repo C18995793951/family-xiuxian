@@ -325,7 +325,7 @@
       .map((r) => s.people[r.a === p.id ? r.b : r.a]).filter((q) => q && P().alive(q) && P().realmRank(q) >= P().realmRank(p) - rv.rankGap && FX.Act.robberDares(q.realm, p))
       .sort((a, b) => (a.id < b.id ? -1 : 1));
     for (const q of foes) {
-      if (!R.chance(s.rng, rv.chance)) continue;
+      if (!R.chance(s.rng, rv.chance * (FX.Sect.perkOf(s, p, 'xuanjiao') ? 0.5 : 1))) continue;
       q.locationId = p.locationId;
       FX.Ev.spawn(s, 'REVENGE', { place: p.locationId, foe: q.id }, []);
       return;

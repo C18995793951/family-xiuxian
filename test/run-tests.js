@@ -1147,9 +1147,14 @@ check('20', '玉宸九殿四院：四院大比（十大弟子、魁首得道录�
   assert(CF.factionDefs.find((d) => d.key === 'yuchen').library.filter((e) => e.zf).every((e) => e.merit > 0), '二十五正法没有道功来路');
   // 4. 九殿：元神以后入殿任长老（上等法相进周行殿）
   p.realm = { major: 7, stage: 1 }; p.xiang = 3;
-  assert(FX.Sect.postName(s, yc, p) === '周行殿长老', '上等法相的元神不在周行殿：' + FX.Sect.postName(s, yc, p));
-  p.xiang = 2; p.danPin = 5;
+  assert(FX.Sect.postName(s, yc, p) === '玉宸长老（未入殿）', '还没挑殿就有了殿名：' + FX.Sect.postName(s, yc, p));
+  p.hall = 'zhouxing';
+  assert(FX.Sect.postName(s, yc, p) === '周行殿长老', '入了周行殿不是周行殿长老：' + FX.Sect.postName(s, yc, p));
+  p.hall = 'gongde'; p.xiang = 2; p.danPin = 5;
   assert(/殿长老$/.test(FX.Sect.postName(s, yc, p)), '元神没入九殿');
+  const npc = Object.values(s.people).find((q) => q.factionId === yc.id && q.realm.major >= 7 && q.id !== p.id && q.id !== yc.leaderId);
+  assert(!npc || /殿(长老|副殿主|殿主)$/.test(FX.Sect.postName(s, yc, npc)), 'NPC 元神没分到殿：' + (npc && FX.Sect.postName(s, yc, npc)));
+  delete p.hall;
   // 5. 年岁太大的不收
   const g = FX.Game.newGame({ origin: 'sect', seed: 'dabi2' });
   const q = P.player(g);
@@ -1164,7 +1169,7 @@ check('20', '玉宸九殿四院：四院大比（十大弟子、魁首得道录�
   t10.state.schemaVersion = 10; t10.schemaVersion = 10; delete t10.checksum;
   const mg = FX.Save.deserialize(t10);
   assert(mg.ok && mg.state.saga.dabi && mg.state.saga.dabi.next > mg.state.year, 'v10 迁移没补上大比排期');
-  return `五场连胜夺魁、入十大弟子成上宗真传；凭道录殿符诏取了《${CF.techniques.xuanzhongjing.name}》；元神入周行殿任长老；九百岁的不收；v10 迁移正常`;
+  return `五场连胜夺魁、入十大弟子成上宗真传；凭道录殿符诏取了《${CF.techniques.xuanzhongjing.name}》；元神入殿前是“玉宸长老（未入殿）”，入周行殿为周行殿长老；九百岁的不收；v10 迁移正常`;
 });
 
 check('21', '真炁九阶三十六品：品秩定名、筑基与斗法看真炁、筑基后不能换、大无相常融真炁诸气皆采、散景敛形术要它作根基、颜熙天外道藏、腹地大派门人真炁、v11 存档迁移', () => {
@@ -1266,6 +1271,81 @@ check('22', '闭关到圆满：按眼下修炼速度估出时日，一口气修�
   const b = FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.until);
   assert(!b || b.days <= FX.CONFIG.actions.untilFullMax, '闭关到圆满超过一百年');
   return `${n} 回里 ${full} 回修满或过了关、${cut} 回中途被打扰停下；圆满后不再列出；一次至多 ${FX.CONFIG.actions.untilFullMax / 360} 年`;
+});
+
+check('23', '玉宸九殿职权：元神入殿任职、转殿要隔六十年、周行殿与大知殿的门槛、职位随境界升、各殿职权生效', () => {
+  const CF = FX.CONFIG, P = FX.P, S = FX.Sect, HD = CF.house.halls;
+  const mk = (seed) => {
+    const s = FX.Game.newGame({ origin: 'sect', seed });
+    const p = P.player(s), yc = Object.values(s.factions).find((f) => f.key === 'yuchen');
+    p.factionId = yc.id; p.locationId = yc.seatId; p.realm = { major: 7, stage: 1 }; p.progress = 0; p.xiang = 2; p.danPin = 3; p.lifespanMax = 5000;
+    p.health = { state: 'healthy', days: 0 };
+    return { s, p, yc };
+  };
+  const halls = (s) => FX.Game.actions(s).filter((x) => x.type === 'hall');
+  const join = (s, k) => { const a = halls(s).find((x) => x.hall === k); assert(a && a.ok, '入不了' + HD.defs[k].name + '：' + (a && a.reason)); const r = FX.Game.act(s, a); assert(r.ok, r.error); };
+  // 1. 金丹还入不了；元神可挑；周行殿要上等法相加上宗真传，大知殿要返虚
+  let { s, p, yc } = mk('hall1');
+  p.realm = { major: 6, stage: 3 };
+  assert(!halls(s).length, '金丹就能入九殿');
+  p.realm = { major: 7, stage: 1 };
+  const hs = halls(s);
+  assert(hs.length === 9, '元神看不到九殿：' + hs.length);
+  assert(!hs.find((x) => x.hall === 'zhouxing').ok && !hs.find((x) => x.hall === 'dazhi').ok, '周行殿、大知殿没有门槛');
+  // 2. 功德殿：捐输折道功多 25%
+  const dn0 = FX.Game.actions(s).find((x) => x.type === 'donate').gain;
+  join(s, 'gongde');
+  assert(p.hall === 'gongde' && S.postName(s, yc, p) === '功德殿长老', '入殿后职名不对：' + S.postName(s, yc, p));
+  assert(FX.Game.actions(s).find((x) => x.type === 'donate').gain === Math.round(dn0 * 1.25), '功德殿捐输没多记');
+  assert(s.history.some((e) => e.key === 'hall_join'), '入殿没记进生平');
+  // 3. 转殿要隔六十年
+  const sw = halls(s).find((x) => x.hall === 'danfu');
+  assert(sw && !sw.ok && /隔/.test(sw.reason), '刚入殿就能转殿');
+  s.year += HD.every; p.birthYear += HD.every;
+  // 4. 道录殿：传功少花道功、参习快
+  const lib0 = FX.Game.actions(s).find((x) => x.type === 'sect_learn' && x.cost > 0);
+  const r0 = FX.Ars.practiceRate(p, 'gengjin', s);
+  join(s, 'daolu');
+  const lib1 = FX.Game.actions(s).find((x) => x.type === 'sect_learn' && x.tech === lib0.tech);
+  assert(lib1.cost === Math.round(lib0.cost * 0.7), '道录殿传功没打折：' + lib0.cost + '→' + lib1.cost);
+  assert(FX.Ars.practiceRate(p, 'gengjin', s) > r0, '道录殿参习没加快');
+  // 5. 丹符殿：丹药打折、隔十年分一枚大洞精玉
+  s.year += HD.every;
+  const qj0 = FX.Game.actions(s).find((x) => x.type === 'redeem' && x.item === 'dadong').cost;
+  join(s, 'danfu');
+  assert(FX.Game.actions(s).find((x) => x.type === 'redeem' && x.item === 'dadong').cost < qj0, '丹符殿兑换没打折');
+  const dd0 = s.player.inv.dadong || 0;
+  for (let i = 0; i < 10; i++) { s.year++; S.payStipend(s); }
+  assert((s.player.inv.dadong || 0) === dd0 + 1, '丹符殿十年没分到大洞精玉：' + ((s.player.inv.dadong || 0) - dd0));
+  // 6. 道兵殿：战力加成；十方殿：宵明大泽灵机 +1、俸禄多；玄教殿：劫修减半（看规则）
+  s.year += HD.every;
+  const pw0 = P.power(s, p);
+  join(s, 'daobing');
+  assert(P.power(s, p) > pw0, '道兵殿没加战力');
+  s.year += HD.every;
+  const qi0 = FX.CU.qiFor(s, p), st0 = S.stipend(s, yc).stone;
+  join(s, 'shifang');
+  assert(FX.CU.qiFor(s, p) === qi0 + 1 && S.stipend(s, yc).stone > st0, '十方殿没有灵岛或俸禄没涨：' + qi0 + '→' + FX.CU.qiFor(s, p));
+  // 7. 职位随境界升：返虚为副殿主、纯阳以上为殿主；大知殿要返虚，周行殿返虚以后也能入
+  p.realm = { major: 8, stage: 1 };
+  assert(S.postName(s, yc, p) === '十方殿副殿主', '返虚不是副殿主：' + S.postName(s, yc, p));
+  s.year += HD.every;
+  join(s, 'dazhi');
+  const sp1 = FX.CU.breakdown(s, p).total; p.hall = 'gongde';
+  const sp0 = FX.CU.breakdown(s, p).total; p.hall = 'dazhi';
+  assert(sp1 > sp0, '大知殿清修没加快修炼：' + sp0 + '→' + sp1);
+  p.realm = { major: 9, stage: 1 };
+  assert(S.postName(s, yc, p) === '大知殿殿主', '纯阳不是殿主：' + S.postName(s, yc, p));
+  s.year += HD.every; p.xiang = 3;
+  join(s, 'zhouxing');
+  assert(S.postName(s, yc, p) === '周行殿殿主', '周行殿入不了');
+  // 8. 不在玉宸就没有职权
+  const g = mk('hall2');
+  join(g.s, 'daobing');
+  const pwIn = P.power(g.s, g.p);
+  g.p.factionId = null;
+  assert(P.power(g.s, g.p) < pwIn && !S.perkOf(g.s, g.p, 'daobing'), '辞出玉宸还带着道兵殿职权');
+  return '元神才入殿、九殿各有门槛；功德殿捐输多记、道录殿传功七折参习快、丹符殿十年一枚大洞精玉、道兵殿加战力、十方殿灵岛与俸禄、大知殿清修；转殿隔 ' + HD.every + ' 年；长老→副殿主→殿主随境界升';
 });
 
 const failed = results.filter((r) => !r.ok);

@@ -188,12 +188,12 @@
       const room = 10 * g.grade - g.jin;
       if (room > 0) {
         for (const n of [1, 5, 10, room].filter((x, i, arr) => x <= room && arr.indexOf(x) === i)) {
-          const cost = n * G.jinCost[g.grade], days = n * G.jinDays[g.grade];
+          const cost = Math.round(n * G.jinCost[g.grade] * Ars.costMult(s)), days = n * G.jinDays[g.grade];
           const why = p.realm.major < G.minMajor[g.grade] ? '要到' + majorName(G.minMajor[g.grade]) + '才祭炼得动' + G.gradeNames[g.grade] : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
           add({ type: 'jilian', gid: g.id, n, days, cost, label: '给' + g.name + '祭炼 ' + n + ' 道禁制（' + cost + ' 符钱，' + T().dur(days) + '）', group: '法器', ok: !why, reason: why });
         }
       } else if (g.grade < G.maxGrade) {
-        const ng = g.grade + 1, cost = G.lianCost[ng];
+        const ng = g.grade + 1, cost = Math.round(G.lianCost[ng] * Ars.costMult(s));
         const why = g.grade >= g.cap ? '粗胚材质到头了，要熔进宝材重铸' : p.realm.major < G.minMajor[ng] ? '要到' + majorName(G.minMajor[ng]) + '才炼形得了' + G.gradeNames[ng] : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
         add({ type: 'lianxing', gid: g.id, days: G.lianDays[ng], cost, label: '把' + g.name + '炼形为' + G.gradeNames[ng] + '（' + cost + ' 符钱，' + T().dur(G.lianDays[ng]) + '）', group: '法器', ok: !why, reason: why });
       }
@@ -215,17 +215,20 @@
   const gearOf = (s, id) => (me(s).gear || []).find((g) => g.id === id);
 
   // 参习：资质高的快；境界高出这门道术一档，参习也快些
-  Ars.practiceRate = (p, k) => {
+  Ars.practiceRate = (p, k, s) => {
     const t = TQ(k);
-    return (0.6 + p.aptitude / 100) * (1 + 0.25 * Math.max(0, p.realm.major - AC().rankBase[t.rank]));
+    const lu = s ? FX.Sect.perkOf(s, p, 'daolu') : 0; // 道录殿收藏典籍，参习快些
+    return (0.6 + p.aptitude / 100) * (1 + 0.25 * Math.max(0, p.realm.major - AC().rankBase[t.rank])) * (lu ? 1.2 + 0.1 * lu : 1);
   };
+  // 灵宝殿专擅打造法宝：祭炼、炼形少花符钱
+  Ars.costMult = (s) => { const k = FX.Sect.perkOf(s, me(s), 'lingbao'); return k ? 0.8 - 0.1 * k : 1; };
   DO.practice = (s, a) => {
     const p = me(s), t = TQ(a.tech);
     if (t.need && p.arts[a.tech] === undefined) { s.player.inv[t.need]--; p.arts[a.tech] = 0; }
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     const before = Ars.level(p, a.tech);
-    p.arts[a.tech] = (p.arts[a.tech] || 0) + r.used * Ars.practiceRate(p, a.tech);
+    p.arts[a.tech] = (p.arts[a.tech] || 0) + r.used * Ars.practiceRate(p, a.tech, s);
     const after = Ars.level(p, a.tech);
     const up = after > before;
     const state = up ? '修至' + Ars.levelName(after) : after >= 4 ? '已到大成' : '离' + Ars.levelName(after + 1) + '还差些火候';
@@ -239,7 +242,7 @@
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     const done = Math.min(a.n, Math.floor(r.used / G.jinDays[g.grade] + 1e-9));
-    if (done < a.n) s.player.stone += (a.n - done) * G.jinCost[g.grade]; // 没祭完的退回
+    if (done < a.n) s.player.stone += Math.round((a.n - done) * (a.cost / a.n)); // 没祭完的退回
     g.jin += done;
     H().add(s, { type: 'item', tags: ['法器'], actors: [p.id], key: 'jilian', pov: true, severity: 1, params: { name: p.name, gear: g.name, n: done, title: Ars.title(g) } });
     return { text: '给' + g.name + '打入 ' + done + ' 道禁制，如今是' + Ars.title(g), interrupted: r.interrupted };

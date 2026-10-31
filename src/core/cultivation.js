@@ -40,6 +40,8 @@
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
     if (P().isPlayer(s, p) && s.player.dongtian === place.id) return C().dongtian.qi;
+    // 十方殿分得宵明大泽的一座灵岛
+    if (place.key === 'yuchen' && FX.Sect.perkOf(s, p, 'shifang')) return Math.min(C().dongtian.qi, place.qi + 1);
     // 洞府聚灵：最多聚到五级；灵窟福地本身就是六级
     if (FX.Saga.isDongfu(s, p, place.id)) return Math.max(place.qi, Math.min(5, place.qi + C().dongfu.qiBonus));
     return place.qi;
@@ -81,6 +83,8 @@
       if (opts && opts.pill) F.push({ label: '中孚丹', value: 1 + cc.qijuBonus });
       const aux = FX.Ars.cultFactor(s, p);
       if (aux) F.push(aux);
+      const dz = FX.Sect.perkOf(s, p, 'dazhi'); // 大知殿：不理俗务，专心清修
+      if (dz) F.push({ label: '大知殿清修', value: 1 + 0.1 * dz });
     }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
     if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });

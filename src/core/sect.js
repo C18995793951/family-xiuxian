@@ -46,20 +46,39 @@
     while (i + 1 < mm.length && p.realm.major >= mm[i + 1]) i++;
     return i;
   };
-  // 玉宸九殿四院：金丹门人在四大下院（大比入了十大弟子便是上宗真传），元神以后入九殿任长老
-  Sect.hallOf = (p) => (p.xiang >= 3 ? '周行殿' : p.danPin && p.danPin <= 3 ? '丹符殿' : '功德殿');
+  // 玉宸九殿四院：金丹门人在四大下院（大比入了十大弟子便是上宗真传），元神以后入九殿：
+  // 元神为长老，返虚为副殿主，纯阳以上为殿主。主角自己挑殿（各殿职权不同）；NPC 按根底分派
+  const HL = () => HS().halls;
+  Sect.hallRank = (p) => (p.realm.major >= 9 ? 3 : p.realm.major >= 8 ? 2 : 1);
+  Sect.hallOf = (p) => (p.hall ? HL().defs[p.hall].name : p.xiang >= 3 ? '周行殿' : p.danPin && p.danPin <= 3 ? '丹符殿' : '功德殿');
+  // 此人在某一殿任职时的职权档次（0 表示不在这一殿）
+  Sect.perkOf = (s, p, key) => (p && p.hall === key && p.realm.major >= 7 && p.factionId && s.factions[p.factionId] && s.factions[p.factionId].key === 'yuchen' ? Sect.hallRank(p) : 0);
   Sect.postName = (s, f, p) => {
     const i = Sect.post(s, f, p);
-    if (f.key === 'yuchen' && i === 2) return p.realm.major >= 7 ? Sect.hallOf(p) + '长老' : p.flags.includes('shida') ? '上宗真传' : FX.Saga.yuanOf(s, p) + '弟子';
+    if (f.key === 'yuchen' && i === 2) {
+      if (p.realm.major < 7) return p.flags.includes('shida') ? '上宗真传' : FX.Saga.yuanOf(s, p) + '弟子';
+      if (P().isPlayer(s, p) && !p.hall) return '玉宸长老（未入殿）';
+      return Sect.hallOf(p) + HL().rankNames[Sect.hallRank(p)];
+    }
     return (HS().posts[f.type] || HS().posts.sect)[i];
   };
+  // 兑换打折：丹符殿管丹药灵物，周行殿总摄诸事
+  const redeemMult = (s, item) => {
+    const p = me(s), it = C().items[item];
+    let m = 1;
+    if (Sect.perkOf(s, p, 'danfu') && !it.gear && !it.book) m *= 0.8;
+    if (Sect.perkOf(s, p, 'zhouxing')) m *= 0.9;
+    return m;
+  };
+  const gainMult = (s) => { const k = Sect.perkOf(s, me(s), 'gongde'); return 1 + 0.25 * k; };
 
   // 每年的俸禄（按境界，再按宗门品级、门中职位加成）
   Sect.stipend = (s, f) => {
     const p = me(s);
     const st = HS().stipend[f.type];
     if (!st) return { stone: 0, qiju: 0 };
-    const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)];
+    const hall = Sect.perkOf(s, p, 'zhouxing') ? 2 : Sect.perkOf(s, p, 'shifang') ? 1.5 : 1;
+    const mult = (st.tierMult ? st.tierMult[f.tier] || 1 : 1) * HS().posts.stipendMult[Sect.post(s, f, p)] * hall;
     const stone = Math.round((st.stone[p.realm.major] || 0) * mult);
     return { stone, qiju: p.realm.major >= 2 ? st.qiju || 0 : 0 };
   };
@@ -85,7 +104,11 @@
     if (!st.stone && !st.qiju) return;
     s.player.stone += st.stone;
     if (st.qiju) s.player.inv.qiju = (s.player.inv.qiju || 0) + st.qiju;
-    const what = ['符钱 ' + st.stone].concat(st.qiju ? [C().items.qiju.name + '×' + st.qiju] : []).join('、');
+    // 丹符殿：隔几年分得一枚大洞精玉
+    const df = Sect.perkOf(s, p, 'danfu'), every = df ? HL().defs.danfu.dadongYears[df] : 0;
+    let dadong = 0;
+    if (every && s.year - (p.hallDan || 0) >= every) { p.hallDan = s.year; dadong = 1; s.player.inv.dadong = (s.player.inv.dadong || 0) + 1; }
+    const what = ['符钱 ' + st.stone].concat(st.qiju ? [C().items.qiju.name + '×' + st.qiju] : []).concat(dadong ? ['丹符殿分下的' + C().items.dadong.name + '一枚'] : []).join('、');
     H().add(s, { type: 'stipend', tags: ['俸禄'], actors: [p.id], factions: [f.id], key: 'stipend', pov: true, params: { faction: f.name, what }, severity: 1 });
   };
 
@@ -149,7 +172,8 @@
     // 长老房请授功法
     for (const e of Sect.library(f)) {
       if (s.player.manuals.includes(e.tech)) continue;
-      const t = cf.techniques[e.tech], cost = e.merit || 0;
+      const lu = Sect.perkOf(s, p, 'daolu'); // 道录殿：传功少花道功
+      const t = cf.techniques[e.tech], cost = Math.round((e.merit || 0) * (lu ? 0.8 - 0.1 * lu : 1));
       // 神通不传无缘之人：有的看金丹品第、元神法相、道基，有的要先修过上卷
       const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才传'
         : e.minPin && !(p.danPin && p.danPin <= e.minPin) ? '要' + cf.realms.danPinNames[e.minPin] + '以上才传'
@@ -163,22 +187,37 @@
     }
     // 库藏兑换
     for (const e of Sect.store(f)) {
-      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才换给你' : e.merit > s.player.merit ? M() + '不够（需 ' + e.merit + '）' : away;
-      add({ type: 'redeem', item: e.item, days: 0, cost: e.merit, label: '以 ' + e.merit + ' ' + M() + '换' + cf.items[e.item].name, group: '库藏', ok: !why, reason: why });
+      const cost = Math.max(1, Math.round(e.merit * redeemMult(s, e.item)));
+      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才换给你' : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
+      add({ type: 'redeem', item: e.item, days: 0, cost, label: '以 ' + cost + ' ' + M() + '换' + cf.items[e.item].name, group: '库藏', ok: !why, reason: why });
     }
     // 功德房：上交妖物内丹、外药，献上本门没有的道书抄本
     for (const k in HS().submit) if (s.player.inv[k] > 0) {
-      const n = s.player.inv[k];
-      add({ type: 'submit', item: k, days: 0, gain: n * HS().submit[k], label: '上交' + cf.items[k].name + '×' + n + '（记 ' + n * HS().submit[k] + ' ' + M() + '）', group: '库藏', ok: at, reason: away });
+      const n = s.player.inv[k], gain = Math.round(n * HS().submit[k] * gainMult(s));
+      add({ type: 'submit', item: k, days: 0, gain, label: '上交' + cf.items[k].name + '×' + n + '（记 ' + gain + ' ' + M() + '）', group: '库藏', ok: at, reason: away });
     }
     // 功德殿捐输：八派六宗的门人可以拿符钱折道功
     const DN = HS().donate;
     if (f.tier >= DN.minTier) {
       const why = s.player.stone < DN.stone ? '符钱不够（需 ' + DN.stone + '）' : away;
-      add({ type: 'donate', days: 0, cost: DN.stone, gain: DN.merit, label: '向功德殿捐输 ' + DN.stone + ' 符钱（记 ' + DN.merit + ' ' + M() + '）', group: '库藏', ok: !why, reason: why });
+      const gain = Math.round(DN.merit * gainMult(s));
+      add({ type: 'donate', days: 0, cost: DN.stone, gain, label: '向功德殿捐输 ' + DN.stone + ' 符钱（记 ' + gain + ' ' + M() + '）', group: '库藏', ok: !why, reason: why });
+    }
+    // 玉宸九殿：元神以后入殿任职，转殿要隔几十年
+    if (f.key === 'yuchen' && p.realm.major >= 7) {
+      const HD = HL(), wait = p.hall && p.hallYear !== undefined ? HD.every - (s.year - p.hallYear) : 0;
+      for (const k of HD.order) {
+        if (p.hall === k) continue;
+        const d = HD.defs[k];
+        const why = d.minMajor && p.realm.major < d.minMajor ? '要到' + cf.realms.names[d.minMajor] + '才入得（' + d.name + '是高辈上真清修之所）'
+          : d.minXiang && !(p.xiang >= d.minXiang) ? '要' + cf.realms.xiangNames[d.minXiang] + '以上'
+          : d.needShida && !(p.flags.includes('shida') || p.realm.major >= 8) ? '要是上宗真传（四院大比入过十大弟子），或已成返虚'
+          : wait > 0 ? '转殿要隔 ' + HD.every + ' 年（还要 ' + wait + ' 年）' : away;
+        add({ type: 'hall', hall: k, days: HD.days, label: (p.hall ? '转入' : '入') + d.name + '任职', group: '库藏', ok: !why, reason: why });
+      }
     }
     for (const t of s.player.manuals) {
-      const g = Sect.manualMerit(s, f, t);
+      const g = Math.round(Sect.manualMerit(s, f, t) * gainMult(s));
       if (g > 0) add({ type: 'submit', tech: t, days: 0, gain: g, label: '献上《' + cf.techniques[t].name + '》抄本（记 ' + g + ' ' + M() + '）', group: '库藏', ok: at, reason: away });
     }
   };
@@ -220,6 +259,17 @@
     H().add(s, { type: 'learn', tags: ['功法', '宗门'], actors: [p.id], factions: [f.id], key: a.cost ? 'sect_learn_merit' : 'sect_learn', pov: true, severity: 2, params: { name: p.name, faction: f.name, tech: t.name, cost: a.cost, merit: M() } });
     const hint = t.kind === 'lianqi' && p.techniqueId !== a.tech ? '，可去行囊里研习' : t.kind === 'shu' ? '，可去行囊里参习' : '';
     return { text: '得了《' + t.name + '》' + hint };
+  };
+
+  DO.hall = (s, a) => {
+    const p = me(s), f = Sect.mine(s), d = HL().defs[a.hall];
+    Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    const from = p.hall ? HL().defs[p.hall].name : '';
+    p.hall = a.hall; p.hallYear = s.year;
+    if (a.hall === 'danfu' && !p.hallDan) p.hallDan = s.year;
+    H().add(s, { type: 'post', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'hall_join', pov: true, severity: 3, params: { name: p.name, hall: d.name, post: Sect.postName(s, f, p), from: from ? '从' + from + '转来，' : '', duty: d.duty, perk: d.perk } });
+    return { text: '入' + d.name + '任职：' + d.perk };
   };
 
   DO.redeem = (s, a) => {

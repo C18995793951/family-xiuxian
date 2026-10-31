@@ -121,7 +121,7 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
@@ -436,6 +436,8 @@
     const p = me(s);
     const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3 && Act.robberDares(q.realm, p));
     const nearby = evil.filter((q) => q.locationId === place.id || s.places[q.locationId].links.some((l) => l.to === place.id));
+    // 玄教殿主刑罚戒律，劫修多半不敢招惹
+    if (FX.Sect.perkOf(s, p, 'xuanjiao') && R.chance(s.rng, 0.5)) return null;
     if (nearby.length) { const q = R.pick(s.rng, nearby); q.locationId = place.id; return q; }
     // 南域的劫修最高不过筑基二重；东弥州腹地最高到元神（返虚以上的真君不屑拦路）
     const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, place.outer ? P().rankOf(7, 1) : 12);

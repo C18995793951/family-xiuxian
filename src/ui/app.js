@@ -430,7 +430,8 @@
       const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && !x.zf);
       const zfa = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && x.zf);
       const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
-      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${n0(e.merit)} ${M}` : '请授', true) + (zfa ? btn(zfa, '凭符诏取', true) : '');
+      const cost = a ? a.cost : e.merit;
+      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, cost ? `${n0(cost)} ${M}` : '请授', true) + (zfa ? btn(zfa, '凭符诏取', true) : '');
       const why = !e.owned && a && !a.ok && a.reason ? ' · <span class="bad">' + esc(a.reason) + '</span>' : '';
       return `<div class="stat"><span>《${esc(e.t.name)}》${e.zf ? ' <span class="tag">二十五正法·' + esc(e.zf) + '</span>' : ''}<br><span class="muted small">${esc(techLine(e.t))}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}${why}</span><br>${desc(e.t.desc)}</span><span class="row">${right}</span></div>`;
     };
@@ -442,8 +443,9 @@
       ${libHave.length ? `<div>${foldBtn('libHave', false, '已经得了的', libHave.length)}</div>${isOpen('libHave', false) ? libHave.map(libRow).join('') : ''}` : ''}`;
     const storeRow = (e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
-      const many = a && a.ok && e.merit * 5 <= v.merit && ['qiju', 'heal'].includes(e.item) ? `<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5 份（${n0(e.merit * 5)}）</button>` : '';
-      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted small">已有 ' + e.have + '</span>' : ''}${e.minMajor ? ' <span class="muted small">' + CF.realms.names[e.minMajor] + '以后</span>' : ''}<br>${desc(e.it.desc)}</span><span class="row">${btn(a, n0(e.merit) + ' ' + M, true)}${many}</span></div>`;
+      const cost = a ? a.cost : e.merit;
+      const many = a && a.ok && cost * 5 <= v.merit && ['qiju', 'heal'].includes(e.item) ? `<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5 份（${n0(cost * 5)}）</button>` : '';
+      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted small">已有 ' + e.have + '</span>' : ''}${e.minMajor ? ' <span class="muted small">' + CF.realms.names[e.minMajor] + '以后</span>' : ''}<br>${desc(e.it.desc)}</span><span class="row">${btn(a, n0(cost) + ' ' + M, true)}${cost < e.merit ? ' <s class="muted small">' + n0(e.merit) + '</s>' : ''}${many}</span></div>`;
     };
     // 用不上的折起来：境界还没到的；低两个大境界的关隘外药；不如身上那件的法器
     const past = (e) => {
@@ -465,6 +467,14 @@
     const dn = A.find((x) => x.type === 'donate');
     const ten = dn && dn.ok && dn.cost * 10 <= ov.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="10">捐 10 份（${n0(dn.cost * 10)} 符钱）</button>` : '';
     const hundred = dn && dn.ok && dn.cost * 100 <= ov.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="100">捐 100 份（${n0(dn.cost * 100)} 符钱）</button>` : '';
+    // 玉宸九殿：元神以后入殿任职，各殿职权不同
+    const halls = A.filter((x) => x.type === 'hall');
+    const HD = CF.house.halls, myHall = ov.me.hall;
+    const hallCard = f.key === 'yuchen' && (halls.length || myHall) ? `<div class="card ${myHall ? '' : 'hl'}"><h3>玉宸九殿</h3>
+        ${myHall ? `<p>你在<b>${esc(HD.defs[myHall].name)}</b>任${esc(HD.rankNames[FX.Sect.hallRank(ov.me)])}：${esc(HD.defs[myHall].duty)}。<br><span class="good">职权：${esc(HD.defs[myHall].perk)}</span></p>` : '<p class="warn">你已成元神，可以入九殿任职了。各殿职权不同，挑一处；转殿要隔 ' + HD.every + ' 年。元神为长老，返虚为副殿主，纯阳以上为殿主，职权跟着加重。</p>'}
+        ${myHall ? `<div>${foldBtn('halls', false, '其余八殿')}</div>` : ''}
+        ${!myHall || isOpen('halls', false) ? halls.map((a) => { const d = HD.defs[a.hall]; return `<div class="stat"><span><b>${esc(d.name)}</b> <span class="muted small">${esc(d.duty)}</span><br><span class="small">${esc(d.perk)}</span>${a.ok ? '' : '<br><span class="bad small">' + esc(a.reason) + '</span>'}</span><span class="row"><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'}>${myHall ? '转入' : '入此殿'}</button></span></div>`; }).join('') : ''}
+      </div>` : '';
     const tab = UI.sectTab || 'main';
     const body = tab === 'lib' ? `<div class="card">${libHtml}</div>`
       : tab === 'store' ? `<div class="card"><p class="muted small" style="margin-top:0">常备，随时可换。手头 ${n0(v.merit)} ${esc(M)}。</p>${storeHtml}</div>`
@@ -480,6 +490,7 @@
           <p class="muted small" style="margin-bottom:0">${clan ? '族里' : '奉事房'}的差事每月记 ${v.taskMerit} ${esc(M)}，另给符钱；${clan ? '替家族除妖' : '领符诏除妖'}打赢了记 ${v.missionMerit} ${esc(M)}，逃了就算没办成。</p>
           <div class="row" style="margin-top:.5em">${work ? btn(work) : ''}${mission ? btn(mission) : ''}</div>
         </div>
+        ${hallCard}
         <div class="card"><h3>去留</h3>${up}${tr ? `<div class="row">${btn(tr)}</div>` : ''}
           ${lv ? `<div class="row"><button class="danger" data-act="doAsk" data-i="${A.indexOf(lv)}">${esc(lv.label)}</button></div>` : ''}
           <p class="muted small" style="margin-bottom:0">辞出以后就是散修，可以去求入别的宗门；八派六宗要金丹才收。</p></div>`;

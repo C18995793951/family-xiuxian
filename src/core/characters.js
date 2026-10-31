@@ -126,6 +126,9 @@
     if (qw && q) F.push({ label: (q.qi || q.name) + ' ' + P.qiGrade(q), value: U.round1((1 + (P.qiRank(q) - qp.mid) * qp.per * qw) * 100) / 100 });
     if (p.realm.major >= 6 && p.danPin) F.push({ label: P.danPinName(p), value: U.round1((1 + (5 - p.danPin) * C().realms.danPinPower) * 100) / 100 });
     if (p.realm.major >= 7 && p.xiang) F.push({ label: P.xiangName(p), value: U.round1((1 + (p.xiang - 2) * C().realms.xiangPower) * 100) / 100 });
+    // 道兵殿：力士神将随行
+    const db = FX.Sect && FX.Sect.perkOf(s, p, 'daobing');
+    if (db) F.push({ label: '道兵殿力士神将', value: U.round1((1 + 0.08 * db) * 100) / 100 });
     // 随身法器与道术、神通（见 arsenal.js；主角与 NPC 同一套算法）
     for (const f of FX.Ars.powerFactors(s, p)) F.push(f);
     if (p.health.state !== 'healthy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: P.healthCoef(p) });
