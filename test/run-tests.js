@@ -1405,6 +1405,57 @@ check('24', '试玩后的修正：闭关到圆满修满即出关、估时算上�
   return `重伤时估 ${Math.round(a.days / 30)} 个月（按伤时速度要 ${Math.round(naive / 30)} 个月），修满即出关；闭关到圆满不与普通闭关混淆；圆满后闭关五年不吃丹、把握 ${c0}%→${c1}%；休养期可一键静修；闭关撞上天魔潮会出关；元神赶路不再被小妖拦`;
 });
 
+check('25', '卡关有“下一步”：凡人缺练炁术、筑基二重缺丹母砂、筑基三重缺开府真法，凡人、散修、宗门弟子、家族子弟照着提示走都能拿到', () => {
+  const P = FX.P, G = FX.Game, D = FX.CONFIG.daysPerYear;
+  // 照“下一步”一步步走：能办就办，要攒钱攒道功就做营生，要赶路就走一段，要等就修炼
+  const follow = (s, got, years) => {
+    const p = P.player(s), end = s.t + years * D;
+    let steps = 0;
+    while (!got() && s.t < end && !s.ended && steps++ < 3000) {
+      while (s.pending.length && !s.ended) { const v = G.pendingEvents(s)[0]; const o = v.options.find((x) => x.id === 'flee' && x.available) || v.options.find((x) => x.available); G.choose(s, v.id, o.id); }
+      if (s.ended || got()) break;
+      const A = G.actions(s);
+      if (p.health.state === 'heavy') { const r = A.find((a) => a.type === 'rest' && a.ok); if (r) { G.act(s, r); continue; } }
+      const g = FX.Guide.next(s);
+      assert(g && g.best, '卡在' + (g ? g.need.label : '?') + '，却没有下一步（' + P.realmName(p) + '，符钱 ' + s.player.stone + '，在' + s.places[p.locationId].name + '）');
+      const st = g.best.step;
+      if (!st) { G.act(s, A.find((a) => a.type === 'cultivate' && a.days === 360 && !a.coin)); continue; }
+      if (st.buy) { const r = G.buy(s, st.buy, 1); assert(r.ok, '照提示买不到：' + r.error); continue; }
+      if (st.goto) { const rt = FX.World.route(s, p.locationId, st.goto, p); const t = A.find((a) => a.type === 'travel' && a.to === rt.path[1]); assert(t && t.ok, '照提示赶路走不了'); G.act(s, t); continue; }
+      const a = A.find((x) => x.type === st.act.type && ['fid', 'tech', 'item', 'to', 'days', 'coin'].every((k) => x[k] === st.act[k]));
+      assert(a && a.ok, '提示的行动办不了：' + st.act.label);
+      const r = G.act(s, st.qty ? Object.assign({}, a, { qty: st.qty }) : a);
+      assert(r.ok, '照提示办不成：' + r.error);
+    }
+    return got();
+  };
+  const mk = (origin, seed, realm, stone) => { const s = G.newGame({ origin, seed }); const p = P.player(s); s.pending = []; p.realm = realm; p.progress = P.need(p); p.lifespanMax = 3000; s.player.stone = stone; return { s, p }; };
+  const out = [];
+  let ok = 0, n = 0;
+  for (const seed of ['g1', 'g2', 'g3']) {
+    // 凡人悟得胎息，身无分文，没有练炁术
+    let { s, p } = mk('mortal', 'guide-m-' + seed, { major: 1, stage: 1 }, 20);
+    n++; if (follow(s, () => !!P.lianqiOf(p), 8)) ok++; else out.push('凡人没拿到练炁术');
+    // 散修筑基二重缺丹母砂，只有 40 符钱
+    ({ s, p } = mk('loose', 'guide-l-' + seed, { major: 3, stage: 2 }, 40));
+    n++; if (follow(s, () => (s.player.inv.danmusha || 0) > 0, 12)) ok++; else out.push('散修没拿到丹母砂');
+    // 散修筑基三重缺开府真法，只有 300 符钱
+    ({ s, p } = mk('loose', 'guide-k-' + seed, { major: 3, stage: 3 }, 300));
+    n++; if (follow(s, () => !!FX.CU.bestKaifu(s), 12)) ok++; else out.push('散修没拿到开府真法');
+    // 宗门弟子、家族子弟，道功从零攒
+    ({ s, p } = mk('sect', 'guide-s-' + seed, { major: 3, stage: 2 }, 15));
+    n++; if (follow(s, () => (s.player.inv.danmusha || 0) > 0, 8)) ok++; else out.push('弟子没拿到丹母砂');
+    ({ s, p } = mk('clan', 'guide-c-' + seed, { major: 3, stage: 3 }, 15));
+    n++; if (follow(s, () => !!FX.CU.bestKaifu(s), 8)) ok++; else out.push('家族子弟没拿到开府真法');
+  }
+  assert(ok === n, out.join('；'));
+  // 凡人一开局就提醒：胎息以后要练炁术、从哪来
+  const m = G.newGame({ origin: 'mortal', seed: 'guide-start' });
+  const g0 = FX.Guide.next(m);
+  assert(g0 && g0.need.soon && g0.ways.length >= 2, '凡人开局没提醒练炁术的来路');
+  return `${n} 回照着提示走，${ok} 回拿到了（凡人的练炁术、散修和弟子的丹母砂、散修和家族子弟的开府真法），每一步都有下一步；凡人开局就提醒练炁术有 ${g0.ways.length} 条来路`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

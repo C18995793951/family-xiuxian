@@ -238,3 +238,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .reqs .src button { min-height: 34px; padding: .2em .6em; font-size: .9em; }
 .saga-mini { border-left: 3px solid var(--accent); padding: .2em .6em; margin-bottom: .7em; background: var(--panel-2); border-radius: 0 4px 4px 0; }
 .saga-mini > div { margin: .15em 0; }
+
+/* 卡关时的“下一步” */
+.guide { margin: .35em 0 .2em; padding: .45em .6em; border-left: 3px solid var(--accent); background: rgba(224,169,79,.07); border-radius: 4px; }
+.guide .row.src { margin-top: .3em; }

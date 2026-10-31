@@ -256,6 +256,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .saga-mini { border-left: 3px solid var(--accent); padding: .2em .6em; margin-bottom: .7em; background: var(--panel-2); border-radius: 0 4px 4px 0; }
 .saga-mini > div { margin: .15em 0; }
 
+/* 卡关时的“下一步” */
+.guide { margin: .35em 0 .2em; padding: .45em .6em; border-left: 3px solid var(--accent); background: rgba(224,169,79,.07); border-radius: 4px; }
+.guide .row.src { margin-top: .3em; }
+
 </style>
 </head>
 <body>
@@ -2110,7 +2114,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const t = P().lianqiOf(p);
       return [
         { label: '胎息壮大到头', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) },
-        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '金谷墟市常备劣等练炁术，凡人国集市偶有；拜入玄真派可向长老房请授' },
+        { label: '一门练炁术', lianqi: true, ok: !!t, note: t ? '《' + t.name + '》' : '金谷墟市常备劣等练炁术，凡人国集市偶有；拜入玄真派可向长老房请授' },
       ];
     }
     if (!k) return [];
@@ -3621,6 +3625,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const mtxt = merit ? '，记' + C().house.meritName + ' ' + merit : '';
     H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone, merit: mtxt } });
     return { text: `得符钱 ${stone}${mtxt}` };
+  };
+
+  // 某类地方的营生一个月大约挣多少（“下一步”估还要做几个月用）
+  Act.workPay = (s, type) => {
+    const p = me(s), job = C().actions.work[type];
+    if (!job) return null;
+    const stone = Math.round(((job.stone[0] + job.stone[1]) / 2) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
+    return { name: job.name, stone, merit: job.merit ? FX.Sect.taskMerit(p) : 0, memberOnly: !!job.memberOnly };
   };
 
   Act.marketOf = (s) => (W().hasMarket(s, here(s).id) ? s.markets[here(s).id] : null);
@@ -5502,6 +5514,176 @@ button.wide { width: 100%; margin-bottom: .6em; }
   FX.Yao = Yao;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- core/guide.js ---------- */
+/* ============================================================
+ * guide —— 卡关时的“下一步”
+ * 冲关缺练炁术、关隘外药、开府真法时，照眼下的世界状态算出几条能走的路，按大约要花的日子排好：
+ * 手里有的直接研习、长老房请授或拿道功换、此地货架买、去常备此物的地方买、托人代寻、拜入宗门；
+ * 钱或道功不够的，算出还差多少、在哪做什么营生、大约几个月。
+ * 只读不改：给界面写“下一步”、给测试按提示自动走。每条路都落到一个规则允许的行动、一次买卖或一段赶路上。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const P = () => FX.P;
+  const W = () => FX.World;
+  const S = () => FX.Sect;
+
+  const Guide = {};
+  const me = (s) => P().player(s);
+  const M = 30; // 一个月
+  const techKeys = (kind) => Object.keys(C().techniques).filter((t) => C().techniques[t].kind === kind).map((t) => 'tech:' + t);
+  const nameOf = (key) => (key.startsWith('tech:') ? '《' + C().techniques[key.slice(5)].name + '》' : C().items[key].name);
+  const priceOf = (key) => (key.startsWith('tech:') ? C().techniques[key.slice(5)].price : C().items[key].price);
+
+  // 冲关卡着的、必需的东西（可选的不算）。凡人还没悟胎息时，先把“胎息以后要一门练炁术”算进来，好早做准备
+  Guide.needs = (s) => {
+    const p = me(s), out = [];
+    if (p.realm.major === 0) out.push({ label: '悟得胎息后要一门练炁术', keys: techKeys('lianqi'), tech: 'lianqi', soon: true });
+    for (const r of FX.CU.requirements(s, p)) {
+      if (r.ok || r.optional) continue;
+      if (r.lianqi) out.push({ label: r.label, keys: techKeys('lianqi'), tech: 'lianqi' });
+      else if (r.kaifu) out.push({ label: r.label, keys: techKeys('kaifu'), tech: 'kaifu' });
+      else if (r.item && C().items[r.item]) {
+        const need = FX.CU.minorNeed(p);
+        const qty = need && need.item === r.item ? need.qty - (s.player.inv[r.item] || 0) : 1;
+        out.push({ label: r.label, keys: [r.item], qty: Math.max(1, qty) });
+      }
+    }
+    return out;
+  };
+
+  // 眼下能做的营生：此地能做就在此地做；本门弟子回山门领差事；不然去最近的集市、墟市帮工
+  Guide.earn = (s, L, route) => {
+    const p = me(s), here = s.places[p.locationId], f = S().mine(s);
+    const pay = (type) => FX.Act.workPay(s, type);
+    const w = L.find((a) => a.type === 'work' && a.ok);
+    if (w) return { name: pay(here.type).name, stone: pay(here.type).stone, merit: pay(here.type).merit, days: 0, step: { act: w } };
+    if (f && !S().atSeat(s, f)) { const r = route(f.seatId), j = pay(s.places[f.seatId].type); if (r && j) return { name: '回' + s.places[f.seatId].name + j.name, stone: j.stone, merit: j.merit, days: r.days, step: { goto: f.seatId } }; }
+    let best = null;
+    for (const id in s.places) {
+      const j = pay(s.places[id].type);
+      if (!j || j.memberOnly) continue;
+      const r = route(id);
+      if (r && (!best || r.days < best.days)) best = { name: '去' + s.places[id].name + j.name, stone: j.stone, merit: 0, days: r.days, step: { goto: id } };
+    }
+    return best;
+  };
+
+  // 卖这样东西的货架：此地和去过的地方看今年的货；没去过的，只算常备此物的地方（墟市常备什么，人人知道）
+  const marketsWith = (s, key) => {
+    const p = me(s), out = [];
+    for (const id in s.places) {
+      if (!W().hasMarket(s, id)) continue;
+      const def = C().market[s.places[id].type];
+      const staple = !!def && def.staples.some((x) => x.item === key && x.qty[0] > 0);
+      const m = s.markets[id], x = m && m.stock.find((y) => y.item === key && y.qty > 0);
+      if (x && (id === p.locationId || s.player.visited.includes(id))) out.push({ id, price: x.price, sure: staple, buyable: id === p.locationId });
+      else if (staple && id !== p.locationId) out.push({ id, price: priceOf(key), sure: true, buyable: false });
+    }
+    return out;
+  };
+
+  // 一样需要的东西有哪些路可走，按大约要花的日子排好
+  Guide.ways = (s, need) => {
+    const p = me(s), L = FX.Act.list(s), here = p.locationId, stone = s.player.stone, merit = s.player.merit;
+    const memo = {}, route = (id) => (id in memo ? memo[id] : (memo[id] = W().route(s, here, id, p)));
+    const earn = Guide.earn(s, L, route);
+    const f = S().mine(s), MN = C().house.meritName;
+    const ways = [];
+    const add = (w) => { if (w && isFinite(w.days)) ways.push(w); };
+    // 符钱不够：先挣钱（钱够了再看下一步）
+    const short = (price, text, days) => {
+      const gap = price - stone;
+      if (!earn || !earn.stone) return null;
+      const months = Math.ceil(gap / earn.stone);
+      return { days: days + earn.days + months * M, gap, text: text + '；你有 ' + stone + ' 符钱，还差 ' + gap + '：' + earn.name + '，每月约 ' + earn.stone + '，约 ' + months + ' 个月', step: earn.step, earn: true };
+    };
+    const meritWay = (a, name) => {
+      const seat = f && s.places[f.seatId];
+      const away = f && a.reason === S().awayReason(s, f);
+      const d = away ? (route(f.seatId) || { days: Infinity }).days : 0;
+      const cost = a.cost || 0;
+      const label = cost ? seat.name + '长老房以 ' + cost + ' ' + MN + '换' + name : seat.name + '长老房可请授' + name + '，不收' + MN;
+      if (a.ok) return add({ days: 0, text: label, step: { act: a } });
+      if (!away && !/不够/.test(a.reason || '')) return; // 境界未到之类，走不通
+      if (merit >= cost) return add({ days: d, text: '回山门：' + label, step: { goto: f.seatId } });
+      // 道功不够：符钱够就捐输补上，不然领差事攒
+      const gap = cost - merit;
+      const dn = L.find((x) => x.type === 'donate');
+      if (dn && (dn.ok || dn.reason === S().awayReason(s, f))) {
+        const n = Math.ceil(gap / dn.gain);
+        if (n * dn.cost <= stone) add({ days: d, text: label + '；' + MN + '还差 ' + gap + '，捐 ' + n * dn.cost + ' 符钱补足', step: dn.ok ? { act: dn, qty: n } : { goto: f.seatId } });
+      }
+      const per = S().taskMerit(p);
+      if (per > 0) {
+        const months = Math.ceil(gap / per);
+        const w = L.find((x) => x.type === 'work' && x.ok);
+        add({ days: d + months * M, gap, text: label + '；你有 ' + merit + ' ' + MN + '，还差 ' + gap + '：' + ((C().actions.work[seat.type] || {}).name || '领差事') + '每月记 ' + per + '，约 ' + months + ' 个月', step: w ? { act: w } : { goto: f.seatId }, earn: true });
+      }
+    };
+    for (const key of need.keys) {
+      const tech = key.startsWith('tech:') ? key.slice(5) : null;
+      const name = nameOf(key);
+      if (tech) {
+        const lr = L.find((a) => a.type === 'learn' && a.tech === tech && a.ok);
+        if (lr) add({ days: lr.days || M, text: '研习手里的' + name, step: { act: lr } });
+        if (s.player.manuals.includes(tech)) continue;
+      }
+      const sa = tech ? L.find((a) => a.type === 'sect_learn' && a.tech === tech && !a.zf) : L.find((a) => a.type === 'redeem' && a.item === key);
+      if (sa) meritWay(sa, name);
+      for (const m of marketsWith(s, key)) {
+        const r = m.buyable ? { days: 0 } : route(m.id);
+        if (!r) continue;
+        const where = s.places[m.id].name;
+        const text = m.buyable ? '此地货架有' + name + '，' + m.price + ' 符钱' : where + (m.sure ? '常备' : '今年有') + name + '，约 ' + m.price + ' 符钱，路上 ' + r.days + ' 天';
+        if (stone >= m.price) add({ days: r.days, text, step: m.buyable ? { buy: key } : { goto: m.id } });
+        else add(short(m.price, text, r.days));
+      }
+      const coming = s.player.orders.find((o) => o.item === key);
+      if (coming) { add({ days: Math.max(0, coming.due - s.t), text: '托人代寻的' + name + '约 ' + FX.T.fmt(coming.due) + ' 送到，先修炼等着', step: null, wait: true }); continue; }
+      const od = !tech && L.find((a) => a.type === 'order' && a.item === key);
+      const ob = od && FX.Act.orderable(s).find((x) => x.item === key);
+      if (od && ob) {
+        const text = '在' + s.places[here].name + '托人代寻' + name + '，' + od.cost + ' 符钱，约 ' + FX.T.dur(ob.days) + '后一定送到';
+        if (od.ok) add({ days: ob.days, text, step: { act: od } });
+        else if (stone < od.cost) add(short(od.cost, text, ob.days));
+      }
+    }
+    // 练炁术、开府真法：拜入宗门，长老房白给
+    if (need.tech && !p.factionId) {
+      for (const g of Object.values(s.factions)) {
+        if (g.type !== 'sect' || !S().def(g).join) continue;
+        const e = S().library(g).find((x) => need.keys.includes('tech:' + x.tech) && !x.merit && (x.minMajor || 0) <= Math.max(p.realm.major, 1));
+        if (!e) continue;
+        const can = S().canJoin(s, g), j = S().def(g).join;
+        const away = can === S().awayReason(s, g);
+        if (can !== true && !away && !/今年已求过/.test(can) && !(need.soon && p.realm.major < j.minMajor && j.minMajor <= 1)) continue;
+        const r = route(g.seatId);
+        if (!r) continue;
+        const ch = S().joinChance(s, g).chance;
+        const text = '求入' + g.name + '（' + s.places[g.seatId].name + (r.days ? '，路上 ' + r.days + ' 天' : '') + '，成功率 ' + ch + '%，不成明年再求，每回 +10%' + (p.realm.major < j.minMajor ? '，' + C().realms.names[j.minMajor] + '以后才收' : '') + '），长老房白给《' + C().techniques[e.tech].name + '》，另有俸禄' + (j.maxAge ? '；年过 ' + j.maxAge + ' 不收' : '');
+        const act = can === true && L.find((a) => a.type === 'join' && a.fid === g.id);
+        const wait = can !== true && !away; // 今年求过了，或境界还没到：先修炼
+        add({ days: r.days + Math.round((100 / Math.max(5, ch) - 1) * 360), text: text + (wait && r.days === 0 && /今年已求过/.test(can) ? '。今年求过了，明年再来' : ''), step: act ? { act } : wait && r.days === 0 ? null : { goto: g.seatId }, join: true, wait: !act && wait && r.days === 0 });
+      }
+    }
+    ways.sort((a, b) => a.days - b.days || (a.earn ? 1 : 0) - (b.earn ? 1 : 0));
+    return ways;
+  };
+
+  // 眼下最要紧的一件：第一样缺的东西、和它的几条路
+  Guide.next = (s) => {
+    const need = Guide.needs(s)[0];
+    if (!need) return null;
+    const ways = Guide.ways(s, need);
+    return { need, ways, best: ways[0] || null };
+  };
+
+  FX.Guide = Guide;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- core/save.js ---------- */
 /* ============================================================
  * save（核心部分）—— 序列化、校验、迁移、校验和
@@ -6224,7 +6406,21 @@ button.wide { width: 100%; margin-bottom: .6em; }
     // 缺的东西就地给出来路：此地货架买、长老房换、托人代寻，或赶去有货的地方
     const route = routeMemo(s);
     const go = (id, text) => { if (!id || id === me.locationId) return ''; const r = route(id); return r ? `<button class="link" data-act="goto" data-id="${id}">${esc(text || '赶过去')} ${r.days} 天</button>` : ''; };
+    // 卡关时的“下一步”：核心 Guide 照世界状态算出的几条路，每条落到一个按钮上
+    const gd = FX.Guide.next(s);
+    const gIdx = (a) => A.findIndex((x) => x.type === a.type && LAST_KEYS.every((k) => x[k] === a[k]));
+    const gBtn = (w, cls) => {
+      const st = w && w.step;
+      if (!st) return '';
+      if (st.act) { const i = gIdx(st.act); return i < 0 ? '' : st.qty ? `<button class="${cls || ''}" data-act="doN" data-i="${i}" data-n="${st.qty}">捐 ${n0(st.qty * A[i].cost)} 符钱</button>` : `<button class="${cls || ''}" data-act="do" data-i="${i}">${esc(A[i].label)}</button>`; }
+      if (st.buy) return `<button class="${cls || ''}" data-act="buy" data-k="${esc(st.buy)}" data-n="1">买下</button>`;
+      if (st.goto) { const r = route(st.goto); return `<button class="${cls || ''}" data-act="goto" data-id="${st.goto}">去${esc(s.places[st.goto].name)}${r ? ' · ' + r.days + ' 天' : ''}</button>`; }
+      return '';
+    };
+    const guideHtml = (g) => !g ? '' : g.best ? `<div class="guide"><div><b class="warn">下一步</b> ${esc(g.best.text)}</div><div class="row src">${gBtn(g.best, 'primary')}</div>${g.ways.length > 1 ? `<div class="muted small">也可以：${g.ways.slice(1, 3).map((w) => esc(w.text) + ' ' + gBtn(w)).join('；')}</div>` : ''}</div>`
+      : `<div class="guide bad small">眼下想不出去哪弄到，去采买页看看 <button class="link" data-act="page" data-p="shop">采买</button></div>`;
     const reqSrc = (r) => {
+      if (!r.ok && !r.optional && gd && !gd.need.soon && gd.need.label === r.label) return guideHtml(gd);
       if (r.ok) { const u = r.item && A.find((a) => a.type === 'use' && a.item === r.item && a.ok); return u ? `<div class="row src"><button data-act="do" data-i="${A.indexOf(u)}">${esc(u.label)}</button></div>` : ''; }
       if (r.item && CF.items[r.item]) { const b = srcBtns(s, A, r.item, sourcesOf(s, A, r.item, route)); return (b.html ? `<div class="row src">${b.html}</div>` : '') + (b.why.length && !b.ready ? `<div class="muted small">${esc(b.why.join('；'))}</div>` : ''); }
       if (r.kaifu) {
@@ -6240,7 +6436,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       if (r.items && r.items.length) return `<div class="row src"><button data-act="page" data-p="shop" data-tab="need">去采买看来路</button></div>`;
       return '';
     };
-    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note && !(r.ok && r.item) ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}${reqSrc(r)}</div>`).join('')}</div>`;
+    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note && !(r.ok && r.item) && !(gd && !gd.need.soon && gd.need.label === r.label && !r.ok) ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}${reqSrc(r)}</div>`).join('')}</div>`;
     const fit = ov.fit;
     const disabled = s.ended || s.pending.length;
     const member = ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan');
@@ -6302,6 +6498,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     // 要紧的事：和你沾边、快到的天下大事；散修能去拜的宗门；长老房白给的功法；元神未入殿。每条带一个直接去办的按钮
     const tips = [];
+    if (gd && gd.need.soon && gd.best) tips.push(`<b class="warn">${esc(gd.need.label)}</b> ${esc(gd.best.text)}${gd.ways.length > 1 ? '；也可以' + esc(gd.ways[1].text) : ''}`);
     for (const x of Game.view.sagas(s)) {
       if (!x.known || !x.relevant || x.done || !(x.open || x.year - s.year <= 3)) continue;
       tips.push(`<b class="warn">${esc(x.name)}</b> <span class="small">${x.open ? '正在进行，到 ' + x.until + ' 年' : x.year === s.year ? '今年' : '还有 ' + (x.year - s.year) + ' 年'}</span> <span class="muted small">${esc(x.hint)}</span> ${x.open ? go(x.at) : ''}`);
@@ -6329,7 +6526,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const lastA = UI.last ? A.find((a) => sameAct(a, UI.last)) : null;
     const again = lastA && lastA.ok && lastA !== primary ? lastA : null;
     const risky = primary && primary.type === 'breakthrough' && bt && bt.death;
+    // 冲不了、也没得修的时候，快捷栏放“下一步”
+    const gq = !primary && gd && !gd.need.soon && gd.best && gd.best.step ? gBtn(gd.best, 'primary') : '';
     const qbar = s.ended ? '' : s.pending.length ? '<div class="qbar"><button class="primary" data-act="openEvent">处理眼前的事</button></div>'
+      : gq ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${gq}</div>`
       : primary || again ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${primary ? `<button class="primary${risky ? ' risky' : ''}${primary === until && tab === '修炼' ? ' dup' : ''}" data-act="${risky ? 'doRisk' : 'do'}" data-i="${A.indexOf(primary)}" title="${esc(primary.label)}">${esc(primary.label)}</button>` : ''}</div>` : '';
     return `
       <div class="now-cols"><div class="col-a">

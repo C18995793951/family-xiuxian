@@ -271,7 +271,7 @@
       const t = P().lianqiOf(p);
       return [
         { label: '胎息壮大到头', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) },
-        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '金谷墟市常备劣等练炁术，凡人国集市偶有；拜入玄真派可向长老房请授' },
+        { label: '一门练炁术', lianqi: true, ok: !!t, note: t ? '《' + t.name + '》' : '金谷墟市常备劣等练炁术，凡人国集市偶有；拜入玄真派可向长老房请授' },
       ];
     }
     if (!k) return [];

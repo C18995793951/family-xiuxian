@@ -217,7 +217,21 @@
     // 缺的东西就地给出来路：此地货架买、长老房换、托人代寻，或赶去有货的地方
     const route = routeMemo(s);
     const go = (id, text) => { if (!id || id === me.locationId) return ''; const r = route(id); return r ? `<button class="link" data-act="goto" data-id="${id}">${esc(text || '赶过去')} ${r.days} 天</button>` : ''; };
+    // 卡关时的“下一步”：核心 Guide 照世界状态算出的几条路，每条落到一个按钮上
+    const gd = FX.Guide.next(s);
+    const gIdx = (a) => A.findIndex((x) => x.type === a.type && LAST_KEYS.every((k) => x[k] === a[k]));
+    const gBtn = (w, cls) => {
+      const st = w && w.step;
+      if (!st) return '';
+      if (st.act) { const i = gIdx(st.act); return i < 0 ? '' : st.qty ? `<button class="${cls || ''}" data-act="doN" data-i="${i}" data-n="${st.qty}">捐 ${n0(st.qty * A[i].cost)} 符钱</button>` : `<button class="${cls || ''}" data-act="do" data-i="${i}">${esc(A[i].label)}</button>`; }
+      if (st.buy) return `<button class="${cls || ''}" data-act="buy" data-k="${esc(st.buy)}" data-n="1">买下</button>`;
+      if (st.goto) { const r = route(st.goto); return `<button class="${cls || ''}" data-act="goto" data-id="${st.goto}">去${esc(s.places[st.goto].name)}${r ? ' · ' + r.days + ' 天' : ''}</button>`; }
+      return '';
+    };
+    const guideHtml = (g) => !g ? '' : g.best ? `<div class="guide"><div><b class="warn">下一步</b> ${esc(g.best.text)}</div><div class="row src">${gBtn(g.best, 'primary')}</div>${g.ways.length > 1 ? `<div class="muted small">也可以：${g.ways.slice(1, 3).map((w) => esc(w.text) + ' ' + gBtn(w)).join('；')}</div>` : ''}</div>`
+      : `<div class="guide bad small">眼下想不出去哪弄到，去采买页看看 <button class="link" data-act="page" data-p="shop">采买</button></div>`;
     const reqSrc = (r) => {
+      if (!r.ok && !r.optional && gd && !gd.need.soon && gd.need.label === r.label) return guideHtml(gd);
       if (r.ok) { const u = r.item && A.find((a) => a.type === 'use' && a.item === r.item && a.ok); return u ? `<div class="row src"><button data-act="do" data-i="${A.indexOf(u)}">${esc(u.label)}</button></div>` : ''; }
       if (r.item && CF.items[r.item]) { const b = srcBtns(s, A, r.item, sourcesOf(s, A, r.item, route)); return (b.html ? `<div class="row src">${b.html}</div>` : '') + (b.why.length && !b.ready ? `<div class="muted small">${esc(b.why.join('；'))}</div>` : ''); }
       if (r.kaifu) {
@@ -233,7 +247,7 @@
       if (r.items && r.items.length) return `<div class="row src"><button data-act="page" data-p="shop" data-tab="need">去采买看来路</button></div>`;
       return '';
     };
-    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note && !(r.ok && r.item) ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}${reqSrc(r)}</div>`).join('')}</div>`;
+    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note && !(r.ok && r.item) && !(gd && !gd.need.soon && gd.need.label === r.label && !r.ok) ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}${reqSrc(r)}</div>`).join('')}</div>`;
     const fit = ov.fit;
     const disabled = s.ended || s.pending.length;
     const member = ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan');
@@ -295,6 +309,7 @@
     }
     // 要紧的事：和你沾边、快到的天下大事；散修能去拜的宗门；长老房白给的功法；元神未入殿。每条带一个直接去办的按钮
     const tips = [];
+    if (gd && gd.need.soon && gd.best) tips.push(`<b class="warn">${esc(gd.need.label)}</b> ${esc(gd.best.text)}${gd.ways.length > 1 ? '；也可以' + esc(gd.ways[1].text) : ''}`);
     for (const x of Game.view.sagas(s)) {
       if (!x.known || !x.relevant || x.done || !(x.open || x.year - s.year <= 3)) continue;
       tips.push(`<b class="warn">${esc(x.name)}</b> <span class="small">${x.open ? '正在进行，到 ' + x.until + ' 年' : x.year === s.year ? '今年' : '还有 ' + (x.year - s.year) + ' 年'}</span> <span class="muted small">${esc(x.hint)}</span> ${x.open ? go(x.at) : ''}`);
@@ -322,7 +337,10 @@
     const lastA = UI.last ? A.find((a) => sameAct(a, UI.last)) : null;
     const again = lastA && lastA.ok && lastA !== primary ? lastA : null;
     const risky = primary && primary.type === 'breakthrough' && bt && bt.death;
+    // 冲不了、也没得修的时候，快捷栏放“下一步”
+    const gq = !primary && gd && !gd.need.soon && gd.best && gd.best.step ? gBtn(gd.best, 'primary') : '';
     const qbar = s.ended ? '' : s.pending.length ? '<div class="qbar"><button class="primary" data-act="openEvent">处理眼前的事</button></div>'
+      : gq ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${gq}</div>`
       : primary || again ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${primary ? `<button class="primary${risky ? ' risky' : ''}${primary === until && tab === '修炼' ? ' dup' : ''}" data-act="${risky ? 'doRisk' : 'do'}" data-i="${A.indexOf(primary)}" title="${esc(primary.label)}">${esc(primary.label)}</button>` : ''}</div>` : '';
     return `
       <div class="now-cols"><div class="col-a">

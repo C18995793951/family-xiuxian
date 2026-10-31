@@ -254,6 +254,14 @@
     return { text: `得符钱 ${stone}${mtxt}` };
   };
 
+  // 某类地方的营生一个月大约挣多少（“下一步”估还要做几个月用）
+  Act.workPay = (s, type) => {
+    const p = me(s), job = C().actions.work[type];
+    if (!job) return null;
+    const stone = Math.round(((job.stone[0] + job.stone[1]) / 2) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
+    return { name: job.name, stone, merit: job.merit ? FX.Sect.taskMerit(p) : 0, memberOnly: !!job.memberOnly };
+  };
+
   Act.marketOf = (s) => (W().hasMarket(s, here(s).id) ? s.markets[here(s).id] : null);
 
   // 可托墟市代寻的稀罕货（只在墟市办，价钱照原价加成，不随年景浮动）
