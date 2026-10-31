@@ -11,6 +11,20 @@
 - 双击 `dist/family-xiuxian.html`，用最新版 Chrome 或 Edge 打开即可，手机浏览器也能玩。
 - 只有一个文件，不需要联网，也不发出任何网络请求。
 
+### 手机上玩（加到主屏幕）
+
+`docs/` 是同一个游戏的网页版，多了图标、manifest 和离线缓存，由 GitHub Pages 发布：
+
+1. 仓库 **Settings → Pages → Build and deployment**，Source 选 **Deploy from a branch**，分支选放着这些文件的分支，目录选 **/docs**，保存。
+2. 一两分钟后网址是 <https://c18995793951.github.io/family-xiuxian/>。
+3. 手机浏览器打开这个网址，加到主屏幕：
+   - iPhone：用 Safari 打开，点底部分享按钮，选「添加到主屏幕」。
+   - 安卓：Chrome 或 Edge 会提示「安装应用」，或在菜单里选「添加到主屏幕」。游戏里「存档与设置」页也有一键安装按钮。
+   - 在微信里打开的，先点右上角「…」选「在浏览器打开」。
+4. 之后从主屏幕打开就是全屏，断网也能玩。联网时打开会自动换成新版，存档不受影响。
+
+存档只在那台手机的浏览器里。电脑上的存档用「复制为文本」，到手机上「从文本导入」；手机上的存档可以「分享存档文件」发到微信或网盘备份。
+
 ## 怎么玩
 
 1. **开局**：选出身（凡人求仙、南域散修、修道家族子弟、玄真派弟子），姓名和种子可留空。种子相同、选择相同，这一生就逐位相同。修道家族子弟的家族以你的姓氏命名。
@@ -91,6 +105,7 @@
 - **宗门**分概况、传功、库藏、上交·捐输四个页签；境界还没到的、已经得了的、如今用不上的都折起来，页签上写着有几样可换。捐输可一次捐 100 份。
 - **行囊**分物品、功法、法器、买卖四个页签。长说明默认收成两行，点一下展开。
 - 折叠状态记在浏览器里，下次打开还是一样。
+- 适配刘海屏和底部横条：底部导航、提示条、页面底边都让开安全区；按钮去掉了双击缩放的延迟。
 
 ## 存档
 
@@ -122,17 +137,20 @@ src/core/   模拟核心（不访问 DOM、不联网、不调用 Math.random / D
   saga        天下大事与后期玩法：地渊开启、撷芳宴、道脉校考、仇家寻仇、洞府
   save        序列化与校验
   api         界面与测试共用的公开接口
-src/ui/     界面与存储适配器
-build.js    把 src/ 内联成 dist/family-xiuxian.html
+src/ui/     界面、存储适配器、手机网页版（pwa.js：离线缓存注册、安装提示、分享存档）
+src/web/    手机网页版的 manifest 与离线缓存脚本模板
+build.js    把 src/ 内联成 dist/family-xiuxian.html，同时生成 docs/ 下的手机网页版
+tools/      make-icons.js：生成 docs/icons/ 下的图标
 test/       自动化测试、平衡报告、预设策略、界面冒烟测试
 ```
 
 ```bash
 node build.js                 # 生成 dist/family-xiuxian.html
-node test/run-tests.js        # 自动化测试（22 项；ONLY=16,18 只跑其中几项）
+node test/run-tests.js        # 自动化测试（25 项；ONLY=16,18 只跑其中几项）
 node test/run-tests.js --quick
 node test/balance.js --seeds 40   # 平衡报告
 node test/ui-smoke.js         # 浏览器冒烟测试（需要 Playwright）
+node test/web-smoke.js        # 手机网页版：manifest、图标、离线缓存、断网刷新后读档
 ```
 
 ## 已知缺口

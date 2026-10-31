@@ -147,6 +147,7 @@
         <button class="primary" data-act="continue" ${UI.hasAuto ? '' : 'disabled'}>继续上次（自动存档）</button>
         <button data-act="openSaves">读取存档 / 导入</button>
       </div><p class="muted" style="margin:.5em 0 0">存储：${storeLabel()}</p></div>
+      ${FX.PWA && FX.PWA.web && !FX.PWA.standalone ? phoneCard() : ''}
       <div class="card"><h3>新的一生</h3>
         <div class="grid">${Object.keys(o).map((k) => `<div class="card origin ${st.origin === k ? 'sel' : ''}" data-act="pickOrigin" data-k="${k}" tabindex="0" role="button" aria-pressed="${st.origin === k}">
           <h3>${o[k].name}</h3><p class="muted">${o[k].blurb}</p>
@@ -512,11 +513,26 @@
   };
 
   /* ---------- 存档与设置 ---------- */
+  // 手机上玩：网页版里教人加到主屏幕；单文件版里给出网页版的网址
+  function phoneCard() {
+    const W = FX.PWA || {};
+    if (W.web && W.standalone) return `<div class="card"><h3>手机上玩</h3><p class="good" style="margin:0">已经装在主屏幕上了，断网也能玩。</p><p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。</p></div>`;
+    if (W.web) {
+      const how = W.wechat ? '在微信里打开的话，先点右上角「…」选「在浏览器打开」，再按下面的办法加到主屏幕。'
+        : W.ios ? '用 Safari 打开本页，点底部的分享按钮（方框带向上箭头），选「添加到主屏幕」。'
+        : '点浏览器菜单里的「添加到主屏幕」或「安装应用」。';
+      return `<div class="card hl"><h3>装到手机主屏幕</h3><p style="margin-top:0">装好以后像 App 一样从主屏幕打开，全屏、断网也能玩。${esc(how)}</p>
+        ${W.canPrompt ? '<div class="row"><button class="primary" data-act="installApp">装到主屏幕</button></div>' : ''}
+        <p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。电脑上的存档用「复制为文本」，在手机上「从文本导入」即可。</p></div>`;
+    }
+    return `<div class="card"><h3>手机上玩</h3><p style="margin-top:0">用手机浏览器打开 <a href="${esc(W.url || '')}" target="_blank" rel="noopener">${esc(W.url || '')}</a>，再加到主屏幕，就能像 App 一样全屏、离线玩。</p><p class="muted small" style="margin-bottom:0">这里的存档带不过去，要先在存档管理里「复制为文本」，到手机上「从文本导入」。</p></div>`;
+  }
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息一路到金丹三重、元神、返虚；每过一道大关定一回根底（道基、紫府异象、先天金汞、金丹九品、元神法相），前面的成色影响后面。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会）、玉宸派/赤明派/怙照宗三家大派、道脉改投、功德殿捐输、职位与推举、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    ${phoneCard()}
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -596,7 +612,7 @@
         <p class="muted">存储：${storeLabel()}</p>
         ${['auto', 'slot1', 'slot2', 'slot3'].map((k) => { const meta = sl[k]; return `<div class="stat"><span><b>${k === 'auto' ? '自动存档' : '槽位 ' + k.slice(4)}</b> ${meta ? `<span class="muted">${esc(meta.name || '?')} · ${esc(meta.originName)} · ${meta.year} 年 · ${meta.age} 岁 · ${esc(meta.realm)}${meta.ended ? ' · 已身故' : ''}${meta.savedAt ? ' · ' + new Date(meta.savedAt).toLocaleString('zh-CN') : ''}</span>` : '<span class="muted">空</span>'}</span>
           <span class="row">${k !== 'auto' && UI.s ? `<button data-act="saveSlot" data-k="${k}">保存</button>` : ''}${meta ? `<button data-act="loadSlot" data-k="${k}">读取</button>` : ''}${meta && k !== 'auto' ? `<button class="danger" data-act="delSlot" data-k="${k}">删除</button>` : ''}</span></div>`; }).join('')}
-        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button></div>
+        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button>${FX.PWA && FX.PWA.canShareFile() ? `<button data-act="shareSave" ${UI.s ? '' : 'disabled'}>分享存档文件</button>` : ''}</div>
         <h3>导入</h3><div class="row"><input type="file" accept=".json,.txt,application/json" id="in-file"><button data-act="importFile">从文件导入</button></div>
         <textarea id="in-text" placeholder="粘贴以 FXZ1: / FXB1: 开头的存档文本，或 JSON"></textarea><div class="row"><button data-act="importText">从文本导入</button></div>
         ${m.exported ? `<h3>存档文本</h3><p class="muted">${m.copied ? '已复制到剪贴板。' : '浏览器不允许自动复制，请手动全选复制：'}</p><textarea readonly>${esc(m.exported)}</textarea>` : ''}`;
@@ -715,6 +731,12 @@
       const ok = FX.Store.download(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
       toast(ok ? '已开始下载' : '下载失败，请改用复制文本');
     },
+    async shareSave() {
+      const p = P.player(UI.s);
+      const r = await FX.PWA.shareFile(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
+      if (r === false) toast('这个浏览器分享不了文件，请改用下载或复制文本');
+    },
+    async installApp() { const ok = await FX.PWA.prompt(); toast(ok ? '已装到主屏幕' : '没有安装'); render(); },
     async exportText() {
       const m = UI.modals[UI.modals.length - 1];
       m.exported = await FX.Store.encodeText(Game.save.serialize(UI.s, Date.now()));
@@ -762,6 +784,7 @@
     UI.storeKind = await FX.Store.init();
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
+    if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
     render();
   }
   FX.UI = UI;

@@ -2,7 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17130f">
+<meta name="color-scheme" content="dark">
+<meta name="format-detection" content="telephone=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="修仙录">
 <title>家族修仙录</title>
 <style>
 /* ============ 古风修仙家族档案 · 固定深色主题 ============ */
@@ -24,7 +31,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--body-font); font-size: var(--fs); line-height: 1.6; }
-body { min-height: 100vh; overflow-x: hidden; }
+body { min-height: 100vh; overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+button, [data-act], summary, label { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 h1, h2, h3, h4 { font-family: var(--title-font); font-weight: 600; color: var(--accent); margin: 0 0 .5em; letter-spacing: .05em; }
 h1 { font-size: 1.8em; } h2 { font-size: 1.35em; } h3 { font-size: 1.12em; }
 a { color: var(--accent); }
@@ -90,7 +98,7 @@ tr.dead td { color: var(--muted); }
 
 /* 模态 */
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1em; animation: fade .15s; }
-.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.2em 1.4em; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; max-width: 720px; width: 100%; max-height: 90vh; max-height: 90dvh; overflow-y: auto; padding: 1.2em 1.4em; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
 .modal h2 { margin-top: 0; }
 .opt { border: 1px solid var(--line-soft); border-radius: 6px; padding: .7em .9em; margin: .6em 0; background: var(--panel-2); }
 .opt.disabled { opacity: .55; }
@@ -98,7 +106,7 @@ tr.dead td { color: var(--muted); }
 .opt .meta b { color: var(--text); font-weight: normal; }
 #toasts { position: fixed; bottom: 1em; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: .4em; align-items: center; pointer-events: none; width: max-content; max-width: 92vw; }
 .toast { background: var(--panel-2); border: 1px solid var(--accent); padding: .6em 1.2em; border-radius: 6px; animation: fade .2s; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
-@media (max-width: 720px) { #toasts { bottom: 64px; } }
+@media (max-width: 720px) { #toasts { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); } }
 .flash { animation: flash 1.2s; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes flash { 0% { background: rgba(224,169,79,.35); } 100% { background: transparent; } }
@@ -117,11 +125,11 @@ nav.bottom { display: none; }
 @media (max-width: 720px) {
   .app, .app.no-aside { display: block; }
   nav.side { display: none; }
-  main { padding: .8em 16px 6em; }
-  nav.bottom { display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; }
+  main { padding: .8em 16px calc(6em + env(safe-area-inset-bottom, 0px)); }
+  nav.bottom { display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   nav.bottom button { border: none; border-radius: 0; background: transparent; min-height: 52px; padding: .2em; font-size: .85em; }
   nav.bottom button.on { color: var(--accent); background: var(--panel-2); }
-  .more-menu { position: fixed; bottom: 56px; right: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; z-index: 45; padding: .4em; }
+  .more-menu { position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); right: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; z-index: 45; padding: .4em; }
   .more-menu button { display: block; width: 100%; text-align: left; margin: .2em 0; min-height: 44px; }
   table.resp thead { display: none; }
   table.resp tr { display: block; border: 1px solid var(--line-soft); border-radius: 6px; margin-bottom: .6em; padding: .4em; }
@@ -5849,6 +5857,53 @@ svg.map .road { stroke-width: 3; }
   FX.Store = Store;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- ui/pwa.js ---------- */
+/*
+ * 手机网页版（ui 一侧）：只有网页版（页里有 manifest、经 http(s) 打开）才注册离线缓存、
+ * 申请持久存储、接住浏览器的“安装到主屏幕”提示。单文件版里这些都不动，只给出网址。
+ */
+(function (G) {
+  'use strict';
+  const FX = G.FX || (G.FX = {});
+  const PWA = (FX.PWA = {
+    url: 'https://c18995793951.github.io/family-xiuxian/',
+    web: false, standalone: false, ios: false, wechat: false, canPrompt: false, persisted: null, onchange: null,
+  });
+  let deferred = null;
+  const changed = () => { if (typeof PWA.onchange === 'function') PWA.onchange(); };
+  try {
+    const nav = G.navigator || {};
+    PWA.web = !!(G.document && G.document.querySelector('link[rel="manifest"]')) && /^https?:$/.test(G.location.protocol);
+    PWA.standalone = !!((G.matchMedia && G.matchMedia('(display-mode: standalone)').matches) || nav.standalone === true);
+    PWA.ios = /iPhone|iPad|iPod/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+    PWA.wechat = /MicroMessenger/i.test(nav.userAgent || '');
+    if (PWA.web) {
+      if (nav.serviceWorker) nav.serviceWorker.register('sw.js').catch(() => {});
+      if (nav.storage && nav.storage.persist) nav.storage.persist().then((ok) => { PWA.persisted = ok; changed(); }).catch(() => {});
+      G.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e; PWA.canPrompt = true; changed(); });
+      G.addEventListener('appinstalled', () => { deferred = null; PWA.canPrompt = false; PWA.standalone = true; changed(); });
+    }
+  } catch (e) { /* 老浏览器：当普通网页用 */ }
+  PWA.prompt = async () => {
+    if (!deferred) return false;
+    deferred.prompt();
+    const r = await deferred.userChoice.catch(() => null);
+    deferred = null; PWA.canPrompt = false; changed();
+    return !!(r && r.outcome === 'accepted');
+  };
+  // 手机上把存档文件直接分享出去（微信、网盘等）；浏览器不支持就返回 false
+  PWA.canShareFile = () => {
+    try { return !!(G.navigator.canShare && G.File && G.navigator.canShare({ files: [new G.File(['{}'], 'a.json', { type: 'application/json' })] })); } catch (e) { return false; }
+  };
+  PWA.shareFile = async (name, text) => {
+    try {
+      const file = new G.File([text], name, { type: 'application/json' });
+      await G.navigator.share({ files: [file], title: name });
+      return true;
+    } catch (e) { return e && e.name === 'AbortError' ? null : false; }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ---------- ui/app.js ---------- */
 /* ============================================================
  * ui —— 交互界面。只通过 FX.Game 公开函数操作核心，不直接修改状态。
@@ -5999,6 +6054,7 @@ svg.map .road { stroke-width: 3; }
         <button class="primary" data-act="continue" ${UI.hasAuto ? '' : 'disabled'}>继续上次（自动存档）</button>
         <button data-act="openSaves">读取存档 / 导入</button>
       </div><p class="muted" style="margin:.5em 0 0">存储：${storeLabel()}</p></div>
+      ${FX.PWA && FX.PWA.web && !FX.PWA.standalone ? phoneCard() : ''}
       <div class="card"><h3>新的一生</h3>
         <div class="grid">${Object.keys(o).map((k) => `<div class="card origin ${st.origin === k ? 'sel' : ''}" data-act="pickOrigin" data-k="${k}" tabindex="0" role="button" aria-pressed="${st.origin === k}">
           <h3>${o[k].name}</h3><p class="muted">${o[k].blurb}</p>
@@ -6364,11 +6420,26 @@ svg.map .road { stroke-width: 3; }
   };
 
   /* ---------- 存档与设置 ---------- */
+  // 手机上玩：网页版里教人加到主屏幕；单文件版里给出网页版的网址
+  function phoneCard() {
+    const W = FX.PWA || {};
+    if (W.web && W.standalone) return `<div class="card"><h3>手机上玩</h3><p class="good" style="margin:0">已经装在主屏幕上了，断网也能玩。</p><p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。</p></div>`;
+    if (W.web) {
+      const how = W.wechat ? '在微信里打开的话，先点右上角「…」选「在浏览器打开」，再按下面的办法加到主屏幕。'
+        : W.ios ? '用 Safari 打开本页，点底部的分享按钮（方框带向上箭头），选「添加到主屏幕」。'
+        : '点浏览器菜单里的「添加到主屏幕」或「安装应用」。';
+      return `<div class="card hl"><h3>装到手机主屏幕</h3><p style="margin-top:0">装好以后像 App 一样从主屏幕打开，全屏、断网也能玩。${esc(how)}</p>
+        ${W.canPrompt ? '<div class="row"><button class="primary" data-act="installApp">装到主屏幕</button></div>' : ''}
+        <p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。电脑上的存档用「复制为文本」，在手机上「从文本导入」即可。</p></div>`;
+    }
+    return `<div class="card"><h3>手机上玩</h3><p style="margin-top:0">用手机浏览器打开 <a href="${esc(W.url || '')}" target="_blank" rel="noopener">${esc(W.url || '')}</a>，再加到主屏幕，就能像 App 一样全屏、离线玩。</p><p class="muted small" style="margin-bottom:0">这里的存档带不过去，要先在存档管理里「复制为文本」，到手机上「从文本导入」。</p></div>`;
+  }
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息一路到金丹三重、元神、返虚；每过一道大关定一回根底（道基、紫府异象、先天金汞、金丹九品、元神法相），前面的成色影响后面。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会）、玉宸派/赤明派/怙照宗三家大派、道脉改投、功德殿捐输、职位与推举、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    ${phoneCard()}
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -6448,7 +6519,7 @@ svg.map .road { stroke-width: 3; }
         <p class="muted">存储：${storeLabel()}</p>
         ${['auto', 'slot1', 'slot2', 'slot3'].map((k) => { const meta = sl[k]; return `<div class="stat"><span><b>${k === 'auto' ? '自动存档' : '槽位 ' + k.slice(4)}</b> ${meta ? `<span class="muted">${esc(meta.name || '?')} · ${esc(meta.originName)} · ${meta.year} 年 · ${meta.age} 岁 · ${esc(meta.realm)}${meta.ended ? ' · 已身故' : ''}${meta.savedAt ? ' · ' + new Date(meta.savedAt).toLocaleString('zh-CN') : ''}</span>` : '<span class="muted">空</span>'}</span>
           <span class="row">${k !== 'auto' && UI.s ? `<button data-act="saveSlot" data-k="${k}">保存</button>` : ''}${meta ? `<button data-act="loadSlot" data-k="${k}">读取</button>` : ''}${meta && k !== 'auto' ? `<button class="danger" data-act="delSlot" data-k="${k}">删除</button>` : ''}</span></div>`; }).join('')}
-        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button></div>
+        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button>${FX.PWA && FX.PWA.canShareFile() ? `<button data-act="shareSave" ${UI.s ? '' : 'disabled'}>分享存档文件</button>` : ''}</div>
         <h3>导入</h3><div class="row"><input type="file" accept=".json,.txt,application/json" id="in-file"><button data-act="importFile">从文件导入</button></div>
         <textarea id="in-text" placeholder="粘贴以 FXZ1: / FXB1: 开头的存档文本，或 JSON"></textarea><div class="row"><button data-act="importText">从文本导入</button></div>
         ${m.exported ? `<h3>存档文本</h3><p class="muted">${m.copied ? '已复制到剪贴板。' : '浏览器不允许自动复制，请手动全选复制：'}</p><textarea readonly>${esc(m.exported)}</textarea>` : ''}`;
@@ -6567,6 +6638,12 @@ svg.map .road { stroke-width: 3; }
       const ok = FX.Store.download(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
       toast(ok ? '已开始下载' : '下载失败，请改用复制文本');
     },
+    async shareSave() {
+      const p = P.player(UI.s);
+      const r = await FX.PWA.shareFile(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
+      if (r === false) toast('这个浏览器分享不了文件，请改用下载或复制文本');
+    },
+    async installApp() { const ok = await FX.PWA.prompt(); toast(ok ? '已装到主屏幕' : '没有安装'); render(); },
     async exportText() {
       const m = UI.modals[UI.modals.length - 1];
       m.exported = await FX.Store.encodeText(Game.save.serialize(UI.s, Date.now()));
@@ -6614,6 +6691,7 @@ svg.map .road { stroke-width: 3; }
     UI.storeKind = await FX.Store.init();
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
+    if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
     render();
   }
   FX.UI = UI;
