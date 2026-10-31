@@ -24,6 +24,7 @@
       dailyLimit: 200, // 本机每天最多调用次数，防止误刷
       narrate: true, // 行动后写一段叙述
       eventText: true, // 眼前的事换个说法
+      hooks: true, // 找上门的事由 AI 写提案（标题、开场、选项）
     },
     models: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'],
     // 可注入：测试时替换为假实现
@@ -57,6 +58,7 @@
       dailyLimit: Math.max(1, Math.min(5000, Math.floor(Number(c.dailyLimit) || AI.defaults.dailyLimit))),
       narrate: c.narrate !== false,
       eventText: c.eventText !== false,
+      hooks: c.hooks !== false,
     };
     try { store() && store().setItem(LS_CFG, JSON.stringify(clean)); } catch (e) { /* 存不了就只在本页生效 */ }
     return clean;
@@ -93,7 +95,7 @@
   };
 
   const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
-  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入' };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '还没调用过';
@@ -208,6 +210,26 @@
     if (v.ask) return { ok: true, ask: v.ask };
     if (v.cannot) return { ok: true, cannot: v.cannot };
     return { ok: true, plan: { say: v.say, steps: v.steps, via: 'ai', input: job.input } };
+  };
+
+  // 世事：排进队里的钩子，在后台请 AI 写提案；到它找上门时没写好就用模板（不等）
+  AI.hookPrefetch = (s) => {
+    if (!AI.on('hooks') || !AI.ready().ok || !FX.Hook) return [];
+    const out = [];
+    for (const job of FX.Hook.pendingJobs(s)) {
+      if (AI.pending.has(job.key) || AI.failed.has(job.key)) continue;
+      const p = AI.call('hook', job.messages, job.maxTokens).then((res) => {
+        AI.pending.delete(job.key);
+        if (!res.ok) { AI.failed.set(job.key, res.reason); notify(); return null; }
+        const a = FX.Hook.accept(s, job, res.text);
+        if (!a.ok) { AI.failed.set(job.key, '校验没过：' + a.why); setStatus('hook', false, '校验没过：' + a.why); reject('hook', a.why, res.text); notify(); return null; }
+        notify();
+        return a.text;
+      });
+      AI.pending.set(job.key, p);
+      out.push(p);
+    }
+    return out;
   };
 
   AI.testConnection = async () => {

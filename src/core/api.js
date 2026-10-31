@@ -28,6 +28,8 @@
       if (r.ok && r.days && FX.P.alive(FX.P.player(s))) FX.Sim.passDays(s, r.days, 'other');
       FX.Ars.sync(s);
       FX.Sim.checkEnd(s);
+      // 排着的世事一件接一件找上门（只送已经排过一回的）
+      if (r.ok) FX.Hook.deliver(s);
       return r;
     },
 

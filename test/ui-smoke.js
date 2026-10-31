@@ -47,6 +47,14 @@ const { chromium } = require('playwright');
     const btn = pick >= 0 ? await page.$(`main [data-act="do"][data-i="${pick}"]`) : null;
     if (btn) await btn.click(); else await page.click('main [data-act="do"]:not([disabled])');
   }
+  // 收尾：眼前还有待决的事（找上门的事会在行动后到），先处理掉
+  for (let k = 0; k < 10; k++) {
+    const c = await page.$('.modal [data-act="choose"]:not([disabled])');
+    if (c) { await c.click(); events++; continue; }
+    const x = await page.$('.modal [data-act="close"]');
+    if (x) { await x.click(); continue; }
+    break;
+  }
   const year = await page.evaluate(() => FX.UI.s.year);
 
   for (const p of ['map', 'shop', 'bag', 'chron', 'sys', 'now']) {

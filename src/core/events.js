@@ -13,6 +13,9 @@
 
   const Ev = {};
   Ev.def = (id) => FX.EVENTS[id];
+  // 数据事件（钩子长出来的事）的标题、选项随实例而定
+  Ev.title = (s, inst) => { const d = Ev.def(inst.defId); return d ? (typeof d.name === 'function' ? d.name(s, inst.bound) : d.name) : inst.defId; };
+  Ev.opts = (s, inst) => { const d = Ev.def(inst.defId); return typeof d.options === 'function' ? d.options(s, inst.bound) : d.options; };
   const isPid = (v) => typeof v === 'string' && /^p\d+$/.test(v);
 
   // 绑定对象有效性：人物需在世，势力与地点需存在
@@ -76,7 +79,7 @@
       if (Ev.valid(s, inst.bound)) continue;
       s.pending = s.pending.filter((x) => x !== inst);
       const def = Ev.def(inst.defId);
-      H().add(s, { type: 'event', tags: ['事件', '终止'], key: 'event', params: { title: def ? def.name : inst.defId, choice: '未及处置', result: '当事人已不在，事情自行了结' }, severity: 1, pov: true, causeIds: inst.causeIds });
+      H().add(s, { type: 'event', tags: ['事件', '终止'], key: 'event', params: { title: def ? Ev.title(s, inst) : inst.defId, choice: '未及处置', result: '当事人已不在，事情自行了结' }, severity: 1, pov: true, causeIds: inst.causeIds });
     }
   };
 
@@ -86,12 +89,12 @@
     return {
       id: inst.id,
       defId: inst.defId,
-      name: def.name,
+      name: Ev.title(s, inst),
       category: def.category,
       text: typeof def.text === 'function' ? def.text(s, inst.bound, n) : U.fill(def.text, n),
       people: Object.entries(inst.bound).filter(([k, v]) => !k.startsWith('_') && isPid(v)).map(([, v]) => v),
       causes: inst.causeIds.map((c) => H().get(s, c)).filter(Boolean).map((e) => H().text(e)),
-      options: def.options.map((o) => {
+      options: Ev.opts(s, inst).map((o) => {
         const av = o.avail ? o.avail(s, inst.bound) : true;
         return {
           id: o.id, label: o.label,
@@ -110,7 +113,7 @@
     const inst = s.pending.find((x) => x.id === instId);
     if (!inst) return { ok: false, error: '事件不存在或已处理' };
     const def = Ev.def(inst.defId);
-    const opt = def.options.find((o) => o.id === optId);
+    const opt = Ev.opts(s, inst).find((o) => o.id === optId);
     if (!opt) return { ok: false, error: '无此选项' };
     if (!Ev.valid(s, inst.bound)) { Ev.prune(s); return { ok: true, result: '当事人已不在，事件取消' }; }
     const av = opt.avail ? opt.avail(s, inst.bound) : true;
@@ -119,7 +122,7 @@
     // 先写决策记录，让后果可以引用它作为前因
     const hid = H().add(s, {
       type: 'event', tags: ['事件', def.category], actors: Object.entries(inst.bound).filter(([k, v]) => !k.startsWith('_') && isPid(v)).map(([, v]) => v),
-      places: inst.bound.place ? [inst.bound.place] : [], key: 'event', params: { title: def.name, choice: opt.label, result: '' },
+      places: inst.bound.place ? [inst.bound.place] : [], key: 'event', params: { title: Ev.title(s, inst), choice: opt.label, result: '' },
       severity: def.severity || 2, pov: true, causeIds: inst.causeIds,
     });
     const out = opt.apply(s, inst.bound, { hid, names: Ev.names(s, inst.bound), inst }) || {};
@@ -127,6 +130,7 @@
     const e = H().get(s, hid);
     e.params.result = result;
     e.params.defId = inst.defId;
+    if (inst.bound._kind) e.params.kind = inst.bound._kind;
     return { ok: true, result, hid, gain: !!out.gain, days: out.days || 0 };
   };
 

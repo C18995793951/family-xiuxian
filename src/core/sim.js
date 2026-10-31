@@ -174,6 +174,8 @@
     FX.Act.deliverOrders(s);
     FX.Ev.processQueue(s);
     if (s.pending.length) return true;
+    // 世事：从世界状态里抽一件找上门的事，排进队里，不打断闭关（见 hooks.js）
+    FX.Hook.monthly(s);
     if (mode === 'cultivate' && opts.interruptible) {
       const place = s.places[p.locationId];
       // 自家洞府有禁制护着；自家洞天自成天地，外人进不来

@@ -11,6 +11,7 @@
     "test:ui": "node test/ui-smoke.js",
     "test:web": "node test/web-smoke.js",
     "test:ai": "node test/ai-tests.js",
-    "test:intent": "node test/intent-tests.js"
+    "test:intent": "node test/intent-tests.js",
+    "test:hooks": "node test/hook-tests.js"
   }
 }

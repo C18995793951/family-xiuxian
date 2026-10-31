@@ -82,6 +82,7 @@
     const mark = UI.aiMark;
     UI.aiMark = Game.ai.mark(UI.s);
     if (mark && mark !== UI.aiMark) FX.AI.narrate(UI.s, mark);
+    FX.AI.hookPrefetch(UI.s);
   }
   const aiOn = (what) => !!(FX.AI && FX.AI.on(what));
   const narrOf = () => (UI.s && aiOn('narrate') ? Game.ai.narrations(UI.s) : {});
@@ -863,7 +864,7 @@
       <div class="row"><button class="${c.enabled ? '' : 'primary'}" data-act="aiToggle">${c.enabled ? '关闭 AI' : '开启 AI'}</button><button data-act="aiTest" ${ready.ok ? '' : 'disabled'}>测试连接</button></div>
       <div class="row"><input type="password" id="ai-key" autocomplete="off" spellcheck="false" placeholder="${key ? '已填写（要换就粘贴新的）' : '粘贴 DeepSeek 的 key（sk-…）'}"><button data-act="aiKey">保存 key</button>${key ? '<button data-act="aiKeyClear">清除 key</button>' : ''}</div>
       <div class="row"><label>模型 <select id="ai-model">${opts}</select></label><label>每天至多 <input type="number" id="ai-limit" min="1" max="5000" value="${c.dailyLimit}" style="width:5.5em"> 次</label></div>
-      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><button data-act="aiSave">保存设置</button></div>
+      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><label><input type="checkbox" id="ai-hooks" ${c.hooks !== false ? 'checked' : ''}> 找上门的事由 AI 写</label><button data-act="aiSave">保存设置</button></div>
       <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
       ${rej}</div>`;
   }
@@ -893,7 +894,8 @@
       m.blocking = true;
       const v = Game.pendingEvents(s)[0];
       let alt = null, wait = '';
-      if (aiOn('eventText')) {
+      const hp = s.pending[0].bound && s.pending[0].bound._p;
+      if (aiOn('eventText') && !(hp && hp.via === 'ai')) {
         const key = FX.AI.eventKey(s.pending[0]);
         alt = Game.ai.text(s, key);
         if (!alt) { FX.AI.eventText(s, s.pending[0]); wait = aiWaiting(key); }
@@ -1179,7 +1181,7 @@
     },
     aiKeyClear() { pushModal({ type: 'confirm', title: '清除 key', text: '清除以后 AI 就停了，要用得重新粘贴。确定吗？', onYes: () => { FX.AI.setKey(''); toast('key 已清除'); } }); },
     aiSave() {
-      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked });
+      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked, hooks: !!($('#ai-hooks') || {}).checked });
       toast('AI 设置已保存');
       render();
     },
