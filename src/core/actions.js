@@ -23,7 +23,7 @@
   const me = (s) => P().player(s);
   const here = (s) => s.places[me(s).locationId];
   const giveItem = (s, key, n) => { s.player.inv[key] = (s.player.inv[key] || 0) + n; };
-  const isTown = (place) => place.type === 'town' || place.type === 'sect' || place.type === 'clan';
+  const isTown = (place) => ['town', 'city', 'sect', 'clan'].includes(place.type);
   // “求取”类行动（游历、突破、结交、请教）是否有收获，用于检验原则二
   const seek = (s, gain) => { s.player.stats.seek++; if (!gain) s.player.stats.seekNoGain++; };
 
@@ -35,19 +35,31 @@
     const out = [];
     const add = (o) => out.push(Object.assign({ ok: true, reason: '' }, o));
     // 修炼 / 闭关
-    for (const d of cf.actions.cultivateDays) add({ type: 'cultivate', days: d, label: (d >= 360 ? '闭关 ' : '修炼 ') + T().dur(d), group: '修炼' });
+    const verb = p.realm.major === 0 ? '静坐参悟 ' : p.realm.major === 1 ? '温养胎息 ' : null;
+    for (const d of cf.actions.cultivateDays) add({ type: 'cultivate', days: d, label: (verb || (d >= 360 ? '闭关 ' : '修炼 ')) + T().dur(d), group: '修炼' });
+    // 以符钱修行（练炁以上）
+    const cpy = CU().coinPerYear(p);
+    if (cpy) for (const d of cf.actions.coinDays) {
+      const cost = Act.coinCost(p, d);
+      add({ type: 'cultivate', coin: true, days: d, cost, label: '以符钱修行 ' + T().dur(d) + '（' + cost + ' 符钱）', group: '修炼', ok: s.player.stone >= cost, reason: s.player.stone >= cost ? '' : '符钱不够（需 ' + cost + '）' });
+    }
     // 突破
     const can = CU().canAttempt(s, p);
     if (CU().gateKind(p)) {
       const ch = CU().chance(s, p);
-      add({ type: 'breakthrough', days: ch.days, label: '冲击' + ch.target + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
+      add({ type: 'breakthrough', days: ch.days, label: (ch.kind === 'taixi' ? '参悟胎息' : '冲击' + ch.target) + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
     }
-    // 服药、改修功法
-    for (const k of ['qiju', 'heal', 'yanshou']) if (s.player.inv[k] > 0) {
-      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '延寿丹已无效' : '';
+    // 服药、研习练炁术
+    for (const k of cf.usable) if (s.player.inv[k] > 0) {
+      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '再服已无效' : '';
       add({ type: 'use', item: k, days: 0, label: '服用' + cf.items[k].name, group: '物品', ok: !why, reason: why });
     }
-    for (const t of s.player.manuals) if (t !== p.techniqueId) add({ type: 'learn', tech: t, days: 30, label: '改修《' + cf.techniques[t].name + '》', group: '修炼' });
+    for (const t of s.player.manuals) {
+      const tc = cf.techniques[t];
+      if (tc.kind !== 'lianqi' || t === p.techniqueId) continue;
+      const why = p.realm.major === 0 ? '尚未证得胎息' : p.realm.major >= 3 ? '道基已成，练炁术不能再换' : '';
+      add({ type: 'learn', tech: t, days: 30, label: (p.techniqueId ? '改修《' : '研习《') + tc.name + '》', group: '修炼', ok: !why, reason: why });
+    }
     // 游历
     for (const d of cf.actions.exploreDays) add({ type: 'explore', days: d, label: '在' + place.name + '游历 ' + T().dur(d), group: '外出' });
     // 赶路
@@ -79,7 +91,8 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && ['days', 'to', 'npc', 'item', 'tech'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
     if (s.ended) return { ok: false, error: '这一生已经结束' };
@@ -99,14 +112,17 @@
   /* ---------- 修炼 ---------- */
   Act.DO.cultivate = (s, a) => {
     const p = me(s), place = here(s);
-    const r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90 });
+    if (a.coin) s.player.stone -= a.cost; // 符钱先炼进去，被打断也回不来
+    const r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90, coin: !!a.coin });
     if (!P().alive(p)) return { text: '' };
     const dur = T().dur(r.used);
-    let key = 'cultivate';
+    let key = a.coin ? 'cultivate_coin' : 'cultivate';
     if (r.interrupted) key = 'cultivate_cut';
     else if (r.gained <= 0) key = 'cultivate_idle';
-    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained } });
-    return { text: `修炼 ${dur}，修为 +${r.gained}`, interrupted: r.interrupted };
+    const what = ['气感', '胎息'][p.realm.major] || '修为';
+    const verb = ['静坐', '温养胎息'][p.realm.major] || (a.days >= 360 ? '闭关' : '修炼');
+    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb } });
+    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}`, interrupted: r.interrupted };
   };
 
   Act.DO.breakthrough = (s, a) => {
@@ -134,9 +150,16 @@
     const p = me(s);
     Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
+    const first = !p.techniqueId;
+    let loss = '';
+    if (!first && p.realm.major === 2) {
+      p.progress = Math.floor(p.progress * (1 - C().switchLoss));
+      loss = '，真炁性质不同，修为折去 ' + Math.round(C().switchLoss * 100) + '%';
+    }
     p.techniqueId = a.tech;
-    H().add(s, { type: 'learn', tags: ['功法'], actors: [p.id], key: 'learn', pov: true, severity: 2, params: { name: p.name, tech: C().techniques[a.tech].name } });
-    return { text: '改修《' + C().techniques[a.tech].name + '》' };
+    H().add(s, { type: 'learn', tags: ['功法'], actors: [p.id], key: first ? 'learn_first' : 'learn', pov: true, severity: 2, params: { name: p.name, tech: C().techniques[a.tech].name, loss } });
+    CU().autoAdvance(s, p);
+    return { text: (first ? '研习《' : '改修《') + C().techniques[a.tech].name + '》' + loss };
   };
 
   Act.DO.rest = (s, a) => {
@@ -158,7 +181,7 @@
     const stone = R.int(s.rng, job.stone[0], job.stone[1]) + Math.round(P().realmRank(p) * job.perRank);
     s.player.stone += stone;
     H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone } });
-    return { text: `得灵石 ${stone}` };
+    return { text: `得符钱 ${stone}` };
   };
 
   Act.marketOf = (s) => (W().hasMarket(s, here(s).id) ? s.markets[here(s).id] : null);
@@ -170,7 +193,7 @@
     const slot = m.stock.find((x) => x.item === item);
     if (!slot || slot.qty < qty) return { ok: false, error: '货不够' };
     const cost = slot.price * qty;
-    if (s.player.stone < cost) return { ok: false, error: '灵石不足（需 ' + cost + '）' };
+    if (s.player.stone < cost) return { ok: false, error: '符钱不足（需 ' + cost + '）' };
     s.player.stone -= cost;
     slot.qty -= qty;
     if (item.startsWith('tech:')) { const t = item.slice(5); if (!s.player.manuals.includes(t)) s.player.manuals.push(t); }
@@ -190,7 +213,7 @@
     s.player.stone += gain;
     const p = me(s);
     H().add(s, { type: 'trade', tags: ['坊市'], actors: [p.id], places: [here(s).id], key: 'sell', pov: true, severity: 1, params: { name: p.name, place: here(s).name, item: C().items[item].name, qty, gain } });
-    return { ok: true, text: '卖得灵石 ' + gain };
+    return { ok: true, text: '卖得符钱 ' + gain };
   };
 
   /* ---------- 赶路（逐段走，每段按危险度可能出事）---------- */
@@ -285,7 +308,7 @@
           s.player.stats.exploreNothing++;
           return { text: foe.name + '拦住了你', interrupted: true };
         }
-        const what = R.pick(s.rng, ['被人在人群里摸走了钱袋', '买到一批掺了假的灵草', '被骗进赌局输了一把']);
+        const what = R.pick(s.rng, ['被人在人群里摸走了干坤袋', '买到一批掺了假的灵草', '被骗进赌局输了一把']);
         const loss = Math.floor(s.player.stone * R.range(s.rng, E.troubleStoneFrac[0], E.troubleStoneFrac[1]));
         s.player.stone -= loss;
         add(loss > 0 ? 'explore_trouble' : 'explore_trouble_none', { what, loss }, 2);
@@ -297,15 +320,15 @@
         if (downgraded || isTown(place)) {
           const st = R.int(s.rng, 10, 30);
           s.player.stone += st;
-          add('explore_fortune_downgraded', { loot: '灵石 ' + st });
+          add('explore_fortune_downgraded', { loot: '符钱 ' + st });
           seek(s, true);
-          return { text: '得灵石 ' + st };
+          return { text: '得符钱 ' + st };
         }
         s.player.lastFortuneT = s.t;
         s.player.stats.fortunes++;
         FX.Ev.spawn(s, 'RUIN', { place: place.id }, []);
         seek(s, true);
-        return { text: '发现一处古修洞府', interrupted: true };
+        return { text: '发现一处前人遗府', interrupted: true };
       }
       default:
         add('explore_nothing', {});
@@ -318,14 +341,14 @@
   // 劫修：优先用附近的邪修或品行不端的散修，没有就生成一个
   Act.pickRobber = (s, place) => {
     const p = me(s);
-    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && q.realm.major <= p.realm.major + 1);
+    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3);
     const nearby = evil.filter((q) => q.locationId === place.id || s.places[q.locationId].links.some((l) => l.to === place.id));
     if (nearby.length) { const q = R.pick(s.rng, nearby); q.locationId = place.id; return q; }
-    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, 9);
-    return W().spawnNpc(s, { realm: { major: 1, stage: rank }, locationId: place.id });
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, 12);
+    return W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: place.id });
   };
 
-  // 闭关被打扰：在野外多是妖兽，在人多处多是劫修
+  // 闭关被打扰：在野外多是妖物，在人多处多是劫修
   Act.disturb = (s, place) => {
     if (place.type === 'wild' || place.type === 'danger') {
       const d = Math.max(1, place.danger);
@@ -355,14 +378,14 @@
     if (k === 'place') {
       const unknown = Object.values(s.places).filter((x) => !s.player.visited.includes(x.id));
       const pl = unknown.length ? R.pick(r, unknown) : R.pick(r, Object.values(s.places));
-      return `${pl.name}灵气${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'][pl.qi]}，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖兽出没' : '还算太平'}。`;
+      return `${pl.name}灵机${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'][pl.qi]}，灵气属「${pl.attr}」，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖物出没' : '还算太平'}。`;
     }
     if (k === 'market') {
       const rare = [];
       for (const id in s.markets) for (const x of s.markets[id].stock) if (!['qiju', 'heal'].includes(x.item) && x.qty > 0) rare.push({ id, x });
-      if (rare.length) { const it = R.pick(r, rare); return `${s.places[it.id].name}的坊市里有${W().itemName(it.x.item)}出售，要价 ${it.x.price} 灵石。`; }
+      if (rare.length) { const it = R.pick(r, rare); return `${s.places[it.id].name}的货架上有${W().itemName(it.x.item)}，要价 ${it.x.price} 符钱。`; }
     }
-    const strong = P().living(s).filter((q) => q.realm.major >= 2).sort((a, b) => P().realmRank(b) - P().realmRank(a) || (a.id < b.id ? -1 : 1));
+    const strong = P().living(s).filter((q) => q.realm.major >= 3).sort((a, b) => P().realmRank(b) - P().realmRank(a) || (a.id < b.id ? -1 : 1));
     if (!strong.length) return '近来没什么大事。';
     const q = R.pick(r, strong.slice(0, 8));
     return `${P().factionName(s, q)}的${q.name}乃是${P().realmName(q)}修士，常在${s.places[q.locationId].name}。`;

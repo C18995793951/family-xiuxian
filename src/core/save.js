@@ -52,6 +52,7 @@
     let st = save.state;
     if (typeof save.schemaVersion !== 'number') return { ok: false, error: '缺少 schemaVersion' };
     if (save.schemaVersion === 1) return { ok: false, error: '这是旧版“经营家族”的存档，个人主角版无法读取' };
+    if (save.schemaVersion === 2) return { ok: false, error: '这是换成《仙业》世界之前的存档（灵根、炼气那一套），世界和境界都变了，无法读取' };
     if (save.schemaVersion > cur) return { ok: false, error: `存档版本 ${save.schemaVersion} 比游戏版本 ${cur} 新，请更新游戏` };
     // 校验和针对原始 state 计算
     if (save.checksum && U.hash(JSON.stringify(st)) !== save.checksum) return { ok: false, error: '校验和不符，存档可能已损坏或被改动' };

@@ -14,7 +14,6 @@
   /* ---------- 基础查询 ---------- */
   P.age = (s, p) => s.year - p.birthYear;
   P.alive = (p) => !!p && p.status === 'alive';
-  P.hasRoot = (p) => p.root && p.root.type !== 'none';
   P.living = (s) => Object.values(s.people).filter(P.alive);
   P.at = (s, placeId) => P.living(s).filter((p) => p.locationId === placeId);
   P.name = (s, id) => (s.people[id] ? s.people[id].name : '（无名）');
@@ -29,30 +28,64 @@
   P.lifespanLeft = (s, p) => P.lifespanTotal(p) - P.age(s, p);
   P.isOld = (s, p) => P.lifespanLeft(s, p) < P.lifespanTotal(p) * C().life.oldFrac;
 
+  /* ---------- 境界 ---------- */
   P.realmName = (p) => {
     const cf = C().realms;
-    const m = p.realm.major;
-    if (m === 0) return P.hasRoot(p) ? '未入道' : '凡人';
-    return cf.names[m] + cf.stageNames[m][p.realm.stage - 1];
+    return cf.names[p.realm.major] + cf.stageNames[p.realm.major][p.realm.stage - 1];
   };
-  P.realmRank = (p) => (p.realm.major === 0 ? 0 : p.realm.major === 1 ? p.realm.stage : p.realm.major === 2 ? 9 + p.realm.stage : 12 + p.realm.stage);
-  P.need = (p) => (p.realm.major === 0 ? Infinity : C().realms.need[p.realm.major][p.realm.stage - 1]);
-  P.isFull = (p) => p.realm.major > 0 && p.progress >= P.need(p);
+  // 带小境界名号，如“筑基二重「大小如意」”
+  P.realmTitle = (p) => {
+    const t = C().realms.stageTitles[p.realm.major];
+    return P.realmName(p) + (t ? '「' + t[p.realm.stage - 1] + '」' : '');
+  };
+  // 名位：羽士、高功、链师、真人
+  P.title = (p) => C().realms.titles[p.realm.major] || '';
+  // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20
+  const offsets = () => {
+    const ms = C().realms.maxStage;
+    const o = [];
+    let acc = 0;
+    for (let m = 0; m < C().realms.names.length; m++) { o.push(acc); acc += ms[m]; }
+    return o;
+  };
+  P.realmRank = (p) => offsets()[p.realm.major] + p.realm.stage - 1;
+  P.rankOf = (major, stage) => offsets()[major] + stage - 1;
+  P.realmFromRank = (rank) => {
+    const o = offsets(), ms = C().realms.maxStage;
+    for (let m = o.length - 1; m >= 0; m--) if (rank >= o[m]) return { major: m, stage: Math.min(ms[m], rank - o[m] + 1) };
+    return { major: 0, stage: 1 };
+  };
+  P.maxRank = () => P.rankOf(C().realms.names.length - 1, C().realms.maxStage[C().realms.names.length - 1]);
+  P.need = (p) => C().realms.need[p.realm.major][p.realm.stage - 1];
+  P.isFull = (p) => p.progress >= P.need(p);
 
   P.healthCoef = (p) => (p.health.state === 'heavy' ? 0.3 : p.health.state === 'light' ? 0.7 : 1);
-  P.techOf = (s, p) => C().techniques[p.techniqueId] || C().techniques.yellow_general;
+  const NO_TECH = { kind: 'none', name: '（尚无练炁术）', tier: 0, grade: 0, attrs: [], opp: [], mult: 1, desc: '' };
+  // 练炁术（练炁、筑基两境用它采气）
+  P.lianqiOf = (p) => { const t = C().techniques[p.techniqueId]; return t && t.kind === 'lianqi' ? t : null; };
+  // 眼下用来修行的法门：紫府以上换成开府真法
+  P.techOf = (s, p) => {
+    if (p.realm.major >= 4 && p.kaifuId && C().techniques[p.kaifuId]) return C().techniques[p.kaifuId];
+    return P.lianqiOf(p) || NO_TECH;
+  };
+  P.daojiOf = (tier) => (tier >= C().daojiTiers[1] ? 3 : tier >= C().daojiTiers[0] ? 2 : 1);
   P.factionName = (s, p) => (p.factionId && s.factions[p.factionId] ? s.factions[p.factionId].name : '散修');
 
   // 斗法战力
   P.powerBreakdown = (s, p) => {
     const F = [];
-    if (!P.alive(p) || !P.hasRoot(p) || p.realm.major === 0) return { total: C().realms.power[0][0], factors: [{ label: '凡人', value: C().realms.power[0][0] }] };
+    if (!P.alive(p)) return { total: 0, factors: [{ label: '已故', value: 0 }] };
     const cf = C().realms.power[p.realm.major];
     F.push({ label: '境界 ' + P.realmName(p), value: cf[Math.min(cf.length - 1, p.realm.stage - 1)] });
     F.push({ label: '资质 ' + p.aptitude, value: U.round1((0.85 + (p.aptitude / 100) * 0.3) * 100) / 100 });
-    F.push({ label: '功法 ' + P.techOf(s, p).name, value: P.techOf(s, p).mult });
+    const t = P.techOf(s, p);
+    if (t.kind !== 'none') F.push({ label: '法门 ' + t.name, value: t.mult });
+    if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
+    if (P.isPlayer(s, p)) {
+      const best = Object.keys(C().items).filter((k) => C().items[k].power && s.player.inv[k] > 0).sort((a, b) => C().items[b].power - C().items[a].power)[0];
+      if (best) F.push({ label: C().items[best].name, value: C().items[best].power });
+    }
     if (p.health.state !== 'healthy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: P.healthCoef(p) });
-    if (p.root.mutant === '雷') F.push({ label: '雷灵根', value: C().roots.mutantPower });
     let total = 1;
     for (const f of F) total *= f.value;
     return { total: Math.round(total * 10) / 10, factors: F };
@@ -86,19 +119,6 @@
   };
 
   /* ---------- 生成 ---------- */
-  function pickElements(r, n) {
-    const all = C().roots.elements;
-    const out = [];
-    while (out.length < n) { const e = R.pick(r, all); if (!out.includes(e)) out.push(e); }
-    return out;
-  }
-  P.genRootRandom = (r) => {
-    const cf = C().roots;
-    const type = R.weighted(r, cf.types, (t) => cf.weight[t]);
-    if (type === 'mutant') return { type, elements: [], mutant: R.pick(r, cf.mutants) };
-    return { type, elements: pickElements(r, cf.count[type]), mutant: null };
-  };
-
   P.genTraits = (r) => {
     const cf = C().traits;
     const n = R.chance(r, 0.5) ? 2 : 3;
@@ -130,8 +150,8 @@
     const r = s.rng;
     const id = 'p' + s.nextId++;
     const sex = o.sex || (R.chance(r, 0.5) ? 'M' : 'F');
-    const root = o.root || P.genRootRandom(r);
-    const realm = o.realm || { major: 1, stage: 1 };
+    const realm = o.realm || { major: 2, stage: 1 };
+    const A = C().aptitude;
     let name = o.name;
     if (name) s.usedNames[name] = 1; else name = P.genName(s, sex, o.surname);
     const p = {
@@ -141,15 +161,18 @@
       birthYear: o.birthYear,
       deathYear: null,
       deathCause: null,
-      root,
-      aptitude: o.aptitude !== undefined ? o.aptitude : Math.round(U.clamp(R.normal(r, 45, 15), 5, 95)),
+      aptitude: o.aptitude !== undefined ? o.aptitude : Math.round(U.clamp(R.normal(r, A.npcMean, A.sd), A.min, A.max)),
       realm,
       progress: o.progress || 0,
       lifespanMax: P.lifespanMaxFor(realm.major, realm.stage),
       lifespanBonus: 0,
       yanshouTaken: 0,
       traits: o.traits || P.genTraits(r),
-      techniqueId: o.techniqueId || 'yellow_general',
+      techniqueId: o.techniqueId || null, // 练炁术
+      kaifuId: o.kaifuId || null,         // 开府真法（紫府以上）
+      daoji: o.daoji || 0,                // 道基品第 1 下 2 中 3 上（筑基时定下）
+      yixiang: o.yixiang || 0,            // 紫府异象品第（开府时定下）
+      nearDeathT: null,                   // 上一次在生死之间走过（重伤）的时刻
       locationId: o.locationId,
       factionId: o.factionId || null,
       role: o.role || 'member', // leader / elder / member / loose
@@ -170,6 +193,7 @@
   /* ---------- 伤势 ---------- */
   P.injure = (s, p, level) => {
     const L = C().life;
+    if (level === 'heavy') p.nearDeathT = s.t;
     if (level === 'heavy' || p.health.state === 'heavy') p.health = { state: 'heavy', days: Math.max(p.health.state === 'heavy' ? p.health.days : 0, L.heavyInjuryDays) };
     else p.health = { state: 'light', days: Math.max(p.health.state === 'light' ? p.health.days : 0, L.lightInjuryDays) };
   };
@@ -205,7 +229,7 @@
       hid = FX.H.add(s, {
         type: 'npc_death', tags: ['死亡'], actors: [p.id], factions: p.factionId ? [p.factionId] : [], key: 'npc_death', pov: known,
         params: { name: p.name, faction: P.factionName(s, p), realm: P.realmName(p), cause, age: P.age(s, p) },
-        severity: P.realmRank(p) >= 10 || p.role === 'leader' ? 4 : 1, causeIds,
+        severity: p.realm.major >= 3 || p.role === 'leader' ? 4 : 1, causeIds,
       });
     }
     p.deathHist = hid;

@@ -142,6 +142,7 @@ svg.map .node.seen circle { stroke: var(--accent); }
 svg.map .node.here circle { stroke: #fff3dc; stroke-width: 3; }
 svg.map .node:focus-visible circle { stroke: #fff; stroke-width: 4; }
 svg.map .pname { fill: var(--text); font-size: 12px; text-anchor: middle; }
+.t-city circle, .legend.t-city { fill: #b08bb8; color: #b08bb8; }
 .t-town circle, .legend.t-town { fill: #c9a25a; color: #c9a25a; }
 .t-sect circle, .legend.t-sect { fill: #7a8fb5; color: #7a8fb5; }
 .t-clan circle, .legend.t-clan { fill: #5b9a85; color: #5b9a85; }
@@ -163,94 +164,153 @@ label { display: inline-flex; gap: .4em; align-items: center; }
  * config —— 全部数值、概率、名字库、文本模板
  * 逻辑中不得硬编码平衡数值，一律在此调整。
  * 遭遇定义见 encounters.js（同属 config 区块）。
+ *
+ * 世界与设定取自鹓扶君《仙业》（东弥州南域一带）：境界、地名、宗门、物产只用设定事实，
+ * 文字一律自写，不搬原文。
  * ============================================================ */
 (function (G) {
   'use strict';
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 2,
-    gameVersion: '0.2.0-solo1',
+    schemaVersion: 3,
+    gameVersion: '0.3.0-xianye1',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
     daysPerYear: 360,
+    money: '符钱',
 
-    /* ---------- 境界 ---------- */
+    /* ---------- 境界 ----------
+     * 胎息、练炁、筑基、紫府、洞玄、金丹……（金丹之后的元神、返虚、纯阳、合道不在本版）
+     * 练炁九层（练炁九返）没有关隘，壮大胎息到头便转入下一层；筑基、紫府、洞玄各分三重。 */
     realms: {
-      // major: 0 凡人 1 炼气 2 筑基 3 金丹
-      names: ['凡人', '炼气', '筑基', '金丹'],
+      // major: 0 凡人 1 胎息 2 练炁 3 筑基 4 紫府 5 洞玄 6 金丹
+      names: ['凡人', '胎息', '练炁', '筑基', '紫府', '洞玄', '金丹'],
+      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称链师，金丹、元神称真人
+      titles: { 2: '羽士', 4: '高功', 5: '链师', 6: '真人' },
       stageNames: {
-        1: ['一层', '二层', '三层', '四层', '五层', '六层', '七层', '八层', '九层'],
-        2: ['初期', '中期', '后期'],
-        3: ['初期', '中期', '后期'],
+        0: [''],
+        1: [''],
+        2: ['一层', '二层', '三层', '四层', '五层', '六层', '七层', '八层', '九层'],
+        3: ['一重', '二重', '三重'],
+        4: ['一重', '二重', '三重'],
+        5: ['一重', '二重', '三重'],
+        6: ['一重'],
       },
-      maxStage: { 0: 0, 1: 9, 2: 3, 3: 3 },
+      stageTitles: {
+        3: ['炁海生化', '大小如意', '龟蛇相抱'],
+        4: ['万妙归根', '超脱分形', '换魂消魄'],
+        5: ['龙虎炉鼎', '摄取五精', '先天金汞'],
+        6: ['身根成象'],
+      },
+      maxStage: { 0: 1, 1: 1, 2: 9, 3: 3, 4: 3, 5: 3, 6: 1 },
+      // 凡人这一格积的是“气感”，胎息这一格是“胎息壮大”，此后才是修为
       need: {
-        1: [30, 40, 50, 60, 70, 80, 90, 100, 110],
-        2: [600, 900, 1300],
-        3: [4000, 6000, Infinity],
+        0: [40],
+        1: [30],
+        2: [30, 40, 50, 60, 70, 80, 90, 100, 110],
+        3: [600, 900, 1300],
+        4: [2400, 3200, 4400],
+        5: [6000, 8000, 10000],
+        6: [Infinity],
       },
-      // 全年专心修炼的基础修为
-      baseGain: { 1: 20, 2: 30, 3: 80 },
-      lifespan: { 0: [70], 1: [110], 2: [200, 225, 250], 3: [450, 500, 560] },
+      // 全年专心修炼的基础值
+      baseGain: { 0: 10, 1: 15, 2: 20, 3: 30, 4: 60, 5: 100, 6: 150 },
+      // 寿元：凡人百年之内；胎息寿一百五；筑基三重二百出头；紫府三重三百；金丹千五
+      lifespan: {
+        0: [70],
+        1: [150],
+        2: [150, 150, 150, 150, 150, 155, 155, 160, 160],
+        3: [190, 200, 215],
+        4: [250, 275, 300],
+        5: [400, 450, 500],
+        6: [1500],
+      },
       power: {
         0: [0.5],
-        1: [2, 3, 4, 5, 7, 9, 12, 15, 19],
-        2: [40, 55, 75],
-        3: [300, 400, 550],
+        1: [1.2],
+        2: [2, 3, 4, 5, 7, 9, 12, 15, 19],
+        3: [40, 55, 75],
+        4: [150, 200, 260],
+        5: [400, 520, 680],
+        6: [2000],
       },
     },
 
-    /* ---------- 灵根 ---------- */
-    roots: {
-      types: ['single', 'dual', 'triple', 'quad', 'penta', 'mutant'],
-      names: { single: '单灵根', dual: '双灵根', triple: '三灵根', quad: '四灵根', penta: '五灵根', mutant: '变异灵根', none: '无灵根' },
-      speed: { single: 1.5, dual: 1.25, triple: 1.0, quad: 0.75, penta: 0.55, mutant: 1.3 },
-      breakMod: { single: 10, dual: 5, triple: 0, quad: -5, penta: -10, mutant: 5 },
-      weight: { single: 2, dual: 10, triple: 28, quad: 33, penta: 24, mutant: 3 },
-      count: { single: 1, dual: 2, triple: 3, quad: 4, penta: 5, mutant: 1 },
-      elements: ['金', '木', '水', '火', '土'],
-      mutants: ['雷', '冰', '风'],
-      mutantTraits: { 雷: '斗法战力 +20%', 冰: '心性沉静，突破 +3%', 风: '逃遁成功率 +15%' },
-      mutantPower: 1.2,
-      mutantIceBreak: 3,
-      mutantWindFlee: 15,
-      aptitudeMin: 5,
-      aptitudeMax: 98,
-    },
+    /* ---------- 资质 ----------
+     * 此世修行不讲灵根，看资质、心性与机缘。资质影响悟胎息、修炼快慢与冲关。 */
+    aptitude: { min: 5, max: 95, npcMean: 45, playerMean: 50, sd: 15 },
 
-    /* ---------- 功法 ---------- */
+    /* ---------- 采气属相 ----------
+     * 天地灵气属相万千，这里只取八种。练炁士只能炼化与自家练炁术相合的灵气，
+     * 采到相反属相的灵气非但炼不动，反而伤身；符钱属“元”，人人可用。
+     * 紫府能纯化灵机，到了紫府便不太挑属相；金丹诸气浑成，不再为采气所困。 */
+    attrs: ['清', '浊', '阳', '阴', '刚', '柔', '烈', '寒'],
+    attrFit: { match: 1.25, neutral: 0.8, opp: 0.3, coin: 1.0, zifu: 1.0, jindan: 1.2 },
+
+    /* ---------- 功法 ----------
+     * 练炁术：决定采气属相与真炁品阶；真炁七阶及以上才能筑上品道基，四至六阶中品，三阶及以下下品。
+     * 开府真法：筑基三重圆满后开辟紫府的必需之物，品第决定紫府异象。 */
     techniques: {
-      yellow_general: { name: '青木养元诀', grade: '黄', mult: 1.0, elements: [], breakBonus: 0, price: 80, desc: '黄阶通用功法，五行不拘' },
-      yellow_complete: { name: '散修炼体诀', grade: '黄', mult: 1.0, elements: ['土', '火'], breakBonus: 2, price: 120, desc: '黄阶完整功法，偏土火' },
-      yellow_water: { name: '寒潭静心诀', grade: '黄', mult: 1.05, elements: ['水', '木'], breakBonus: 1, price: 160, desc: '黄阶上品，偏水木' },
-      xuan_broken: { name: '玄水归元经（残）', grade: '玄', mult: 1.15, elements: ['水', '金'], breakBonus: 3, capMajor: 2, capStage: 3, price: 900, desc: '玄阶残卷，筑基后期之后无法继续' },
-      xuan_fire: { name: '离火炼真经', grade: '玄', mult: 1.25, elements: ['火', '金'], breakBonus: 5, price: 2400, desc: '玄阶功法，偏火金，宗门秘传' },
+      linghe: { kind: 'lianqi', name: '灵鹤吐纳导引术', tier: 2, attrs: ['清', '柔'], opp: ['烈', '浊'], mult: 0.95, price: 60, desc: '散修手里最常见的劣等练炁术' },
+      guiyuan: { kind: 'lianqi', name: '归元子练炁要诀', tier: 3, attrs: ['清', '阳'], opp: ['阴', '浊'], mult: 1.0, price: 150, desc: '品秩不高，胜在中正平和' },
+      chiyang: { kind: 'lianqi', name: '赤阳炼炁诀', tier: 4, attrs: ['阳', '烈'], opp: ['寒', '阴'], mult: 1.05, price: 450, desc: '采阳烈之气' },
+      xuanshui: { kind: 'lianqi', name: '玄水真炁法', tier: 5, attrs: ['寒', '柔'], opp: ['烈', '阳'], mult: 1.05, price: 700, desc: '采寒柔之气' },
+      dingjin: { kind: 'lianqi', name: '锭金真炁', tier: 5, attrs: ['刚', '烈'], opp: ['寒', '浊'], mult: 1.1, price: 900, desc: '玄真派传承，采金锐之气' },
+      handou: { kind: 'lianqi', name: '寒斗真炁', tier: 7, attrs: ['寒', '阴'], opp: ['阳', '烈'], mult: 1.15, price: 2600, desc: '酷烈的高阶真炁，可筑上品道基' },
+      ziqing: { kind: 'lianqi', name: '紫清真炁', tier: 9, attrs: ['清', '阳'], opp: ['浊'], mult: 1.25, price: 8000, desc: '九阶上品真炁，玄门世族秘传，南域罕见' },
+      kaifu_low: { kind: 'kaifu', name: '玄关开府篇', grade: 1, mult: 1.0, price: 1600, desc: '下乘开府真法，开出的紫府异象下等' },
+      kaifu_mid: { kind: 'kaifu', name: '三元开府真法', grade: 2, mult: 1.1, price: 4500, desc: '中乘开府真法，可开中等紫府异象' },
+      kaifu_high: { kind: 'kaifu', name: '太清开府真经', grade: 3, mult: 1.25, price: 12000, desc: '上乘开府真法，可开上等紫府异象，向来只在大派世族间流转' },
     },
-    fitMin: 0.8,
-    fitMax: 1.25,
-    fitBreakMax: 8,
+    tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
+    gradeNames: ['', '下乘', '中乘', '上乘'],
+    daojiNames: ['', '下品道基', '中品道基', '上品道基'],
+    yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
+    daojiTiers: [4, 7], // 真炁阶数 ≥4 中品、≥7 上品
+    switchLoss: 0.3, // 练炁途中改修别的练炁术，真炁性质不同，修为折三成
 
     /* ---------- 修炼 ---------- */
     cultivation: {
       aptBase: 0.7,
       aptRange: 0.6,
-      qiMult: [0.4, 0.6, 0.85, 1.0, 1.2, 1.45], // 按地点灵气等级 0–5
-      outsiderQi: { sect: 1, clan: 1 },          // 外人在宗门/家族驻地只能借到山门外的灵气
+      qiMult: [0.4, 0.6, 0.85, 1.0, 1.2, 1.45], // 按地点灵机等级 0–5
+      outsiderQi: { sect: 1, clan: 1 },          // 外人在宗门山门、家族驻地只能借到山门外的灵机
       qijuBonus: 0.3,
-      qijuDays: 90,          // 一颗聚气丹管三个月
+      qijuDays: 90,          // 一颗中孚丹管三个月
       oldAgeCoef: 0.6,
       injury: { light: 0.6, heavy: 0.2 },
       npcDiligence: [0.55, 0.9], // NPC 一年里真正用在修炼上的比例
       consultFrac: [0.04, 0.09], // 请教一次得到的修为（占当前所需）
+      // 以符钱修行：符钱由虚空灵气铸成，属“元”，人人可炼，只是奢费；胎息还炼不了外物
+      coin: { qi: 3, perYear: { 2: 60, 3: 240, 4: 800, 5: 2000, 6: 5000 } },
     },
 
-    /* ---------- 突破 ---------- */
+    /* ---------- 突破 ----------
+     * taixi：凡人悟胎息气感。“死生畏怖，神明自得”，近年里在生死之间走过一遭的人更容易悟得。
+     * 胎息壮大到头、手上有练炁术，便自然转入练炁（没有关隘）；没有练炁术就只能停在胎息。
+     * zhuji：练炁九层圆满，胎息转为真炁、筑下道基。
+     * zifu：筑基三重圆满，凭开府真法开辟紫府。
+     * dongxuan：紫府三重圆满，调和水火，铸龙虎炉鼎。
+     * jindan：洞玄三重圆满，凭凝丹大药结丹。紫府以上每破大境，都有天罚降下。 */
     breakthrough: {
       minor: { base: 70, failLoss: 0.1, days: 30 },
-      zhuji: { base: 35, pill: 25, noPillPenalty: 25, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.08, days: 90 },
-      jindan: { base: 20, pill: 20, minQi: 4, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.15, days: 180 },
+      // 悟胎息屡试不成也不至于越试越难：每次失败只扣 2%，最多扣 10%
+      taixi: { base: 20, aptFactor: 0.5, lifeDeath: 20, lifeDeathYears: 3, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0, restYears: 1, days: 30, mild: true, failPenalty: 2, failCap: 10 },
+      zhuji: { base: 35, pillItem: 'zhuji', pill: 25, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.05, days: 90 },
+      zifu: { base: 30, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.06, days: 180, tianfa: true },
+      dongxuan: { base: 25, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.08, days: 180, tianfa: true },
+      jindan: { base: 20, needItem: 'ningdan', minQi: 4, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.15, days: 360, tianfa: true },
+      // 小境界里需要外药的几重：键为“大境界.当前重数”
+      minorNeeds: {
+        '3.2': { item: 'danmusha', qty: 1, why: '龟蛇相抱须借全真外药' },
+        '4.2': { item: 'yusui', qty: 1, why: '换魂消魄须外药添力' },
+        '5.1': { item: 'wujing', qty: 5, why: '摄取五精须集齐五份先天五行之精' },
+      },
+      daojiMod: [0, -5, 3, 12],
+      yixiangMod: [0, -5, 3, 12],
+      daojiPower: [1, 0.9, 1.0, 1.15],
       aptitudeFactor: 0.3,
       qiBonus: 8,
       qiBonusMin: 4,
@@ -261,9 +321,10 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       min: 5,
       max: 90,
       majorMax: 85,
-      heavyInjuryDays: 720,
       npcTryChance: 0.5,
-      npcPill: { sect: 0.5, clan: 0.3, league: 0.15, evil: 0.2, none: 0.08 },
+      // NPC 手上有没有冲关用的丹药外药（按势力）
+      npcPill: { sect: 0.5, clan: 0.3, league: 0.2, evil: 0.2, none: 0.08 },
+      npcKaifu: [0, 0.6, 0.3, 0.1], // NPC 开府真法品第的分布
     },
 
     /* ---------- 伤病与寿元 ---------- */
@@ -272,7 +333,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       lightInjuryDays: 90,
       heavyInjuryDays: 540,
       restHealMult: 2,          // 静养时伤愈速度
-      healPillDays: 120,        // 一颗疗伤丹抵多少天伤势
+      healPillDays: 120,        // 一颗小白阳丹抵多少天伤势
       heavyInjuryDeathYear: 0.03,
       npcAccident: 0.004,       // NPC 每年意外身亡（乘以所在地危险度修正）
       oldFrac: 0.2,
@@ -285,7 +346,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         谨慎: '遭遇险境时更易全身而退',
         孝顺: '重情义，结交长辈更容易',
         贪婪: '见利忘义，交易与结交时更计较',
-        正直: '不屑旁门左道，邪修更厌恶此人',
+        正直: '不屑旁门左道，魔道中人更厌恶此人',
         孤傲: '难以结交，突破率 +3%',
         仁慈: '与人为善，结交更容易',
         野心勃勃: '不甘人下，常冒险求机缘',
@@ -303,16 +364,19 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       consultMin: 30,
     },
 
-    /* ---------- 世界生成 ---------- */
+    /* ---------- 世界生成：东弥州南域 ----------
+     * 南域是东弥州有名的穷土，灵机匮乏，没有大派，只有几家二流宗门和许多小宗、凡人小国。 */
     world: {
+      region: '东弥州 · 南域',
       gridW: 10, gridH: 8,
-      // 每类地点的数量、灵气、危险度
+      // 每类地点的数量、灵机、危险度；fixed 为本类前几处的固定地名
       placeTypes: {
-        town: { name: '坊市', count: 3, qi: [1, 2], danger: [0, 0], market: true, work: true },
-        sect: { name: '宗门', count: 2, qi: [3, 4], danger: [0, 0], market: true },
-        clan: { name: '家族驻地', count: 3, qi: [2, 3], danger: [0, 1] },
-        wild: { name: '山野', count: 7, qi: [1, 3], danger: [1, 3] },
-        danger: { name: '险地', count: 3, qi: [3, 5], danger: [3, 5] },
+        city: { name: '凡人国', count: 3, qi: [0, 1], danger: [0, 0], market: true, work: true, fixed: ['容国', '丹粟国', '郑国'] },
+        town: { name: '仙道墟市', count: 1, qi: [1, 2], danger: [0, 0], market: true, work: true, fixed: ['浮玉泊'] },
+        sect: { name: '宗门山门', count: 3, qi: [3, 4], danger: [0, 0], market: true },
+        clan: { name: '修道家族', count: 2, qi: [2, 3], danger: [0, 1] },
+        wild: { name: '荒山野岭', count: 7, qi: [1, 3], danger: [1, 3], fixed: ['炀山'] },
+        danger: { name: '险地', count: 3, qi: [3, 5], danger: [3, 5], fixed: ['地渊'] },
       },
       linkExtra: 0.35,     // 在最小连通树之外多连的比例
       daysPerUnit: 4,      // 地图上一格的赶路天数
@@ -323,45 +387,67 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       looseMoveChance: 0.25,
     },
 
+    // 宗门按“品级”给人：tier 1 小宗（掌门洞玄），tier 2 二流宗门（掌门金丹，宗中另有元神真君闭关不出）
+    // seat：宗门写山门名；town 为墟市；hide 为荒僻或凶险之地（改名为势力名）
+    factionDefs: [
+      { key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄链师，传闻是玉宸派下辖的数百道脉之一' },
+      { key: 'wuguang', name: '五光宗', type: 'sect', tier: 2, seat: '五光宗', tech: 'chiyang', blurb: '南域勉强算得上玄门正统的二流宗门，宗中有元神真君驻世，不问俗务' },
+      { key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人' },
+      { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易' },
+      { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱' },
+    ],
+
     factionTypes: {
-      sect: { name: '宗门', count: 2, stipend: 24, tierPower: 5 },
-      clan: { name: '家族', count: 3, stipend: 12, tierPower: 3 },
-      league: { name: '散修盟', count: 1, stipend: 0, tierPower: 2 },
-      evil: { name: '邪修', count: 1, stipend: 0, tierPower: 3 },
+      sect: { name: '宗门', stipend: [0, 24, 40] }, // 按宗门品级
+      clan: { name: '修道家族', stipend: [12] },
+      league: { name: '墟市', stipend: [0] },
+      evil: { name: '魔道', stipend: [0] },
     },
 
     /* ---------- 出身 ---------- */
     origins: {
+      mortal: {
+        name: '凡人求仙', blurb: '容国一个十六岁的凡俗少年，胎息都未证得，只听过仙人的传闻。最难的开局',
+        realm: { major: 0, stage: 1 }, stone: 20, technique: null, place: 'city', placeName: '容国', faction: null,
+        inv: {},
+      },
       loose: {
-        name: '山野散修', blurb: '无门无派，来去自由，家底最薄',
-        realm: { major: 1, stage: 1 }, stone: 30, technique: 'yellow_complete', place: 'town', faction: null,
+        name: '南域散修', blurb: '刚证得胎息，揣着一卷劣等练炁术，无门无派，来去自由',
+        realm: { major: 1, stage: 1 }, stone: 40, technique: 'linghe', place: 'town', faction: null,
         inv: { qiju: 1 },
       },
       clan: {
-        name: '小族子弟', blurb: '出身一个小修仙家族，每年有份例，但家族与人结怨也会牵连到你',
-        realm: { major: 1, stage: 2 }, stone: 60, technique: 'yellow_general', place: 'clan', faction: 'clan',
+        name: '修道家族子弟', blurb: '出身南域一个小修道家族，每年有份例，但家族与人结怨也会牵连到你',
+        realm: { major: 2, stage: 2 }, stone: 60, technique: 'guiyuan', place: 'clan', faction: 'clan',
         inv: { qiju: 2, heal: 1 },
       },
       sect: {
-        name: '宗门外门弟子', blurb: '入了宗门外门，灵气充足、份例稳定，但要为宗门出力',
-        realm: { major: 1, stage: 1 }, stone: 15, technique: 'yellow_water', place: 'sect', faction: 'sect',
+        name: '玄真派弟子', blurb: '小甘山玄真派门下，可借山门灵机，按例领份例，修的是本派锭金真炁',
+        realm: { major: 2, stage: 1 }, stone: 15, technique: 'dingjin', place: 'sect', faction: 'sect', factionKey: 'xuanzhen',
         inv: { heal: 1 },
       },
     },
 
     /* ---------- 物品与坊市 ---------- */
     items: {
-      qiju: { name: '聚气丹', price: 30, desc: '服用后三个月修炼速度 +30%' },
-      heal: { name: '疗伤丹', price: 20, desc: '加快伤势恢复' },
-      zhuji: { name: '筑基丹', price: 420, desc: '冲击筑基时成功率 +25%，没有则 −25%' },
-      ningdan: { name: '凝丹灵物', price: 2400, desc: '结金丹的必需之物，冲关时耗掉一份，成功率 +20%。只在坊市、宗门的货架上偶尔出现（每年换货），约 2400 灵石' },
-      yanshou: { name: '延寿丹', price: 900, desc: '寿元 +10 年（每人至多 3 颗，效果递减）' },
+      qiju: { name: '中孚丹', price: 30, desc: '练炁士常用的修行丹丸，服后三个月修炼速度 +30%' },
+      heal: { name: '小白阳丹', price: 20, desc: '护住内腑、调理伤势，加快伤势恢复' },
+      zhuji: { name: '大造元珠', price: 420, desc: '补益元炁的外药，冲击筑基时服下，成功率 +25%' },
+      danmusha: { name: '丹母砂', price: 900, desc: '全真外药。筑基二重修到三重「龟蛇相抱」时必须用上一枚' },
+      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份' },
+      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎' },
+      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份。只在宗门、墟市的货架上偶尔出现' },
+      yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
+      fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
+      fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
-      rareHerb: { name: '稀有灵药', price: 60, desc: '难得的灵药，可卖钱' },
-      beastCore: { name: '妖兽内丹', price: 25, desc: '斗杀妖兽所得，可卖钱' },
-      beastHide: { name: '妖兽皮骨', price: 8, desc: '斗杀妖兽所得，可卖钱' },
+      rareHerb: { name: '人面芝', price: 60, desc: '生在阴气浓郁之地的珍贵外药，可卖钱' },
+      beastCore: { name: '妖物内丹', price: 25, desc: '斗杀妖物所得，可卖钱' },
+      beastHide: { name: '妖物皮骨', price: 8, desc: '斗杀妖物所得，可卖钱' },
     },
-    yanshouYears: [10, 6, 3],
+    usable: ['qiju', 'heal', 'yanshou'],
+    loot: ['herb', 'rareHerb', 'beastCore', 'beastHide'],
+    yanshouYears: [6, 4, 2],
     market: {
       staples: [
         { item: 'qiju', qty: [3, 8] },
@@ -369,13 +455,25 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       ],
       rare: [
         { item: 'zhuji', w: 3 },
-        { item: 'yanshou', w: 0.6 },
-        { item: 'ningdan', w: 0.3 },
-        { item: 'tech:yellow_water', w: 1.5 },
-        { item: 'tech:yellow_complete', w: 1.5 },
-        { item: 'tech:xuan_broken', w: 0.5 },
+        { item: 'fuqi1', w: 2 },
+        { item: 'danmusha', w: 1 },
+        { item: 'fuqi2', w: 0.6 },
+        { item: 'yanshou', w: 0.5 },
+        { item: 'yusui', w: 0.4 },
+        { item: 'wujing', w: 0.4 },
+        { item: 'ningdan', w: 0.15 },
+        { item: 'tech:linghe', w: 1.5 },
+        { item: 'tech:guiyuan', w: 1.5 },
+        { item: 'tech:chiyang', w: 0.8 },
+        { item: 'tech:xuanshui', w: 0.8 },
+        { item: 'tech:handou', w: 0.2 },
+        { item: 'tech:kaifu_low', w: 0.5 },
+        { item: 'tech:kaifu_mid', w: 0.15 },
       ],
-      rareSlots: { town: 1, sect: 2 },
+      // 凡人国的集市只有凡俗货色，偶尔有一卷劣等练炁术
+      cityStaples: [{ item: 'heal', qty: [1, 3] }],
+      cityRare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }],
+      rareSlots: { city: 1, town: 2, sect: 2 },
       rareChance: 0.6,
       priceSwing: 0.2,
       sellRatio: 0.7,
@@ -384,11 +482,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     /* ---------- 行动 ---------- */
     actions: {
       cultivateDays: [30, 90, 180, 360, 1800, 3600],
+      coinDays: [90, 360],
       exploreDays: [10, 30],
       restDays: [30, 90, 180],
       work: {
-        town: { name: '坊市打杂', days: 30, stone: [3, 6], perRank: 0.5 },
-        sect: { name: '宗门杂役', days: 30, stone: [4, 8], perRank: 0.8, memberOnly: true },
+        city: { name: '给凡人国当供奉', days: 30, stone: [2, 5], perRank: 0.6 },
+        town: { name: '墟市帮工', days: 30, stone: [3, 6], perRank: 0.5 },
+        sect: { name: '领宗门差遣', days: 30, stone: [4, 8], perRank: 0.8, memberOnly: true },
         clan: { name: '家族差事', days: 30, stone: [3, 6], perRank: 0.6, memberOnly: true },
       },
       befriendDays: 7,
@@ -397,7 +497,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     },
 
     /* ---------- 遭遇（游历）----------
-     * 基础权重；具体由地点类型、危险度、灵气修正。
+     * 基础权重；具体由地点类型、危险度、灵机修正。
      * 原则一：多数时候什么都不发生。原则二：有些努力没有回报。 */
     encounter: {
       weights: {
@@ -407,7 +507,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         meet: 9,
         rumor: 5,
         trouble: 3,    // × (危险度 + 1)
-        fortune: 2.5,  // × 灵气 / 3；野心勃勃者略高
+        fortune: 2.5,  // × 灵机 / 3；野心勃勃者略高
       },
       townWeights: { nothing: 46, meet: 22, rumor: 10, trouble: 6, herb: 0, beast: 0, fortune: 1 },
       longFactor: 1.6,         // 长游历（30 天）除“无事”外的权重倍率
@@ -423,29 +523,31 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       lossHeavyShare: 0.4,
       deathWhenOutmatched: 0.15, // 重伤且对手战力 ≥ 2 倍时
       troubleStoneFrac: [0.1, 0.3],
+      // 按危险度 0–5 的妖物、鬼物、天魔
+      beastNames: [['野狼', '山魈'], ['青鳞蛇', '赤灵彩鹦'], ['铁背熊精', '赤目妖狼'], ['行尸', '金纹豹妖'], ['阴马', '下位天魔'], ['恶嗔阴魔', '朱厌大妖']],
     },
 
     /* ---------- 评定 ---------- */
     rating: {
-      grades: [[85, '甲', '名动一方的大修士'], [68, '乙', '小有名气的修士'], [45, '丙', '寻常修士'], [25, '丁', '默默无闻'], [0, '戊', '仙路未启']],
-      perRank: 5, extraMax: 5,
+      grades: [[85, '甲', '名动南域的真人'], [68, '乙', '一方高功'], [45, '丙', '筑基道人'], [25, '丁', '寻常羽士'], [0, '戊', '仙路未启']],
+      perRank: 4, extraMax: 5,
     },
 
     /* ---------- 名字库 ---------- */
     names: {
-      surnames: ['陈', '李', '王', '张', '周', '吴', '郑', '孙', '沈', '韩', '杨', '许', '何', '吕', '施', '孔', '曹', '严', '华', '金', '魏', '陶', '姜', '谢', '邹', '柏', '章', '云', '苏', '潘', '葛', '范', '彭', '鲁', '韦', '马', '方', '俞', '任', '袁', '柳', '唐', '薛', '雷', '贺', '倪', '汤', '殷', '罗', '毕', '郝', '安', '常', '乐', '于', '傅', '齐', '康', '伍', '余', '顾', '孟', '黄', '穆', '萧', '尹', '姚', '邵', '汪', '祁', '毛', '狄', '明', '戴', '宋', '庞', '熊', '纪', '舒', '屈', '项', '祝', '董', '梁', '杜', '阮', '蓝', '季', '贾', '路', '江', '童', '颜', '郭', '梅', '盛', '林', '钟', '徐', '邱', '骆', '高', '夏', '蔡', '田', '樊', '胡', '凌', '霍', '虞', '万', '柯', '管', '卢', '莫', '房', '石', '崔', '龚', '程', '邢', '裴', '陆', '荣', '翁', '甄', '封', '段', '巫', '焦', '谷', '车', '侯', '宫', '宁', '甘', '厉', '武', '符', '刘', '景', '龙', '叶', '黎', '白', '卓', '池', '乔', '闻', '谭', '温', '庄', '晏', '易', '慕', '连', '艾', '古', '廖', '文', '欧阳', '上官', '司马', '东方', '慕容', '诸葛', '令狐', '独孤', '南宫'],
-      clanSurnames: ['陈', '沈', '韩', '顾', '陆', '萧', '叶', '秦', '苏', '温', '谢', '姜', '宁', '江', '方', '赵', '林'],
-      male: ['承', '景', '修', '远', '岳', '鸿', '昭', '恒', '玄', '文', '仲', '朗', '泽', '舟', '澈', '衡', '渊', '琮', '霖', '弘', '骁', '钧', '烨', '铮', '嵩', '岚', '晟', '湛', '睿', '彦', '墨', '谦', '尧', '寒', '珩', '峻', '荣', '启', '屹', '奕'],
-      female: ['婉', '清', '瑶', '雪', '芷', '若', '岚', '菱', '絮', '玥', '璃', '韵', '漪', '绾', '素', '蘅', '湘', '青', '霜', '微', '宁', '萱', '茵', '黛', '容', '舒', '妍', '蓁', '筠', '桐', '笙', '棠', '鸢', '琬', '芸', '纨', '瑾', '婵', '娥', '琴'],
+      surnames: ['陈', '李', '王', '张', '周', '吴', '郑', '孙', '沈', '韩', '杨', '许', '何', '吕', '施', '孔', '曹', '严', '华', '金', '魏', '陶', '姜', '邹', '柏', '章', '云', '苏', '潘', '葛', '范', '彭', '鲁', '韦', '马', '方', '俞', '任', '袁', '柳', '唐', '薛', '雷', '贺', '倪', '汤', '殷', '罗', '毕', '郝', '安', '常', '乐', '于', '傅', '齐', '康', '伍', '余', '顾', '孟', '黄', '穆', '萧', '尹', '姚', '邵', '汪', '祁', '毛', '狄', '明', '戴', '宋', '庞', '熊', '纪', '舒', '屈', '项', '祝', '董', '梁', '杜', '阮', '蓝', '季', '贾', '路', '江', '童', '容', '郭', '梅', '盛', '林', '钟', '徐', '邱', '骆', '高', '夏', '蔡', '田', '樊', '胡', '凌', '霍', '虞', '万', '柯', '管', '卢', '莫', '房', '石', '崔', '龚', '程', '邢', '裴', '陆', '荣', '翁', '甄', '封', '段', '巫', '焦', '谷', '车', '侯', '宫', '宁', '甘', '厉', '武', '符', '刘', '景', '龙', '叶', '黎', '白', '卓', '池', '闻', '谭', '温', '庄', '易', '慕', '连', '古', '廖', '文', '欧阳', '上官', '司马', '东方', '慕容', '诸葛', '令狐', '独孤', '南宫'],
+      // 南域的修道家族：容氏是容国王族，族中有筑基老祖；童家是容国的大族
+      clanSurnames: ['容', '童', '沈', '韩', '顾', '陆', '萧', '秦', '苏', '温', '姜', '宁', '江', '方', '林'],
+      male: ['承', '景', '修', '远', '岳', '鸿', '昭', '恒', '玄', '文', '仲', '朗', '泽', '舟', '澈', '衡', '渊', '琮', '霖', '弘', '骁', '钧', '烨', '铮', '嵩', '岚', '晟', '湛', '睿', '彦', '墨', '谦', '尧', '寒', '峻', '荣', '启', '屹', '奕', '拓'],
+      female: ['婉', '清', '瑶', '雪', '芷', '若', '岚', '菱', '絮', '玥', '璃', '韵', '漪', '绾', '素', '蘅', '湘', '青', '霜', '微', '宁', '萱', '茵', '黛', '容', '舒', '妍', '筠', '桐', '笙', '棠', '鸢', '琬', '芸', '纨', '瑾', '婵', '娥', '琴', '锦'],
       place: {
-        town: { a: ['青石', '落霞', '白沙', '云来', '柳溪', '望江', '平安', '流金'], b: ['坊', '镇', '集', '坊市'] },
-        sect: { a: ['青玄', '天剑', '紫霄', '玄灵', '碧落', '凌云'], b: ['宗', '门', '阁', '派'] },
-        clan: { b: ['家堡', '氏山庄', '家坞'] },
-        wild: { a: ['黑风', '云雾', '松涛', '断崖', '寒溪', '乱石', '野狐', '青竹', '老鸦', '鹿鸣', '雁回', '赤土'], b: ['岭', '谷', '林', '坡', '涧', '原', '山'] },
-        danger: { a: ['万妖', '血煞', '幽冥', '焚天', '葬剑', '蛟龙'], b: ['山脉', '古战场', '沼泽', '火山', '深渊', '潭'] },
+        city: { a: ['危雍', '戚方', '团阳', '景', '曹', '焦', '庾'], b: ['国'] },
+        town: { a: ['金谷', '青石', '落霞', '白沙'], b: ['墟市', '集'] },
+        sect: { a: ['神火', '罗浮', '人形'], b: ['崖', '剑派', '寺'] },
+        clan: { b: ['氏别府', '氏山庄', '家坞'] },
+        wild: { a: ['乌云', '松涛', '断崖', '寒溪', '乱石', '野狐', '青竹', '老鸦', '鹿鸣', '雁回', '赤土', '阴风', '负刍'], b: ['岭', '谷', '林', '坡', '涧', '原', '山', '峰'] },
+        danger: { a: ['赤灵', '罗暗', '幽冥', '鬼哭', '葬剑', '蛟龙', '尸解'], b: ['野林', '黑水', '古战场', '沼泽', '深渊', '潭'] },
       },
-      league: ['散修盟', '逍遥盟', '同道会'],
-      evil: ['血影教', '阴煞门', '黑骨帮'],
     },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -579,18 +681,21 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   // 文本模板（config 区块）：同一键可有多个变体，按记录 id 轮换，不消耗随机数
   const TX = (FX.CONFIG.text = {
     start: ['{name}，{origin}，{age} 岁，{realm}。这一年，{name}站在{place}，仙路从此开始。'],
-    cultivate: ['{name}在{place}修炼 {dur}，修为 +{gain}。', '{name}于{place}闭关 {dur}，修为增长 {gain}。'],
-    cultivate_idle: ['{name}在{place}修炼 {dur}，修为已到瓶颈，未见增长。'],
-    cultivate_cut: ['{name}的闭关在第 {done} 天被打断（原定 {dur}），修为 +{gain}。'],
+    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}。'],
+    cultivate_idle: ['{name}在{place}{verb} {dur}，{what}已到头，未见增长。'],
+    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}。'],
     realm_up: ['{name}修为精进，晋入{realm}。'],
-    break_ok: ['{name}冲击{target}成功（成功率 {chance}%），寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}。'],
+    lianqi_start: ['{name}胎息壮大到头，依《{tech}》采气炼炁，踏入练炁境界，从此可称羽士。'],
+    taixi_ok: ['{name}静坐中忽有所感，证得胎息气感（成功率 {chance}%），从此脱离凡身，寿元上限增至 {life}。', '{name}悟得那一点先天真阳（成功率 {chance}%），成就胎息。'],
+    taixi_fail: ['{name}参悟胎息未成（成功率 {chance}%），{loss}。'],
+    break_ok: ['{name}冲击{target}成功（成功率 {chance}%）{extra}，寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}{extra}。'],
     break_fail: ['{name}冲击{target}失败（成功率 {chance}%），{loss}。'],
     travel: ['{name}自{from}赶到{to}，路上走了 {dur}。'],
     travel_cut: ['{name}自{from}前往{to}，行至{at}出了变故。'],
     explore_nothing: ['{name}在{place}游历 {dur}，一无所获。', '{name}在{place}转了 {dur}，没遇上什么事。', '{name}在{place}走了 {dur}，只看了些山水。'],
     explore_herb: ['{name}在{place}采得{loot}。'],
     explore_rumor: ['{name}在{place}听闻：{rumor}'],
-    explore_trouble: ['{name}在{place}{what}，损失灵石 {loss}。'],
+    explore_trouble: ['{name}在{place}{what}，损失符钱 {loss}。'],
     explore_trouble_none: ['{name}在{place}{what}，好在身上没什么值钱东西。'],
     explore_fortune: ['{name}在{place}得了一桩机缘：{loot}。'],
     explore_fortune_downgraded: ['{name}在{place}寻到一处旧人洞府，只剩些残余：{loot}。'],
@@ -604,13 +709,15 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     flee_ok: ['{name}从{foe}手下脱身（成功率 {chance}%）。'],
     flee_fail: ['{name}没能从{foe}手下逃脱（成功率 {chance}%），{hurt}。'],
     avoid: ['{name}远远避开了{foe}，未起冲突。'],
-    work: ['{name}在{place}做了 {dur}「{job}」，得灵石 {stone}。'],
-    stipend: ['{faction}发放份例，灵石 +{stone}。'],
+    work: ['{name}在{place}做了 {dur}「{job}」，得符钱 {stone}。'],
+    stipend: ['{faction}发放份例，符钱 +{stone}。'],
     rest: ['{name}在{place}静养 {dur}，{state}。'],
-    buy: ['{name}在{place}买下{item}×{qty}，花去灵石 {cost}。'],
-    sell: ['{name}在{place}卖出{item}×{qty}，得灵石 {gain}。'],
+    buy: ['{name}在{place}买下{item}×{qty}，花去符钱 {cost}。'],
+    sell: ['{name}在{place}卖出{item}×{qty}，得符钱 {gain}。'],
     use_item: ['{name}服下{item}，{effect}。'],
-    learn: ['{name}改修《{tech}》。'],
+    learn: ['{name}改修《{tech}》{loss}。'],
+    learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
+    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}。'],
     injury_heal: ['{name}伤势痊愈。'],
     disturb: ['{name}闭关时，{what}。'],
     npc_break: ['传闻：{name}（{faction}）成就{target}。'],
@@ -719,7 +826,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const fac = p.factionId && s.factions[p.factionId] ? s.factions[p.factionId].name : '无门无派';
     const parts = [];
     parts.push(`${p.name}，${p.sex === 'M' ? '男' : '女'}，生于 ${p.birthYear} 年，${fac}。`);
-    parts.push(`${C().roots.names[p.root.type]}，资质 ${p.aptitude}。修至${P.realmName(p)}${brks.length ? '，' + brks.join('，') : ''}${fails ? `；冲关失败 ${fails} 次` : ''}。`);
+    parts.push(`资质 ${p.aptitude}${p.daoji ? '，' + C().daojiNames[p.daoji] : ''}${p.yixiang ? '，' + C().yixiangNames[p.yixiang] : ''}。修至${P.realmName(p)}${brks.length ? '，' + brks.join('，') : ''}${fails ? `；冲关失败 ${fails} 次` : ''}。`);
     if (pl) {
       const st = pl.stats;
       parts.push(`一生修炼 ${T.dur(st.cultivateDays)}，游历 ${st.explores} 次（${st.exploreNothing} 次空手而归），斗法 ${st.fights} 场、胜 ${st.wins} 场，走过 ${pl.visited.length} 处地方。`);
@@ -750,7 +857,6 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   /* ---------- 基础查询 ---------- */
   P.age = (s, p) => s.year - p.birthYear;
   P.alive = (p) => !!p && p.status === 'alive';
-  P.hasRoot = (p) => p.root && p.root.type !== 'none';
   P.living = (s) => Object.values(s.people).filter(P.alive);
   P.at = (s, placeId) => P.living(s).filter((p) => p.locationId === placeId);
   P.name = (s, id) => (s.people[id] ? s.people[id].name : '（无名）');
@@ -765,30 +871,64 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   P.lifespanLeft = (s, p) => P.lifespanTotal(p) - P.age(s, p);
   P.isOld = (s, p) => P.lifespanLeft(s, p) < P.lifespanTotal(p) * C().life.oldFrac;
 
+  /* ---------- 境界 ---------- */
   P.realmName = (p) => {
     const cf = C().realms;
-    const m = p.realm.major;
-    if (m === 0) return P.hasRoot(p) ? '未入道' : '凡人';
-    return cf.names[m] + cf.stageNames[m][p.realm.stage - 1];
+    return cf.names[p.realm.major] + cf.stageNames[p.realm.major][p.realm.stage - 1];
   };
-  P.realmRank = (p) => (p.realm.major === 0 ? 0 : p.realm.major === 1 ? p.realm.stage : p.realm.major === 2 ? 9 + p.realm.stage : 12 + p.realm.stage);
-  P.need = (p) => (p.realm.major === 0 ? Infinity : C().realms.need[p.realm.major][p.realm.stage - 1]);
-  P.isFull = (p) => p.realm.major > 0 && p.progress >= P.need(p);
+  // 带小境界名号，如“筑基二重「大小如意」”
+  P.realmTitle = (p) => {
+    const t = C().realms.stageTitles[p.realm.major];
+    return P.realmName(p) + (t ? '「' + t[p.realm.stage - 1] + '」' : '');
+  };
+  // 名位：羽士、高功、链师、真人
+  P.title = (p) => C().realms.titles[p.realm.major] || '';
+  // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20
+  const offsets = () => {
+    const ms = C().realms.maxStage;
+    const o = [];
+    let acc = 0;
+    for (let m = 0; m < C().realms.names.length; m++) { o.push(acc); acc += ms[m]; }
+    return o;
+  };
+  P.realmRank = (p) => offsets()[p.realm.major] + p.realm.stage - 1;
+  P.rankOf = (major, stage) => offsets()[major] + stage - 1;
+  P.realmFromRank = (rank) => {
+    const o = offsets(), ms = C().realms.maxStage;
+    for (let m = o.length - 1; m >= 0; m--) if (rank >= o[m]) return { major: m, stage: Math.min(ms[m], rank - o[m] + 1) };
+    return { major: 0, stage: 1 };
+  };
+  P.maxRank = () => P.rankOf(C().realms.names.length - 1, C().realms.maxStage[C().realms.names.length - 1]);
+  P.need = (p) => C().realms.need[p.realm.major][p.realm.stage - 1];
+  P.isFull = (p) => p.progress >= P.need(p);
 
   P.healthCoef = (p) => (p.health.state === 'heavy' ? 0.3 : p.health.state === 'light' ? 0.7 : 1);
-  P.techOf = (s, p) => C().techniques[p.techniqueId] || C().techniques.yellow_general;
+  const NO_TECH = { kind: 'none', name: '（尚无练炁术）', tier: 0, grade: 0, attrs: [], opp: [], mult: 1, desc: '' };
+  // 练炁术（练炁、筑基两境用它采气）
+  P.lianqiOf = (p) => { const t = C().techniques[p.techniqueId]; return t && t.kind === 'lianqi' ? t : null; };
+  // 眼下用来修行的法门：紫府以上换成开府真法
+  P.techOf = (s, p) => {
+    if (p.realm.major >= 4 && p.kaifuId && C().techniques[p.kaifuId]) return C().techniques[p.kaifuId];
+    return P.lianqiOf(p) || NO_TECH;
+  };
+  P.daojiOf = (tier) => (tier >= C().daojiTiers[1] ? 3 : tier >= C().daojiTiers[0] ? 2 : 1);
   P.factionName = (s, p) => (p.factionId && s.factions[p.factionId] ? s.factions[p.factionId].name : '散修');
 
   // 斗法战力
   P.powerBreakdown = (s, p) => {
     const F = [];
-    if (!P.alive(p) || !P.hasRoot(p) || p.realm.major === 0) return { total: C().realms.power[0][0], factors: [{ label: '凡人', value: C().realms.power[0][0] }] };
+    if (!P.alive(p)) return { total: 0, factors: [{ label: '已故', value: 0 }] };
     const cf = C().realms.power[p.realm.major];
     F.push({ label: '境界 ' + P.realmName(p), value: cf[Math.min(cf.length - 1, p.realm.stage - 1)] });
     F.push({ label: '资质 ' + p.aptitude, value: U.round1((0.85 + (p.aptitude / 100) * 0.3) * 100) / 100 });
-    F.push({ label: '功法 ' + P.techOf(s, p).name, value: P.techOf(s, p).mult });
+    const t = P.techOf(s, p);
+    if (t.kind !== 'none') F.push({ label: '法门 ' + t.name, value: t.mult });
+    if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
+    if (P.isPlayer(s, p)) {
+      const best = Object.keys(C().items).filter((k) => C().items[k].power && s.player.inv[k] > 0).sort((a, b) => C().items[b].power - C().items[a].power)[0];
+      if (best) F.push({ label: C().items[best].name, value: C().items[best].power });
+    }
     if (p.health.state !== 'healthy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: P.healthCoef(p) });
-    if (p.root.mutant === '雷') F.push({ label: '雷灵根', value: C().roots.mutantPower });
     let total = 1;
     for (const f of F) total *= f.value;
     return { total: Math.round(total * 10) / 10, factors: F };
@@ -822,19 +962,6 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   /* ---------- 生成 ---------- */
-  function pickElements(r, n) {
-    const all = C().roots.elements;
-    const out = [];
-    while (out.length < n) { const e = R.pick(r, all); if (!out.includes(e)) out.push(e); }
-    return out;
-  }
-  P.genRootRandom = (r) => {
-    const cf = C().roots;
-    const type = R.weighted(r, cf.types, (t) => cf.weight[t]);
-    if (type === 'mutant') return { type, elements: [], mutant: R.pick(r, cf.mutants) };
-    return { type, elements: pickElements(r, cf.count[type]), mutant: null };
-  };
-
   P.genTraits = (r) => {
     const cf = C().traits;
     const n = R.chance(r, 0.5) ? 2 : 3;
@@ -866,8 +993,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const r = s.rng;
     const id = 'p' + s.nextId++;
     const sex = o.sex || (R.chance(r, 0.5) ? 'M' : 'F');
-    const root = o.root || P.genRootRandom(r);
-    const realm = o.realm || { major: 1, stage: 1 };
+    const realm = o.realm || { major: 2, stage: 1 };
+    const A = C().aptitude;
     let name = o.name;
     if (name) s.usedNames[name] = 1; else name = P.genName(s, sex, o.surname);
     const p = {
@@ -877,15 +1004,18 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       birthYear: o.birthYear,
       deathYear: null,
       deathCause: null,
-      root,
-      aptitude: o.aptitude !== undefined ? o.aptitude : Math.round(U.clamp(R.normal(r, 45, 15), 5, 95)),
+      aptitude: o.aptitude !== undefined ? o.aptitude : Math.round(U.clamp(R.normal(r, A.npcMean, A.sd), A.min, A.max)),
       realm,
       progress: o.progress || 0,
       lifespanMax: P.lifespanMaxFor(realm.major, realm.stage),
       lifespanBonus: 0,
       yanshouTaken: 0,
       traits: o.traits || P.genTraits(r),
-      techniqueId: o.techniqueId || 'yellow_general',
+      techniqueId: o.techniqueId || null, // 练炁术
+      kaifuId: o.kaifuId || null,         // 开府真法（紫府以上）
+      daoji: o.daoji || 0,                // 道基品第 1 下 2 中 3 上（筑基时定下）
+      yixiang: o.yixiang || 0,            // 紫府异象品第（开府时定下）
+      nearDeathT: null,                   // 上一次在生死之间走过（重伤）的时刻
       locationId: o.locationId,
       factionId: o.factionId || null,
       role: o.role || 'member', // leader / elder / member / loose
@@ -906,6 +1036,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   /* ---------- 伤势 ---------- */
   P.injure = (s, p, level) => {
     const L = C().life;
+    if (level === 'heavy') p.nearDeathT = s.t;
     if (level === 'heavy' || p.health.state === 'heavy') p.health = { state: 'heavy', days: Math.max(p.health.state === 'heavy' ? p.health.days : 0, L.heavyInjuryDays) };
     else p.health = { state: 'light', days: Math.max(p.health.state === 'light' ? p.health.days : 0, L.lightInjuryDays) };
   };
@@ -941,7 +1072,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       hid = FX.H.add(s, {
         type: 'npc_death', tags: ['死亡'], actors: [p.id], factions: p.factionId ? [p.factionId] : [], key: 'npc_death', pov: known,
         params: { name: p.name, faction: P.factionName(s, p), realm: P.realmName(p), cause, age: P.age(s, p) },
-        severity: P.realmRank(p) >= 10 || p.role === 'leader' ? 4 : 1, causeIds,
+        severity: p.realm.major >= 3 || p.role === 'leader' ? 4 : 1, causeIds,
       });
     }
     p.deathHist = hid;
@@ -954,6 +1085,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 /* ---------- core/cultivation.js ---------- */
 /* ============================================================
  * cultivation —— 修炼速度、境界晋升与突破（主角与 NPC 共用一套公式）
+ * 凡人悟胎息 → 胎息壮大、得练炁术后转入练炁 → 练炁九层 → 筑基 → 紫府 → 洞玄 → 金丹
  * ============================================================ */
 (function (G) {
   'use strict';
@@ -965,43 +1097,26 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const H = () => FX.H;
 
   const CU = {};
+  const inv = (s, p) => (P().isPlayer(s, p) ? s.player.inv : {});
 
-  CU.techFit = (s, p) => {
-    const t = P().techOf(s, p);
-    if (!t.elements.length) return 1;
-    if (p.root.type === 'mutant') return C().fitMin + 0.1; // 变异灵根需特定功法
-    const overlap = p.root.elements.filter((e) => t.elements.includes(e)).length / t.elements.length;
-    return Math.round((C().fitMin + (C().fitMax - C().fitMin) * overlap) * 100) / 100;
+  /* ---------- 采气属相 ---------- */
+  // 此人在某地采气的合适程度（练炁、筑基看练炁术的属相；紫府以上不太挑；凡人、胎息不采外气）
+  CU.attrFit = (s, p, place) => {
+    const F = C().attrFit;
+    const m = p.realm.major;
+    if (m <= 1) return null;
+    if (m >= 6) return { value: F.jindan, label: '金丹诸气浑成，不为采气所困', short: '诸气浑成' };
+    if (m >= 4) return { value: F.zifu, label: '紫府纯化灵机，不拘属相', short: '不拘属相' };
+    const t = P().lianqiOf(p);
+    if (!t) return { value: 0, label: '没有练炁术，炼化不了灵气', short: '无练炁术' };
+    const a = place ? place.attr : null;
+    if (t.attrs.includes(a)) return { value: F.match, label: '此地灵气属「' + a + '」，与《' + t.name + '》相合', short: '「' + a + '」气相合' };
+    if (t.opp.includes(a)) return { value: F.opp, label: '此地灵气属「' + a + '」，与《' + t.name + '》相冲', short: '「' + a + '」气相冲' };
+    return { value: F.neutral, label: '此地灵气属「' + a + '」，与《' + t.name + '》不相合', short: '「' + a + '」气不相合' };
   };
+  CU.techFit = (s, p) => { const f = CU.attrFit(s, p, s.places[p.locationId]); return f ? f.value : 1; };
 
-  CU.techCapped = (s, p) => {
-    const t = P().techOf(s, p);
-    return !!t.capMajor && (p.realm.major > t.capMajor || (p.realm.major === t.capMajor && p.realm.stage >= t.capStage)) && P().isFull(p);
-  };
-
-  // 修炼速度构成（每年，可追溯）。opts.pill：是否在聚气丹药效内
-  CU.breakdown = (s, p, opts) => {
-    const cf = C(), cc = cf.cultivation;
-    const F = [];
-    if (!P().hasRoot(p) || p.realm.major === 0) return { total: 0, factors: [{ label: '无灵根或未入道', value: 0 }] };
-    F.push({ label: '境界基础值', value: cf.realms.baseGain[p.realm.major] });
-    F.push({ label: '灵根（' + cf.roots.names[p.root.type] + '）', value: cf.roots.speed[p.root.type] });
-    F.push({ label: '资质 ' + p.aptitude, value: Math.round((cc.aptBase + (p.aptitude / 100) * cc.aptRange) * 100) / 100 });
-    const t = P().techOf(s, p);
-    F.push({ label: '功法 ' + t.name + '（适配 ' + CU.techFit(s, p) + '）', value: Math.round(t.mult * CU.techFit(s, p) * 100) / 100 });
-    const place = s.places[p.locationId];
-    const qi = CU.qiFor(s, p);
-    F.push({ label: '灵气 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
-    if (opts && opts.pill) F.push({ label: '聚气丹', value: 1 + cc.qijuBonus });
-    if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
-    if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
-    if (CU.techCapped(s, p)) F.push({ label: '功法残缺，已到尽头', value: 0 });
-    let total = 1;
-    for (const f of F) total *= f.value;
-    return { total: Math.round(total * 100) / 100, factors: F };
-  };
-
-  // 此人在所在地能借到的灵气（宗门、家族驻地只对自己人开放）
+  // 此人在所在地能借到的灵机（宗门、家族驻地只对自己人开放）
   CU.qiFor = (s, p) => {
     const place = s.places[p.locationId];
     if (!place) return 1;
@@ -1010,185 +1125,291 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     return place.qi;
   };
 
+  // 以符钱修行一年要花多少符钱（胎息以下炼不了外物，返回 null）
+  CU.coinPerYear = (p) => C().cultivation.coin.perYear[p.realm.major] || null;
+
+  // 修炼速度构成（每年，可追溯）。opts.pill：中孚丹药效内；opts.coin：以符钱修行
+  CU.breakdown = (s, p, opts) => {
+    const cf = C(), cc = cf.cultivation;
+    const m = p.realm.major;
+    const F = [];
+    if (m === 0) F.push({ label: '静坐参悟胎息气感', value: cf.realms.baseGain[0] });
+    else if (m === 1) F.push({ label: '壮大胎息（不假外求）', value: cf.realms.baseGain[1] });
+    else F.push({ label: '境界基础值', value: cf.realms.baseGain[m] });
+    F.push({ label: '资质 ' + p.aptitude, value: Math.round((cc.aptBase + (p.aptitude / 100) * cc.aptRange) * 100) / 100 });
+    if (m >= 2) {
+      const t = P().techOf(s, p);
+      if (t.kind !== 'none') F.push({ label: '法门《' + t.name + '》', value: t.mult });
+      const place = s.places[p.locationId];
+      if (opts && opts.coin) {
+        F.push({ label: '以符钱修行（符钱属「元」，人人可炼）', value: cf.attrFit.coin });
+        F.push({ label: '符钱灵气', value: cc.qiMult[cc.coin.qi] });
+      } else {
+        const fit = CU.attrFit(s, p, place);
+        F.push({ label: fit.label, value: fit.value });
+        const qi = CU.qiFor(s, p);
+        F.push({ label: '灵机 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
+      }
+      if (opts && opts.pill) F.push({ label: '中孚丹', value: 1 + cc.qijuBonus });
+    }
+    if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
+    if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
+    let total = 1;
+    for (const f of F) total *= f.value;
+    return { total: Math.round(total * 100) / 100, factors: F };
+  };
+
   CU.updateLifespan = (s, p) => { p.lifespanMax = P().lifespanMaxFor(p.realm.major, p.realm.stage); };
 
-  // 炼气一至八层修满自动晋升；返回晋升的层数
+  // 修为封顶（到了要冲关、或缺练炁术的地方）
+  CU.capped = (p) => {
+    const m = p.realm.major;
+    if (m === 1) return !P().lianqiOf(p);
+    if (m === 2) return p.realm.stage === 9;
+    return true;
+  };
+
+  // 自动晋升：胎息壮大到头且有练炁术 → 练炁一层；练炁一至八层修满 → 下一层。返回晋升的层数
   CU.autoAdvance = (s, p) => {
     let n = 0;
-    while (p.realm.major === 1 && p.realm.stage < 9 && p.progress >= P().need(p) && n < 10) {
+    const isPlayer = P().isPlayer(s, p);
+    if (p.realm.major === 1 && P().lianqiOf(p) && p.progress >= P().need(p)) {
+      p.progress -= P().need(p);
+      p.realm = { major: 2, stage: 1 };
+      CU.updateLifespan(s, p);
+      n++;
+      if (isPlayer) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'lianqi_start', params: { name: p.name, tech: P().lianqiOf(p).name }, severity: 3, pov: true });
+    }
+    while (p.realm.major === 2 && p.realm.stage < 9 && p.progress >= P().need(p) && n < 12) {
       p.progress -= P().need(p);
       p.realm.stage++;
+      CU.updateLifespan(s, p);
       n++;
-      if (P().isPlayer(s, p)) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'realm_up', params: { name: p.name, realm: P().realmName(p) }, severity: 2, pov: true });
+      if (isPlayer) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'realm_up', params: { name: p.name, realm: P().realmName(p) }, severity: 2, pov: true });
     }
     const rk = P().realmRank(p);
     if (rk > p.peakRank) p.peakRank = rk;
     return n;
   };
 
+  // 从凡人起累计的修为（用来算跨层增长）
+  CU.total = (p) => {
+    const cf = C().realms;
+    let b = 0;
+    for (let m = 0; m < p.realm.major; m++) for (const x of cf.need[m]) b += x;
+    for (let i = 0; i < p.realm.stage - 1; i++) b += cf.need[p.realm.major][i];
+    return b + p.progress;
+  };
+
   // 加修为（已到瓶颈时封顶，等待突破）；返回实际增加的修为
   CU.addProgress = (s, p, amount) => {
-    if (p.realm.major === 0 || amount <= 0) return 0;
-    const before = p.progress + CU.levelBase(p);
+    if (amount <= 0) return 0;
+    const before = CU.total(p);
     p.progress += amount;
-    if (p.realm.major > 1 || p.realm.stage === 9) p.progress = Math.min(p.progress, P().need(p));
+    if (CU.capped(p)) p.progress = Math.min(p.progress, P().need(p));
     CU.autoAdvance(s, p);
-    if (p.realm.major > 1 || p.realm.stage === 9) p.progress = Math.min(p.progress, P().need(p));
-    return Math.max(0, p.progress + CU.levelBase(p) - before);
-  };
-  // 本大境界内已累计的修为（用来算跨层增长）
-  CU.levelBase = (p) => {
-    if (p.realm.major !== 1) return 0;
-    let b = 0;
-    for (let i = 0; i < p.realm.stage - 1; i++) b += C().realms.need[1][i];
-    return b;
+    if (CU.capped(p)) p.progress = Math.min(p.progress, P().need(p));
+    return Math.max(0, CU.total(p) - before);
   };
 
   /* ---------- 突破 ---------- */
   CU.gateKind = (p) => {
-    if (p.realm.major === 1 && p.realm.stage === 9) return 'zhuji';
-    if (p.realm.major === 2 && p.realm.stage < 3) return 'minor';
-    if (p.realm.major === 2 && p.realm.stage === 3) return 'jindan';
-    if (p.realm.major === 3 && p.realm.stage < 3) return 'minor';
+    const m = p.realm.major, st = p.realm.stage;
+    if (m === 0) return 'taixi';
+    if (m === 2 && st === 9) return 'zhuji';
+    if (m >= 3 && m <= 5) return st < 3 ? 'minor' : ['zifu', 'dongxuan', 'jindan'][m - 3];
     return null;
   };
+  const NEXT = { taixi: { major: 1, stage: 1 }, zhuji: { major: 3, stage: 1 }, zifu: { major: 4, stage: 1 }, dongxuan: { major: 5, stage: 1 }, jindan: { major: 6, stage: 1 } };
+  CU.nextRealm = (p) => { const k = CU.gateKind(p); return k === 'minor' ? { major: p.realm.major, stage: p.realm.stage + 1 } : NEXT[k] || null; };
   CU.targetName = (p) => {
-    const k = CU.gateKind(p);
-    if (k === 'zhuji') return '筑基';
-    if (k === 'jindan') return '金丹';
-    if (k === 'minor') return C().realms.names[p.realm.major] + C().realms.stageNames[p.realm.major][p.realm.stage];
-    return '';
+    const n = CU.nextRealm(p);
+    if (!n) return '';
+    return CU.gateKind(p) === 'minor' ? P().realmTitle({ realm: n }) : C().realms.names[n.major];
   };
+  // 本重修到下一重需要的外药
+  CU.minorNeed = (p) => (CU.gateKind(p) === 'minor' ? C().breakthrough.minorNeeds[p.realm.major + '.' + p.realm.stage] || null : null);
 
-  const inv = (s, p) => (P().isPlayer(s, p) ? s.player.inv : {});
+  // 主角手上最好的开府真法
+  CU.bestKaifu = (s) => s.player.manuals.filter((t) => C().techniques[t].kind === 'kaifu').sort((a, b) => C().techniques[b].grade - C().techniques[a].grade)[0] || null;
+  const pickKaifuByGrade = (g) => Object.keys(C().techniques).find((k) => C().techniques[k].kind === 'kaifu' && C().techniques[k].grade === g);
 
-  CU.canAttempt = (s, p) => {
-    if (!P().alive(p) || p.realm.major === 0) return { ok: false, reason: '尚未入道' };
+  CU.canAttempt = (s, p, opts) => {
+    if (!P().alive(p)) return { ok: false, reason: '已故' };
     const k = CU.gateKind(p);
-    if (!k) return { ok: false, reason: p.realm.major === 3 && p.realm.stage === 3 ? '已到本版境界上限' : '炼气前八层修满自动晋升' };
-    if (!P().isFull(p)) return { ok: false, reason: '修为未圆满（' + Math.floor(p.progress) + '/' + P().need(p) + '）' };
+    const isPlayer = P().isPlayer(s, p);
+    if (!k) {
+      if (p.realm.major === 1) return { ok: false, reason: P().lianqiOf(p) ? '胎息壮大到头，便自然转入练炁' : '缺一门练炁术，胎息壮大到头也转不进练炁' };
+      if (p.realm.major === 2) return { ok: false, reason: '练炁一至八层没有关隘，修满自动晋升' };
+      return { ok: false, reason: '已到本版境界上限' };
+    }
+    if (!P().isFull(p)) return { ok: false, reason: (k === 'taixi' ? '气感尚浅' : '修为未圆满') + '（' + Math.floor(p.progress) + '/' + P().need(p) + '）' };
     if (s.t < p.restUntil) return { ok: false, reason: '上次失败后需休养，至 ' + FX.T.fmt(p.restUntil) };
     if (p.health.state === 'heavy') return { ok: false, reason: '重伤未愈' };
-    const t = P().techOf(s, p);
+    const B = C().breakthrough;
+    const need = CU.minorNeed(p);
+    if (need && isPlayer && !(inv(s, p)[need.item] >= need.qty)) return { ok: false, reason: '缺' + C().items[need.item].name + (need.qty > 1 ? '（需 ' + need.qty + ' 份）' : '') + '：' + need.why };
+    if (need && !isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺外药' };
+    if (k === 'zifu' && isPlayer && !CU.bestKaifu(s)) return { ok: false, reason: '缺一篇开府真法，开辟不了紫府' };
+    if (k === 'zifu' && !isPlayer && !(opts && opts.kaifu)) return { ok: false, reason: '缺开府真法' };
     if (k === 'jindan') {
-      if (t.capMajor === 2) return { ok: false, reason: t.name + '残缺，无法冲击金丹' };
-      if (CU.qiFor(s, p) < C().breakthrough.jindan.minQi) return { ok: false, reason: '需在灵气 ' + C().breakthrough.jindan.minQi + ' 级以上之地结丹' };
-      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物（结丹必需，坊市偶有出售，约 2400 灵石）' };
+      if (CU.qiFor(s, p) < B.jindan.minQi) return { ok: false, reason: '需在灵机 ' + B.jindan.minQi + ' 级以上之地结丹' };
+      if (isPlayer && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺凝丹大药（结丹必需，宗门、墟市偶有出售）' };
+      if (!isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺凝丹大药' };
     }
     return { ok: true, kind: k };
   };
 
-  // 冲关的前置条件清单（界面逐条打勾）
+  // 下一步的前置条件清单（界面逐条打勾）。没有关隘的地方也列出来，好让玩家知道缺什么
   CU.requirements = (s, p) => {
     const k = CU.gateKind(p);
-    if (!k) return [];
     const B = C().breakthrough;
-    const out = [{ label: '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
-    if (k === 'zhuji') out.push({ label: '筑基丹（可选：有则 +' + B.zhuji.pill + '%，没有则 −' + B.zhuji.noPillPenalty + '%）', ok: P().isPlayer(s, p) && s.player.inv.zhuji > 0, optional: true, note: '坊市稀有货，约 ' + C().items.zhuji.price + ' 灵石' });
+    const I = C().items;
+    const has = (item, n) => P().isPlayer(s, p) && (s.player.inv[item] || 0) >= (n || 1);
+    if (p.realm.major === 1) {
+      const t = P().lianqiOf(p);
+      return [
+        { label: '胎息壮大到头', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) },
+        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '凡人国集市、墟市偶有劣等练炁术出售；宗门弟子可向长老房请授' },
+      ];
+    }
+    if (!k) return [];
+    const out = [{ label: k === 'taixi' ? '气感积累圆满' : '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
+    if (k === 'taixi') {
+      const near = p.nearDeathT !== null && s.t - p.nearDeathT <= B.taixi.lifeDeathYears * C().daysPerYear;
+      out.push({ label: '近 ' + B.taixi.lifeDeathYears + ' 年在生死之间走过一遭（可选：+' + B.taixi.lifeDeath + '%）', ok: near, optional: true, note: '死生畏怖，神明自得；身受重伤后活下来的人更容易悟得胎息' });
+    }
+    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', ok: has('zhuji'), optional: true, note: '墟市、宗门的稀有货，约 ' + I.zhuji.price + ' 符钱' });
+    const need = CU.minorNeed(p);
+    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), ok: has(need.item, need.qty), note: need.why + '，约 ' + I[need.item].price + ' 符钱一份' });
+    if (k === 'zifu') {
+      const kf = P().isPlayer(s, p) ? CU.bestKaifu(s) : null;
+      out.push({ label: '一篇开府真法', ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '墟市偶有下乘开府真法；上乘的只在大派世族流转' });
+    }
     if (k === 'jindan') {
-      const t = P().techOf(s, p);
-      out.push({ label: '功法能通往金丹', ok: t.capMajor !== 2, note: t.capMajor === 2 ? '《' + t.name + '》是残卷，止步筑基' : '' });
-      out.push({ label: '在灵气 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
-      out.push({ label: '凝丹灵物', ok: P().isPlayer(s, p) && s.player.inv.ningdan > 0, note: '坊市、宗门偶有出售，约 ' + C().items.ningdan.price + ' 灵石' });
+      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: I.ningdan.name, ok: has('ningdan'), note: '宗门、墟市偶有出售，约 ' + I.ningdan.price + ' 符钱' });
     }
     out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
     if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
     return out;
   };
 
-  // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有筑基丹
+  // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有大造元珠；opts.kaifuGrade：NPC 开府真法品第
   CU.chance = (s, p, opts) => {
     const B = C().breakthrough;
     const k = CU.gateKind(p);
     if (!k) return null;
+    const isPlayer = P().isPlayer(s, p);
     const parts = [];
-    const cfg = k === 'minor' ? B.minor : B[k];
+    const cfg = B[k];
     parts.push({ label: '基础成功率', value: cfg.base });
-    parts.push({ label: '资质 ' + p.aptitude, value: U.round1((p.aptitude - 50) * B.aptitudeFactor) });
-    parts.push({ label: C().roots.names[p.root.type], value: C().roots.breakMod[p.root.type] });
-    const fit = CU.techFit(s, p);
-    parts.push({ label: '功法适配', value: U.round1(U.clamp(((fit - 1) / 0.25) * C().fitBreakMax, -C().fitBreakMax, C().fitBreakMax)) + (P().techOf(s, p).breakBonus || 0) });
-    const hasPill = P().isPlayer(s, p) ? inv(s, p).zhuji > 0 : !!(opts && opts.pill);
-    if (k === 'zhuji') {
-      if (hasPill) parts.push({ label: '服用筑基丹', value: B.zhuji.pill });
-      else parts.push({ label: '无筑基丹', value: -B.zhuji.noPillPenalty });
+    parts.push({ label: '资质 ' + p.aptitude, value: U.round1((p.aptitude - 50) * (cfg.aptFactor || B.aptitudeFactor)) });
+    if (k === 'taixi') {
+      if (p.nearDeathT !== null && s.t - p.nearDeathT <= cfg.lifeDeathYears * C().daysPerYear) parts.push({ label: '借生死得胎息', value: cfg.lifeDeath });
     }
-    if (k === 'jindan' && (!P().isPlayer(s, p) || inv(s, p).ningdan > 0)) parts.push({ label: '凝丹灵物', value: B.jindan.pill });
-    const qi = CU.qiFor(s, p);
-    if (qi >= B.qiBonusMin) parts.push({ label: '灵气 ' + qi + ' 级之地', value: B.qiBonus });
+    let hasPill = false, kaifu = null;
+    if (k === 'zhuji') {
+      const t = P().lianqiOf(p);
+      const tier = t ? t.tier : 1;
+      parts.push({ label: '真炁' + C().tierNames[tier], value: (tier - 4) * 2 });
+      hasPill = isPlayer ? inv(s, p).zhuji > 0 : !!(opts && opts.pill);
+      if (hasPill) parts.push({ label: '服用' + C().items.zhuji.name, value: cfg.pill });
+    }
+    if (k === 'zifu' || k === 'dongxuan' || k === 'jindan') {
+      if (p.daoji) parts.push({ label: C().daojiNames[p.daoji], value: B.daojiMod[p.daoji] });
+    }
+    if (k === 'zifu') {
+      kaifu = isPlayer ? CU.bestKaifu(s) : pickKaifuByGrade((opts && opts.kaifuGrade) || 1);
+      if (kaifu) parts.push({ label: '《' + C().techniques[kaifu].name + '》（' + C().gradeNames[C().techniques[kaifu].grade] + '）', value: B.yixiangMod[C().techniques[kaifu].grade] });
+    }
+    if ((k === 'dongxuan' || k === 'jindan') && p.yixiang) parts.push({ label: C().yixiangNames[p.yixiang], value: B.yixiangMod[p.yixiang] });
+    if (k !== 'taixi') {
+      const qi = CU.qiFor(s, p);
+      if (qi >= B.qiBonusMin) parts.push({ label: '灵机 ' + qi + ' 级之地', value: B.qiBonus });
+    }
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
-    if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -p.failCount * B.failPenalty });
+    if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
-    if (p.root.mutant === '冰') parts.push({ label: '冰灵根', value: C().roots.mutantIceBreak });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
     const max = k === 'minor' ? B.max : B.majorMax;
     total = U.clamp(total, B.min, max);
-    const death = k === 'minor' ? 0 : B[k].deathChance;
-    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, usesPill: k === 'zhuji' && hasPill, days: cfg.days };
+    const death = cfg.deathChance || 0;
+    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, kaifu, days: cfg.days };
   };
 
   CU.attempt = (s, p, opts) => {
-    const can = CU.canAttempt(s, p);
+    const can = CU.canAttempt(s, p, opts);
     if (!can.ok) return { ok: false, error: can.reason };
     const ch = CU.chance(s, p, opts);
     const B = C().breakthrough;
     const target = ch.target;
     const r = s.rng;
     const isPlayer = P().isPlayer(s, p);
-    if (isPlayer && ch.usesPill) s.player.inv.zhuji--;
-    if (isPlayer && ch.kind === 'jindan') s.player.inv.ningdan--;
+    const need = CU.minorNeed(p);
+    if (isPlayer) {
+      if (ch.usesPill) s.player.inv.zhuji--;
+      if (need) s.player.inv[need.item] -= need.qty;
+      if (ch.kind === 'jindan') s.player.inv.ningdan--;
+    }
     const success = R.next(r) * 100 < ch.chance;
     const res = { ok: true, success, chance: ch.chance, target, kind: ch.kind };
     const causes = (opts && opts.causeIds) || [];
     const fac = P().factionName(s, p);
     const known = isPlayer || P().relValue(s, p.id, s.player.id) !== 0;
     if (success) {
+      const next = CU.nextRealm(p);
+      if (ch.kind === 'zhuji') { const t = P().lianqiOf(p); p.daoji = P().daojiOf(t ? t.tier : 1); }
+      if (ch.kind === 'zifu') { p.kaifuId = ch.kaifu; p.yixiang = C().techniques[ch.kaifu].grade; }
       p.progress = 0;
-      if (ch.kind === 'zhuji') p.realm = { major: 2, stage: 1 };
-      else if (ch.kind === 'jindan') p.realm = { major: 3, stage: 1 };
-      else p.realm = { major: p.realm.major, stage: p.realm.stage + 1 };
+      p.realm = next;
       p.fullDays = 0;
       p.failCount = 0;
       CU.updateLifespan(s, p);
       if (P().realmRank(p) > p.peakRank) p.peakRank = P().realmRank(p);
+      const extra = ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.tianfa ? '，扛过了天罚' : '';
       if (isPlayer) {
         res.hid = H().add(s, {
-          type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: 'break_ok', pov: true,
-          params: { name: p.name, target, chance: ch.chance, life: P().lifespanTotal(p), ok: true },
+          type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_ok' : 'break_ok', pov: true,
+          params: { name: p.name, target: ch.kind === 'minor' ? target : P().realmTitle(p), chance: ch.chance, life: P().lifespanTotal(p), extra, ok: true },
           severity: ch.kind === 'minor' ? 3 : 5, causeIds: causes,
         });
         H().markFirst(s, 'break_' + ch.kind, res.hid);
       } else if (ch.kind !== 'minor') {
         res.hid = H().add(s, {
           type: 'npc_break', tags: ['突破'], actors: [p.id], factions: p.factionId ? [p.factionId] : [], key: 'npc_break', pov: known,
-          params: { name: p.name, faction: fac, target, ok: true }, severity: ch.kind === 'jindan' ? 4 : 2, causeIds: causes,
+          params: { name: p.name, faction: fac, target, ok: true }, severity: p.realm.major >= 4 ? 4 : 2, causeIds: causes,
         });
       }
     } else {
       p.failCount++;
-      p.restUntil = s.t + B.restYears * C().daysPerYear;
+      const cfg = ch.kind === 'minor' ? B.minor : B[ch.kind];
+      p.restUntil = s.t + (cfg.restYears || B.restYears) * C().daysPerYear;
       p.fullDays = 0;
       let loss;
       if (ch.kind === 'minor') {
         p.progress = Math.floor(p.progress * (1 - B.minor.failLoss));
-        loss = '修为受损一成';
+        loss = '修为受损一成' + (need ? '，' + C().items[need.item].name + '也白白耗去' : '');
+      } else if (cfg.mild) {
+        const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
+        p.progress = Math.floor(p.progress * (1 - frac));
+        loss = '那一点气感又散了大半，只能从头再养';
       } else {
-        const cfg = B[ch.kind];
         const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
         p.progress = Math.floor(p.progress * (1 - frac));
         P().injure(s, p, 'heavy');
-        loss = '修为跌落 ' + Math.round(frac * 100) + '%，身受重伤';
+        loss = (ch.tianfa ? '被天罚所伤，' : '') + '修为跌落 ' + Math.round(frac * 100) + '%，身受重伤';
       }
       if (isPlayer) {
         res.hid = H().add(s, {
-          type: 'breakthrough', tags: ['突破', '失败'], actors: [p.id], key: 'break_fail', pov: true,
-          params: { name: p.name, target, chance: ch.chance, loss, ok: false }, severity: ch.kind === 'minor' ? 2 : 4, causeIds: causes,
+          type: 'breakthrough', tags: ['突破', '失败'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_fail' : 'break_fail', pov: true,
+          params: { name: p.name, target, chance: ch.chance, loss, ok: false }, severity: ch.kind === 'minor' || cfg.mild ? 2 : 4, causeIds: causes,
         });
       }
-      if (ch.kind !== 'minor' && R.chance(r, ch.death / 100)) {
-        P().kill(s, p, '冲击' + target + '失败', res.hid ? [res.hid] : [], { key: 'break' });
+      if (ch.death && R.chance(r, ch.death / 100)) {
+        P().kill(s, p, '冲击' + target + '失败' + (ch.tianfa ? '，殒于天罚' : ''), res.hid ? [res.hid] : [], { key: 'break' });
         res.died = true;
       }
     }
@@ -1197,16 +1418,22 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 
   /* ---------- NPC 一年的修炼（世界模拟）---------- */
   CU.npcYear = (s, p) => {
-    if (!P().alive(p) || p.realm.major === 0) return;
-    const cc = C().cultivation;
+    if (!P().alive(p)) return;
+    const cc = C().cultivation, B = C().breakthrough;
     const dil = R.range(s.rng, cc.npcDiligence[0], cc.npcDiligence[1]);
     const rate = CU.breakdown(s, p).total;
-    if (P().isFull(p)) { p.fullDays += C().daysPerYear; } else CU.addProgress(s, p, rate * dil);
-    if (P().isFull(p) && CU.gateKind(p) && CU.canAttempt(s, p).ok && R.chance(s.rng, C().breakthrough.npcTryChance)) {
-      const fac = p.factionId && s.factions[p.factionId];
-      const pillP = C().breakthrough.npcPill[fac ? fac.type : 'none'];
-      CU.attempt(s, p, { pill: R.chance(s.rng, pillP) });
-    }
+    if (P().isFull(p) && CU.gateKind(p)) p.fullDays += C().daysPerYear;
+    else CU.addProgress(s, p, rate * dil);
+    if (!P().isFull(p) || !CU.gateKind(p) || !R.chance(s.rng, B.npcTryChance)) return;
+    const fac = p.factionId && s.factions[p.factionId];
+    const pillP = B.npcPill[fac ? fac.type : 'none'];
+    const opts = {
+      pill: R.chance(s.rng, pillP),
+      items: R.chance(s.rng, Math.min(1, pillP * 1.5)),
+      kaifu: R.chance(s.rng, Math.min(1, pillP + 0.2)),
+      kaifuGrade: R.weighted(s.rng, [1, 2, 3], (g) => B.npcKaifu[g]),
+    };
+    if (CU.canAttempt(s, p, opts).ok) CU.attempt(s, p, opts);
   };
 
   FX.CU = CU;
@@ -1229,10 +1456,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
+  // 同一前缀尽量不重复（免得出现“松涛山”“松涛原”“松涛峰”三处）
   function uniqueName(s, r, parts, used) {
     for (let i = 0; i < 40; i++) {
-      const n = R.pick(r, parts.a) + R.pick(r, parts.b);
-      if (!used[n]) { used[n] = 1; return n; }
+      const a = R.pick(r, parts.a);
+      const n = a + R.pick(r, parts.b);
+      if (!used[n] && (!used['a:' + a] || i >= 30)) { used[n] = 1; used['a:' + a] = 1; return n; }
     }
     const n = R.pick(r, parts.a) + R.pick(r, parts.b) + (Object.keys(used).length + 1);
     used[n] = 1;
@@ -1245,7 +1474,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const used = {};
     const cells = {};
     const list = [];
-    const clanSurnames = R.shuffle(r, C().names.clanSurnames.filter((x) => x !== opts.clanSurname));
+    // 容氏、童家在前，其余随机；修道家族出身的主角，本族排第一
+    const base = C().names.clanSurnames.filter((x) => x !== opts.clanSurname);
+    const clanSurnames = base.slice(0, 2).concat(R.shuffle(r, base.slice(2)));
     if (opts.clanSurname) clanSurnames.unshift(opts.clanSurname);
     let clanIdx = 0;
     for (const type of Object.keys(cw.placeTypes)) {
@@ -1261,14 +1492,17 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         cells[x + ',' + y] = 1;
         let name;
         if (type === 'clan') { const sn = clanSurnames[clanIdx++ % clanSurnames.length]; name = sn + R.pick(r, C().names.place.clan.b); used[name] = 1; }
+        else if (def.fixed && def.fixed[i]) { name = def.fixed[i]; used[name] = 1; }
+        else if (type === 'sect') name = 'sect' + i; // 宗门山门在 genFactions 里按宗门命名
         else name = uniqueName(s, r, C().names.place[type], used);
         const id = 'l' + (list.length + 1);
         list.push({
           id, name, type, x, y,
           qi: R.int(r, def.qi[0], def.qi[1]),
+          attr: R.pick(r, C().attrs), // 此地灵气的属相
           danger: R.int(r, def.danger[0], def.danger[1]),
           factionId: null,
-          surname: type === 'clan' ? name.replace(/(家堡|氏山庄|家坞)$/, '') : null,
+          surname: type === 'clan' ? name.replace(new RegExp('(' + C().names.place.clan.b.join('|') + ')$'), '') : null,
           links: [],
         });
       }
@@ -1307,56 +1541,93 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const r = s.rng;
     const places = Object.values(s.places);
     let n = 1;
-    const add = (type, name, seat) => {
-      const f = { id: 'f' + n++, name, type, seatId: seat.id, leaderId: null, relToPlayer: 0 };
+    const add = (def, type, name, seat) => {
+      const f = { id: 'f' + n++, key: def.key || null, name, type, tier: def.tier || 1, tech: def.tech || null, blurb: def.blurb || '', seatId: seat.id, leaderId: null, relToPlayer: 0 };
       s.factions[f.id] = f;
-      if (seat.type !== 'town') seat.factionId = f.id;
+      if (seat.type !== 'town' && seat.type !== 'city') seat.factionId = f.id;
       return f;
     };
-    for (const p of places.filter((x) => x.type === 'sect')) add('sect', p.name, p);
-    for (const p of places.filter((x) => x.type === 'clan')) add('clan', p.surname + '家', p);
-    const towns = places.filter((x) => x.type === 'town');
-    const lg = add('league', R.pick(r, C().names.league), R.pick(r, towns));
-    s.places[lg.seatId].factionId = lg.id; // 散修盟设在坊市里
-    const hide = places.filter((x) => x.type === 'danger' || (x.type === 'wild' && x.danger >= 2));
-    add('evil', R.pick(r, C().names.evil), R.pick(r, hide));
+    const sects = places.filter((x) => x.type === 'sect');
+    let si = 0;
+    for (const def of C().factionDefs) {
+      if (def.type === 'sect') {
+        const seat = sects[si++];
+        if (!seat) continue;
+        seat.name = def.seat || def.name;
+        if (def.tech) seat.attr = C().techniques[def.tech].attrs[0]; // 山门灵气合本门传承
+        add(def, 'sect', def.name, seat);
+      } else if (def.seat === 'town') {
+        const seat = places.find((x) => x.type === 'town');
+        const f = add(def, def.type, def.name, seat);
+        seat.factionId = f.id; // 墟市由建墟市的人管着
+      } else if (def.seat === 'hide') {
+        const hide = places.filter((x) => (x.type === 'wild' && x.danger >= 2 && !C().world.placeTypes.wild.fixed.includes(x.name)) || (x.type === 'danger' && !C().world.placeTypes.danger.fixed.includes(x.name)));
+        const seat = R.pick(r, hide);
+        seat.name = def.name;
+        add(def, def.type, def.name, seat);
+      }
+    }
+    for (const p of places.filter((x) => x.type === 'clan')) add({ blurb: p.surname + '氏是南域一个小修道家族' }, 'clan', p.surname + '氏', p);
   };
 
   /* ---------- 人物 ---------- */
   // 按境界给出合理年龄（入道 16 岁起，修得越高越老，且不越过寿元）
+  // 按境界给出合理年龄（十六岁起，修得越高越老，且不越过寿元）
   W.ageFor = (r, realm) => {
-    const rank = P().realmRank({ realm });
+    const rank = P().rankOf(realm.major, realm.stage);
     const life = P().lifespanMaxFor(realm.major, realm.stage);
     let age = 16 + Math.round(rank * R.range(r, 2, 4.5)) + R.int(r, 0, 12);
-    if (realm.major === 2) age = Math.max(age, R.int(r, 45, 120));
-    if (realm.major === 3) age = Math.max(age, R.int(r, 160, 330));
+    if (realm.major === 3) age = Math.max(age, R.int(r, 45, 130));
+    if (realm.major === 4) age = Math.max(age, R.int(r, 90, 200));
+    if (realm.major === 5) age = Math.max(age, R.int(r, 150, 320));
+    if (realm.major === 6) age = Math.max(age, R.int(r, 300, 900));
     return Math.min(age, life - R.int(r, 3, 25));
   };
-  const L = (st) => ({ major: 1, stage: st });
-  W.rollRealm = (r, kind) => {
-    switch (kind) {
-      case 'sect_leader': return { major: 3, stage: R.int(r, 1, 2) };
-      case 'sect_elder': return { major: 2, stage: R.int(r, 1, 3) };
-      case 'clan_leader': case 'evil_leader': return { major: 2, stage: R.int(r, 1, 2) };
-      case 'league_leader': return { major: 2, stage: 1 };
-      case 'clan_elder': return R.chance(r, 0.4) ? { major: 2, stage: 1 } : L(R.int(r, 8, 9));
-      case 'sect_member': return R.chance(r, 0.08) ? { major: 2, stage: 1 } : L(R.int(r, 2, 9));
-      case 'evil_member': return L(R.int(r, 3, 9));
-      default: return R.chance(r, 0.05) ? { major: 2, stage: 1 } : L(Math.min(9, 1 + Math.floor(Math.pow(R.next(r), 1.6) * 9)));
-    }
+  const L = (st) => ({ major: 2, stage: st });
+  const RM = (major, lo, hi) => (r) => ({ major, stage: R.int(r, lo, hi) });
+  // 各类人物的境界分布：小宗掌门洞玄，二流宗门掌门金丹；南域穷土，筑基已算一方人物
+  const ROLL = {
+    sect1_leader: RM(5, 1, 2),
+    sect1_elder: (r) => (R.chance(r, 0.4) ? RM(4, 1, 2)(r) : RM(3, 1, 3)(r)),
+    sect1_member: (r) => (R.chance(r, 0.15) ? { major: 1, stage: 1 } : R.chance(r, 0.06) ? { major: 3, stage: 1 } : L(R.int(r, 1, 9))),
+    sect2_leader: RM(6, 1, 1),
+    sect2_elder: (r) => (R.chance(r, 0.4) ? RM(5, 1, 2)(r) : RM(4, 1, 3)(r)),
+    sect2_member: (r) => (R.chance(r, 0.12) ? RM(3, 1, 2)(r) : L(R.int(r, 2, 9))),
+    clan_leader: RM(3, 1, 2),
+    clan_elder: (r) => (R.chance(r, 0.4) ? { major: 3, stage: 1 } : L(R.int(r, 8, 9))),
+    clan_member: (r) => (R.chance(r, 0.2) ? { major: 1, stage: 1 } : L(R.int(r, 1, 7))),
+    league_leader: RM(5, 1, 1),
+    league_member: (r) => L(R.int(r, 3, 9)),
+    evil_leader: RM(3, 2, 3),
+    evil_member: (r) => L(R.int(r, 3, 9)),
+    loose: (r) => (R.chance(r, 0.15) ? { major: 1, stage: 1 } : R.chance(r, 0.05) ? { major: 3, stage: 1 } : L(Math.min(9, 1 + Math.floor(Math.pow(R.next(r), 1.6) * 9)))),
+  };
+  W.rollRealm = (r, kind) => (ROLL[kind] || ROLL.loose)(r);
+
+  // NPC 的练炁术：本门传承或散修常见货色
+  W.npcTech = (r, f, role) => {
+    if (f && f.tech && (f.type === 'sect' && (role !== 'member' || R.chance(r, 0.7)))) return f.tech;
+    return R.weighted(r, ['linghe', 'guiyuan', 'chiyang', 'xuanshui', 'handou'], (k) => ({ linghe: 5, guiyuan: 4, chiyang: 2, xuanshui: 2, handou: 0.3 }[k]));
   };
 
   W.spawnNpc = (s, o) => {
     const r = s.rng;
     const realm = o.realm || W.rollRealm(r, o.kind || 'loose');
     const age = o.age !== undefined ? o.age : W.ageFor(r, realm);
+    const f = o.factionId ? s.factions[o.factionId] : null;
+    const tech = o.techniqueId || W.npcTech(r, f, o.role || 'member');
+    const B = C().breakthrough;
+    const kaifuGrade = realm.major >= 4 ? R.weighted(r, [1, 2, 3], (g) => B.npcKaifu[g] * (f && f.tier === 2 ? [1, 0.6, 1.5, 3][g] : 1)) : 0;
     const p = P().create(s, {
       surname: o.surname, realm, birthYear: s.year - age,
       progress: Math.floor(R.next(r) * Math.min(P().need({ realm }), 9999) * 0.8),
-      techniqueId: o.techniqueId || R.pick(r, ['yellow_general', 'yellow_general', 'yellow_complete', 'yellow_water']),
+      techniqueId: tech,
+      daoji: realm.major >= 3 ? P().daojiOf(C().techniques[tech].tier) : 0,
+      kaifuId: kaifuGrade ? Object.keys(C().techniques).find((k) => C().techniques[k].kind === 'kaifu' && C().techniques[k].grade === kaifuGrade) : null,
+      yixiang: kaifuGrade,
       locationId: o.locationId, factionId: o.factionId || null, role: o.role || (o.factionId ? 'member' : 'loose'),
     });
-    if (P().isFull(p) && p.realm.major === 1 && p.realm.stage < 9) CU().autoAdvance(s, p);
+    if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
     return p;
   };
   const CU = () => FX.CU;
@@ -1368,15 +1639,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const [lo, hi] = cw.factionMembers[f.type];
       const n = R.int(r, lo, hi);
       const sn = f.type === 'clan' ? seat.surname : null;
-      const tech = f.type === 'sect' ? (R.chance(r, 0.5) ? 'xuan_fire' : 'yellow_water') : null;
+      const prefix = f.type === 'sect' ? 'sect' + f.tier : f.type;
       for (let i = 0; i < n; i++) {
         const role = i === 0 ? 'leader' : (f.type === 'sect' && i <= 2) || (f.type === 'clan' && i === 1) ? 'elder' : 'member';
-        const kind = f.type + '_' + role;
-        const p = W.spawnNpc(s, { kind, role, factionId: f.id, locationId: seat.id, surname: sn, techniqueId: role !== 'member' && tech ? tech : null });
+        const p = W.spawnNpc(s, { kind: prefix + '_' + role, role, factionId: f.id, locationId: seat.id, surname: sn });
         if (role === 'leader') f.leaderId = p.id;
       }
     }
-    const looseSpots = Object.values(s.places).filter((p) => p.type === 'town' || p.type === 'wild');
+    const looseSpots = Object.values(s.places).filter((p) => p.type === 'town' || p.type === 'wild' || p.type === 'city');
     while (P().living(s).length < cw.npcCount) W.spawnNpc(s, { kind: 'loose', locationId: R.pick(r, looseSpots).id });
   };
 
@@ -1388,7 +1658,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const [lo] = cw.factionMembers[f.type];
       if (members.length < lo && R.chance(r, 0.7)) {
         const seat = s.places[f.seatId];
-        W.spawnNpc(s, { realm: L(R.int(r, 1, 3)), age: R.int(r, 16, 22), factionId: f.id, locationId: seat.id, surname: f.type === 'clan' ? seat.surname : null });
+        W.spawnNpc(s, { realm: R.chance(r, 0.4) ? { major: 1, stage: 1 } : L(R.int(r, 1, 3)), age: R.int(r, 16, 22), factionId: f.id, locationId: seat.id, surname: f.type === 'clan' ? seat.surname : null });
       }
       // 掌门/家主身故：由在世最强者接任
       if (!P().alive(s.people[f.leaderId])) {
@@ -1397,8 +1667,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       }
     }
     const loose = P().living(s).filter((p) => !p.factionId && !P().isPlayer(s, p));
-    const spots = Object.values(s.places).filter((p) => p.type === 'town' || p.type === 'wild');
-    for (let i = loose.length; i < cw.looseMin; i++) W.spawnNpc(s, { realm: L(R.int(r, 1, 4)), age: R.int(r, 16, 30), locationId: R.pick(r, spots).id });
+    const spots = Object.values(s.places).filter((p) => p.type === 'town' || p.type === 'wild' || p.type === 'city');
+    for (let i = loose.length; i < cw.looseMin; i++) W.spawnNpc(s, { realm: R.chance(r, 0.3) ? { major: 1, stage: 1 } : L(R.int(r, 1, 4)), age: R.int(r, 16, 30), locationId: R.pick(r, spots).id });
   };
 
   /* ---------- 坊市 ---------- */
@@ -1409,9 +1679,10 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const base = key.startsWith('tech:') ? C().techniques[key.slice(5)].price : C().items[key].price;
       return Math.max(1, Math.round(base * (1 + R.range(r, -M.priceSwing, M.priceSwing))));
     };
-    const stock = M.staples.map((x) => ({ item: x.item, qty: R.int(r, x.qty[0], x.qty[1]), price: priceOf(x.item) }));
+    const city = place.type === 'city';
+    const stock = (city ? M.cityStaples : M.staples).map((x) => ({ item: x.item, qty: R.int(r, x.qty[0], x.qty[1]), price: priceOf(x.item) }));
     const slots = M.rareSlots[place.type] || 0;
-    const pool = M.rare.slice();
+    const pool = (city ? M.cityRare : M.rare).filter((x) => !stock.some((y) => y.item === x.item));
     for (let i = 0; i < slots; i++) {
       if (!R.chance(r, M.rareChance)) continue;
       const pick = R.weighted(r, pool, (x) => x.w);
@@ -1423,7 +1694,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
   W.hasMarket = (s, placeId) => !!C().world.placeTypes[s.places[placeId].type].market;
 
-  W.itemName = (key) => (key.startsWith('tech:') ? '功法《' + C().techniques[key.slice(5)].name + '》' : C().items[key] ? C().items[key].name : key);
+  W.itemName = (key) => {
+    if (!key.startsWith('tech:')) return C().items[key] ? C().items[key].name : key;
+    const t = C().techniques[key.slice(5)];
+    return (t.kind === 'kaifu' ? '开府真法' : '练炁术') + '《' + t.name + '》';
+  };
   W.sellPrice = (s, key) => Math.max(1, Math.floor(C().items[key].price * C().market.sellRatio));
 
   /* ---------- 道路 ---------- */
@@ -1603,7 +1878,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
 
   /* ---------- 斗法与逃遁 ---------- */
   const Combat = {};
-  Combat.beastNames = [['野狼', '山魈'], ['青鳞蛇', '獠牙野猪'], ['铁背熊', '赤目妖狼'], ['金纹豹妖', '黑水玄蛇'], ['三首妖蛟', '火鬃狮妖'], ['化形妖王', '千年蛟龙']];
+  Object.defineProperty(Combat, 'beastNames', { get: () => C().encounter.beastNames });
 
   Combat.fightChance = (s, p, foePower) => {
     const E = C().encounter;
@@ -1622,7 +1897,6 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (ratio > 1) parts.push({ label: '对方强出 ' + U.round1(ratio) + ' 倍', value: -Math.round(Math.min(30, (ratio - 1) * 10)) });
     else parts.push({ label: '对方不如你', value: Math.round(Math.min(20, (1 / ratio - 1) * 10)) });
     if (p.traits.includes('谨慎')) parts.push({ label: '谨慎', value: C().traits.cautiousFlee });
-    if (p.root.mutant === '风') parts.push({ label: '风灵根', value: C().roots.mutantWindFlee });
     if (p.health.state !== 'healthy') parts.push({ label: '带伤', value: p.health.state === 'heavy' ? -25 : -10 });
     const chance = Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 95));
     return { chance, parts };
@@ -1693,19 +1967,19 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   });
 
   const beastFoe = (s, b) => ({
-    name: b._beast, power: b._power, winText: '斗杀妖兽，可得妖兽材料',
+    name: b._beast, power: b._power, winText: '斗杀妖物，可得妖物材料',
     onWin: (s2, b2) => lootBeast(s2, b2._danger),
   });
   const npcFoe = (s, b) => {
     const p = s.people[b.foe];
     return {
-      name: p.name, power: P().power(s, p), winText: '击退对方，缴获其随身灵石；从此结仇',
+      name: p.name, power: P().power(s, p), winText: '击退对方，缴获其随身符钱；从此结仇',
       onWin(s2, b2) {
         const got = R.int(s2.rng, 5, 15) * Math.max(1, P().realmRank(p));
         s2.player.stone += got;
         P().injure(s2, p, 'light');
         P().adjustRelation(s2, s2.player.id, p.id, -60, '交手');
-        return `缴获灵石 ${got}，与${p.name}结仇`;
+        return `缴获符钱 ${got}，与${p.name}结仇`;
       },
       onLose(s2) { const lost = Math.floor(s2.player.stone * R.range(s2.rng, 0.3, 0.6)); s2.player.stone -= lost; P().adjustRelation(s2, s2.player.id, p.id, -30, '交手'); },
     };
@@ -1714,48 +1988,49 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const EV = {};
 
   EV.BEAST = {
-    name: '遭遇妖兽', category: '遭遇', severity: 2,
+    name: '遭遇妖物', category: '遭遇', severity: 2,
     text: (s, b, n) => `${n.place}，${b._why || '一头'}${b._beast}拦在前方（战力约 ${b._power}）。你如今${P().realmName(pl(s))}，战力 ${P().power(s, pl(s))}。`,
     options: [fightOpt(beastFoe), fleeOpt(beastFoe)],
   };
 
   EV.ROBBER = {
     name: '拦路劫修', category: '遭遇', severity: 3,
-    text: (s, b, n) => { const p = s.people[b.foe]; return `${n.place}，${n.foe}（${P().realmName(p)}，${P().factionName(s, p)}，战力 ${P().power(s, p)}）拦住去路，要你交出身上的灵石。你有灵石 ${s.player.stone}，战力 ${P().power(s, pl(s))}。`; },
+    text: (s, b, n) => { const p = s.people[b.foe]; return `${n.place}，${n.foe}（${P().realmName(p)}，${P().factionName(s, p)}，战力 ${P().power(s, p)}）拦住去路，要你留下买路符钱。你身上有符钱 ${s.player.stone}，战力 ${P().power(s, pl(s))}。`; },
     options: [
       fightOpt(npcFoe),
       {
         id: 'pay', label: '破财消灾',
-        cost: (s) => `灵石 −${Math.ceil(s.player.stone * 0.4)}`, risk: () => '无', outcome: () => '对方拿钱走人',
-        apply(s, b) { const lost = Math.ceil(s.player.stone * 0.4); s.player.stone -= lost; return { text: `交出灵石 ${lost}` }; },
+        cost: (s) => `符钱 −${Math.ceil(s.player.stone * 0.4)}`, risk: () => '无', outcome: () => '对方拿钱走人',
+        apply(s, b) { const lost = Math.ceil(s.player.stone * 0.4); s.player.stone -= lost; return { text: `交出符钱 ${lost}` }; },
       },
       fleeOpt(npcFoe),
     ],
   };
 
   EV.RUIN = {
-    name: '古修洞府', category: '机缘', severity: 3,
-    text: (s, b, n) => `${n.place}的山壁后露出一道残破禁制，像是前人坐化之地。外围已能看到些散落的灵物，深处禁制未散，不知还剩多少威力。`,
+    name: '前人遗府', category: '机缘', severity: 3,
+    text: (s, b, n) => `${n.place}的山壁后露出一道残破禁制，像是哪位前人坐化之地。南域常有传言，说早年有散修真人在此地埋下过道藏，留给后来人。外围已能看到些散落的灵物，深处禁制未散，不知还剩多少威力。`,
     options: [
       {
         id: 'safe', label: '只取外围',
-        cost: () => '无', risk: () => '无', outcome: () => '稳妥得一点灵石与灵草',
-        apply(s) { const st = R.int(s.rng, 15, 40); s.player.stone += st; giveItem(s, 'herb', 2); return { text: `得灵石 ${st}、灵草×2`, gain: true }; },
+        cost: () => '无', risk: () => '无', outcome: () => '稳妥得一点符钱与灵草',
+        apply(s) { const st = R.int(s.rng, 15, 40); s.player.stone += st; giveItem(s, 'herb', 2); return { text: `得符钱 ${st}、灵草×2`, gain: true }; },
       },
       {
         id: 'deep', label: '破禁深入',
         cost: () => '十天', risk: () => '约四成会触发残余禁制而受伤，且深处可能早已空无一物',
-        outcome: () => '若有所得，可能是丹药、灵石，甚至功法',
+        outcome: () => '若有所得，可能是丹药、符钱、符器，甚至一卷练炁术',
         // 结算后由 api 再推进 10 天
         apply(s, b, ctx) {
           if (R.chance(s.rng, 0.4)) { const h = Combat.hurt(s, pl(s), P().power(s, pl(s)) * 1.2, '洞府禁制', [ctx.hid]); return { text: '触动禁制，' + h.text, days: 10 }; }
           const roll = R.next(s.rng);
           if (roll < 0.35) return { text: '深处早被人搬空，只剩几只空玉瓶', days: 10 };
-          if (roll < 0.75) { const q = R.int(s.rng, 2, 4); giveItem(s, 'qiju', q); return { text: `寻得聚气丹×${q}`, gain: true, days: 10 }; }
-          if (roll < 0.92) { const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得灵石 ${st}`, gain: true, days: 10 }; }
-          const t = R.pick(s.rng, ['yellow_water', 'xuan_broken']);
+          if (roll < 0.65) { const q = R.int(s.rng, 2, 4); giveItem(s, 'qiju', q); return { text: `寻得${C().items.qiju.name}×${q}`, gain: true, days: 10 }; }
+          if (roll < 0.82) { const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得符钱 ${st}`, gain: true, days: 10 }; }
+          if (roll < 0.9) { giveItem(s, 'fuqi1', 1); return { text: `寻得一件${C().items.fuqi1.name}`, gain: true, days: 10 }; }
+          const t = R.weighted(s.rng, ['guiyuan', 'chiyang', 'xuanshui', 'handou', 'kaifu_low'], (k) => ({ guiyuan: 3, chiyang: 3, xuanshui: 3, handou: 1, kaifu_low: 1 }[k]));
           if (!s.player.manuals.includes(t)) s.player.manuals.push(t);
-          return { text: `寻得功法玉简《${C().techniques[t].name}》（可在行动里改修）`, gain: true, days: 10 };
+          return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 };
         },
       },
       { id: 'leave', label: '不去招惹', cost: () => '无', risk: () => '无', outcome: () => '什么也不会发生', apply() { return { text: '转身离开' }; } },
@@ -1826,21 +2101,21 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     let place, faction = null;
     const places = Object.values(s.places);
     if (O.faction) {
-      faction = Object.values(s.factions).find((f) => f.type === O.faction && (O.faction !== 'clan' || s.places[f.seatId].surname === surname));
+      faction = Object.values(s.factions).find((f) => (O.factionKey ? f.key === O.factionKey : f.type === O.faction) && (O.faction !== 'clan' || s.places[f.seatId].surname === surname));
       place = s.places[faction.seatId];
-    } else place = R.pick(r, places.filter((p) => p.type === O.place));
+    } else place = places.find((p) => p.name === O.placeName) || R.pick(r, places.filter((p) => p.type === O.place));
     const sex = opts.sex === 'F' || opts.sex === 'M' ? opts.sex : R.chance(r, 0.5) ? 'M' : 'F';
     const given = (opts.given || '').trim().slice(0, 3);
     const p = P().create(s, {
       name: given ? surname + given : null, surname, sex, birthYear: s.year - cf.life.adultAge,
-      realm: Object.assign({}, O.realm), aptitude: Math.round(U.clamp(R.normal(r, 50, 15), 10, 95)),
+      realm: Object.assign({}, O.realm), aptitude: Math.round(U.clamp(R.normal(r, cf.aptitude.playerMean, cf.aptitude.sd), 10, cf.aptitude.max)),
       techniqueId: O.technique, locationId: place.id, factionId: faction ? faction.id : null, role: faction ? 'member' : 'loose',
     });
     s.player = {
       id: p.id,
       stone: O.stone,
       inv: Object.assign({}, O.inv),
-      manuals: [O.technique],
+      manuals: O.technique ? [O.technique] : [],
       qijuUntil: 0,
       visited: [place.id],
       lastFortuneT: -1e9,
@@ -1849,6 +2124,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (faction) {
       faction.relToPlayer = 20;
       if (faction.leaderId) P().adjustRelation(s, p.id, faction.leaderId, 10, faction.type === 'clan' ? '族人' : '同门');
+      if (faction.type === 'sect') {
+        // 同门里先认得一两个人
+        const mates = P().living(s).filter((q) => q.factionId === faction.id && q.id !== faction.leaderId && q.id !== p.id).slice(0, 2);
+        for (const q of mates) P().adjustRelation(s, p.id, q.id, 8, '同门');
+      }
     }
     for (const pl of places) if (W().hasMarket(s, pl.id)) W().refreshMarket(s, pl.id);
     H().add(s, {
@@ -1875,8 +2155,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const healMult = mode === 'rest' ? cf.life.restHealMult : 1;
       if (P().heal(p, step * healMult)) H().add(s, { type: 'health', tags: ['伤愈'], actors: [p.id], key: 'injury_heal', pov: true, params: { name: p.name }, severity: 1 });
       if (mode === 'cultivate') {
-        const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t }).total;
-        if (P().isFull(p) && CU().gateKind(p)) p.fullDays += step;
+        const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t, coin: !!opts.coin }).total;
+        if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
         s.player.stats.cultivateDays += step;
       }
@@ -1920,7 +2200,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
     if (P().alive(pl) && pl.factionId && s.factions[pl.factionId]) {
       const f = s.factions[pl.factionId];
-      const st = cf.factionTypes[f.type].stipend;
+      const arr = cf.factionTypes[f.type].stipend;
+      const st = arr[Math.min(arr.length - 1, f.type === 'sect' ? f.tier : 0)];
       if (st > 0) { s.player.stone += st; H().add(s, { type: 'stipend', tags: ['份例'], actors: [pl.id], factions: [f.id], key: 'stipend', pov: true, params: { faction: f.name, stone: st }, severity: 1 }); }
     }
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
@@ -1958,6 +2239,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const RT = C().rating;
     const parts = [
       { label: '最高境界', value: p.peakRank * RT.perRank },
+      { label: '道基与紫府', value: (p.daoji === 3 ? 2 : 0) + (p.yixiang === 3 ? 3 : p.yixiang === 2 ? 1 : 0) },
       { label: '足迹（' + s.player.visited.length + ' 处）', value: Math.min(RT.extraMax, Math.floor(s.player.visited.length / 2)) },
       { label: '斗法胜场', value: Math.min(RT.extraMax, Math.floor(s.player.stats.wins / 3)) },
       { label: '知交', value: Math.min(RT.extraMax, P().relationsOf(s, p.id).filter((r) => r.type === 'close').length * 2) },
@@ -1981,7 +2263,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     for (const r of s.relations) if (!s.people[r.a] || !s.people[r.b]) fail('关系引用了不存在的人物');
     for (const f of Object.values(s.factions)) if (!s.places[f.seatId]) fail(f.name + ' 驻地不存在');
     for (const pl of Object.values(s.places)) for (const l of pl.links) if (!s.places[l.to]) fail(pl.name + ' 的道路通向不存在的地点');
-    if (!(s.player.stone >= 0) || !Number.isInteger(s.player.stone)) fail('灵石数量异常：' + s.player.stone);
+    if (!(s.player.stone >= 0) || !Number.isInteger(s.player.stone)) fail('符钱数量异常：' + s.player.stone);
     for (const k in s.player.inv) if (!(s.player.inv[k] >= 0) || !Number.isInteger(s.player.inv[k])) fail('物品数量异常：' + k);
     for (const e of s.pending) if (!FX.Ev.valid(s, e.bound)) fail('待决事件引用失效');
     return true;
@@ -2016,7 +2298,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const me = (s) => P().player(s);
   const here = (s) => s.places[me(s).locationId];
   const giveItem = (s, key, n) => { s.player.inv[key] = (s.player.inv[key] || 0) + n; };
-  const isTown = (place) => place.type === 'town' || place.type === 'sect' || place.type === 'clan';
+  const isTown = (place) => ['town', 'city', 'sect', 'clan'].includes(place.type);
   // “求取”类行动（游历、突破、结交、请教）是否有收获，用于检验原则二
   const seek = (s, gain) => { s.player.stats.seek++; if (!gain) s.player.stats.seekNoGain++; };
 
@@ -2028,19 +2310,31 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const out = [];
     const add = (o) => out.push(Object.assign({ ok: true, reason: '' }, o));
     // 修炼 / 闭关
-    for (const d of cf.actions.cultivateDays) add({ type: 'cultivate', days: d, label: (d >= 360 ? '闭关 ' : '修炼 ') + T().dur(d), group: '修炼' });
+    const verb = p.realm.major === 0 ? '静坐参悟 ' : p.realm.major === 1 ? '温养胎息 ' : null;
+    for (const d of cf.actions.cultivateDays) add({ type: 'cultivate', days: d, label: (verb || (d >= 360 ? '闭关 ' : '修炼 ')) + T().dur(d), group: '修炼' });
+    // 以符钱修行（练炁以上）
+    const cpy = CU().coinPerYear(p);
+    if (cpy) for (const d of cf.actions.coinDays) {
+      const cost = Act.coinCost(p, d);
+      add({ type: 'cultivate', coin: true, days: d, cost, label: '以符钱修行 ' + T().dur(d) + '（' + cost + ' 符钱）', group: '修炼', ok: s.player.stone >= cost, reason: s.player.stone >= cost ? '' : '符钱不够（需 ' + cost + '）' });
+    }
     // 突破
     const can = CU().canAttempt(s, p);
     if (CU().gateKind(p)) {
       const ch = CU().chance(s, p);
-      add({ type: 'breakthrough', days: ch.days, label: '冲击' + ch.target + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
+      add({ type: 'breakthrough', days: ch.days, label: (ch.kind === 'taixi' ? '参悟胎息' : '冲击' + ch.target) + '（' + ch.chance + '%）', group: '修炼', ok: can.ok, reason: can.ok ? '' : can.reason });
     }
-    // 服药、改修功法
-    for (const k of ['qiju', 'heal', 'yanshou']) if (s.player.inv[k] > 0) {
-      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '延寿丹已无效' : '';
+    // 服药、研习练炁术
+    for (const k of cf.usable) if (s.player.inv[k] > 0) {
+      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '再服已无效' : '';
       add({ type: 'use', item: k, days: 0, label: '服用' + cf.items[k].name, group: '物品', ok: !why, reason: why });
     }
-    for (const t of s.player.manuals) if (t !== p.techniqueId) add({ type: 'learn', tech: t, days: 30, label: '改修《' + cf.techniques[t].name + '》', group: '修炼' });
+    for (const t of s.player.manuals) {
+      const tc = cf.techniques[t];
+      if (tc.kind !== 'lianqi' || t === p.techniqueId) continue;
+      const why = p.realm.major === 0 ? '尚未证得胎息' : p.realm.major >= 3 ? '道基已成，练炁术不能再换' : '';
+      add({ type: 'learn', tech: t, days: 30, label: (p.techniqueId ? '改修《' : '研习《') + tc.name + '》', group: '修炼', ok: !why, reason: why });
+    }
     // 游历
     for (const d of cf.actions.exploreDays) add({ type: 'explore', days: d, label: '在' + place.name + '游历 ' + T().dur(d), group: '外出' });
     // 赶路
@@ -2072,7 +2366,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && ['days', 'to', 'npc', 'item', 'tech'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
     if (s.ended) return { ok: false, error: '这一生已经结束' };
@@ -2092,14 +2387,17 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   /* ---------- 修炼 ---------- */
   Act.DO.cultivate = (s, a) => {
     const p = me(s), place = here(s);
-    const r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90 });
+    if (a.coin) s.player.stone -= a.cost; // 符钱先炼进去，被打断也回不来
+    const r = Sim().passDays(s, a.days, 'cultivate', { interruptible: a.days >= 90, coin: !!a.coin });
     if (!P().alive(p)) return { text: '' };
     const dur = T().dur(r.used);
-    let key = 'cultivate';
+    let key = a.coin ? 'cultivate_coin' : 'cultivate';
     if (r.interrupted) key = 'cultivate_cut';
     else if (r.gained <= 0) key = 'cultivate_idle';
-    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained } });
-    return { text: `修炼 ${dur}，修为 +${r.gained}`, interrupted: r.interrupted };
+    const what = ['气感', '胎息'][p.realm.major] || '修为';
+    const verb = ['静坐', '温养胎息'][p.realm.major] || (a.days >= 360 ? '闭关' : '修炼');
+    H().add(s, { type: 'cultivate', tags: ['修炼'], actors: [p.id], places: [place.id], key, pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(a.days), done: r.used, gain: r.gained, cost: a.cost || 0, what, verb } });
+    return { text: `${a.coin ? '以符钱修行' : verb} ${dur}，${what} +${r.gained}`, interrupted: r.interrupted };
   };
 
   Act.DO.breakthrough = (s, a) => {
@@ -2127,9 +2425,16 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const p = me(s);
     Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
+    const first = !p.techniqueId;
+    let loss = '';
+    if (!first && p.realm.major === 2) {
+      p.progress = Math.floor(p.progress * (1 - C().switchLoss));
+      loss = '，真炁性质不同，修为折去 ' + Math.round(C().switchLoss * 100) + '%';
+    }
     p.techniqueId = a.tech;
-    H().add(s, { type: 'learn', tags: ['功法'], actors: [p.id], key: 'learn', pov: true, severity: 2, params: { name: p.name, tech: C().techniques[a.tech].name } });
-    return { text: '改修《' + C().techniques[a.tech].name + '》' };
+    H().add(s, { type: 'learn', tags: ['功法'], actors: [p.id], key: first ? 'learn_first' : 'learn', pov: true, severity: 2, params: { name: p.name, tech: C().techniques[a.tech].name, loss } });
+    CU().autoAdvance(s, p);
+    return { text: (first ? '研习《' : '改修《') + C().techniques[a.tech].name + '》' + loss };
   };
 
   Act.DO.rest = (s, a) => {
@@ -2151,7 +2456,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const stone = R.int(s.rng, job.stone[0], job.stone[1]) + Math.round(P().realmRank(p) * job.perRank);
     s.player.stone += stone;
     H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone } });
-    return { text: `得灵石 ${stone}` };
+    return { text: `得符钱 ${stone}` };
   };
 
   Act.marketOf = (s) => (W().hasMarket(s, here(s).id) ? s.markets[here(s).id] : null);
@@ -2163,7 +2468,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const slot = m.stock.find((x) => x.item === item);
     if (!slot || slot.qty < qty) return { ok: false, error: '货不够' };
     const cost = slot.price * qty;
-    if (s.player.stone < cost) return { ok: false, error: '灵石不足（需 ' + cost + '）' };
+    if (s.player.stone < cost) return { ok: false, error: '符钱不足（需 ' + cost + '）' };
     s.player.stone -= cost;
     slot.qty -= qty;
     if (item.startsWith('tech:')) { const t = item.slice(5); if (!s.player.manuals.includes(t)) s.player.manuals.push(t); }
@@ -2183,7 +2488,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     s.player.stone += gain;
     const p = me(s);
     H().add(s, { type: 'trade', tags: ['坊市'], actors: [p.id], places: [here(s).id], key: 'sell', pov: true, severity: 1, params: { name: p.name, place: here(s).name, item: C().items[item].name, qty, gain } });
-    return { ok: true, text: '卖得灵石 ' + gain };
+    return { ok: true, text: '卖得符钱 ' + gain };
   };
 
   /* ---------- 赶路（逐段走，每段按危险度可能出事）---------- */
@@ -2278,7 +2583,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           s.player.stats.exploreNothing++;
           return { text: foe.name + '拦住了你', interrupted: true };
         }
-        const what = R.pick(s.rng, ['被人在人群里摸走了钱袋', '买到一批掺了假的灵草', '被骗进赌局输了一把']);
+        const what = R.pick(s.rng, ['被人在人群里摸走了干坤袋', '买到一批掺了假的灵草', '被骗进赌局输了一把']);
         const loss = Math.floor(s.player.stone * R.range(s.rng, E.troubleStoneFrac[0], E.troubleStoneFrac[1]));
         s.player.stone -= loss;
         add(loss > 0 ? 'explore_trouble' : 'explore_trouble_none', { what, loss }, 2);
@@ -2290,15 +2595,15 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         if (downgraded || isTown(place)) {
           const st = R.int(s.rng, 10, 30);
           s.player.stone += st;
-          add('explore_fortune_downgraded', { loot: '灵石 ' + st });
+          add('explore_fortune_downgraded', { loot: '符钱 ' + st });
           seek(s, true);
-          return { text: '得灵石 ' + st };
+          return { text: '得符钱 ' + st };
         }
         s.player.lastFortuneT = s.t;
         s.player.stats.fortunes++;
         FX.Ev.spawn(s, 'RUIN', { place: place.id }, []);
         seek(s, true);
-        return { text: '发现一处古修洞府', interrupted: true };
+        return { text: '发现一处前人遗府', interrupted: true };
       }
       default:
         add('explore_nothing', {});
@@ -2311,14 +2616,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   // 劫修：优先用附近的邪修或品行不端的散修，没有就生成一个
   Act.pickRobber = (s, place) => {
     const p = me(s);
-    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && q.realm.major <= p.realm.major + 1);
+    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3);
     const nearby = evil.filter((q) => q.locationId === place.id || s.places[q.locationId].links.some((l) => l.to === place.id));
     if (nearby.length) { const q = R.pick(s.rng, nearby); q.locationId = place.id; return q; }
-    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, 9);
-    return W().spawnNpc(s, { realm: { major: 1, stage: rank }, locationId: place.id });
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, 12);
+    return W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: place.id });
   };
 
-  // 闭关被打扰：在野外多是妖兽，在人多处多是劫修
+  // 闭关被打扰：在野外多是妖物，在人多处多是劫修
   Act.disturb = (s, place) => {
     if (place.type === 'wild' || place.type === 'danger') {
       const d = Math.max(1, place.danger);
@@ -2348,14 +2653,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (k === 'place') {
       const unknown = Object.values(s.places).filter((x) => !s.player.visited.includes(x.id));
       const pl = unknown.length ? R.pick(r, unknown) : R.pick(r, Object.values(s.places));
-      return `${pl.name}灵气${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'][pl.qi]}，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖兽出没' : '还算太平'}。`;
+      return `${pl.name}灵机${['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'][pl.qi]}，灵气属「${pl.attr}」，${pl.danger >= 3 ? '据说凶险得很' : pl.danger >= 1 ? '偶有妖物出没' : '还算太平'}。`;
     }
     if (k === 'market') {
       const rare = [];
       for (const id in s.markets) for (const x of s.markets[id].stock) if (!['qiju', 'heal'].includes(x.item) && x.qty > 0) rare.push({ id, x });
-      if (rare.length) { const it = R.pick(r, rare); return `${s.places[it.id].name}的坊市里有${W().itemName(it.x.item)}出售，要价 ${it.x.price} 灵石。`; }
+      if (rare.length) { const it = R.pick(r, rare); return `${s.places[it.id].name}的货架上有${W().itemName(it.x.item)}，要价 ${it.x.price} 符钱。`; }
     }
-    const strong = P().living(s).filter((q) => q.realm.major >= 2).sort((a, b) => P().realmRank(b) - P().realmRank(a) || (a.id < b.id ? -1 : 1));
+    const strong = P().living(s).filter((q) => q.realm.major >= 3).sort((a, b) => P().realmRank(b) - P().realmRank(a) || (a.id < b.id ? -1 : 1));
     if (!strong.length) return '近来没什么大事。';
     const q = R.pick(r, strong.slice(0, 8));
     return `${P().factionName(s, q)}的${q.name}乃是${P().realmName(q)}修士，常在${s.places[q.locationId].name}。`;
@@ -2461,6 +2766,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     let st = save.state;
     if (typeof save.schemaVersion !== 'number') return { ok: false, error: '缺少 schemaVersion' };
     if (save.schemaVersion === 1) return { ok: false, error: '这是旧版“经营家族”的存档，个人主角版无法读取' };
+    if (save.schemaVersion === 2) return { ok: false, error: '这是换成《仙业》世界之前的存档（灵根、炼气那一套），世界和境界都变了，无法读取' };
     if (save.schemaVersion > cur) return { ok: false, error: `存档版本 ${save.schemaVersion} 比游戏版本 ${cur} 新，请更新游戏` };
     // 校验和针对原始 state 计算
     if (save.checksum && U.hash(JSON.stringify(st)) !== save.checksum) return { ok: false, error: '校验和不符，存档可能已损坏或被改动' };
@@ -2521,11 +2827,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         const bt = FX.CU.gateKind(p) ? FX.CU.chance(s, p) : null;
         return {
           t: s.t, year: s.year, date: FX.T.fmt(s.t),
-          me: p, age: P.age(s, p), realm: P.realmName(p), need: P.need(p), full: P.isFull(p),
+          me: p, age: P.age(s, p), realm: P.realmName(p), realmTitle: P.realmTitle(p), title: P.title(p), need: P.need(p), full: P.isFull(p),
           left: P.lifespanLeft(s, p), lifespan: P.lifespanTotal(p),
           speed: FX.CU.breakdown(s, p, { pill: s.player.qijuUntil > s.t }),
           power: P.powerBreakdown(s, p),
-          tech: P.techOf(s, p), fit: FX.CU.techFit(s, p),
+          tech: P.techOf(s, p), lianqi: P.lianqiOf(p), fit: FX.CU.attrFit(s, p, place),
+          coinPerYear: FX.CU.coinPerYear(p),
+          reqs: FX.CU.requirements(s, p),
           faction: p.factionId ? s.factions[p.factionId] : null,
           place, stone: s.player.stone, inv: s.player.inv, manuals: s.player.manuals,
           pillUntil: s.player.qijuUntil > s.t ? s.player.qijuUntil : null,
@@ -2540,6 +2848,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         return {
           place: pl,
           typeName: C().world.placeTypes[pl.type].name,
+          fit: FX.CU.attrFit(s, me, pl),
           faction: pl.factionId ? s.factions[pl.factionId] : null,
           visited: s.player.visited.includes(id),
           here: me.locationId === id,
@@ -2557,6 +2866,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           p, isMe,
           age: P.age(s, p),
           realm: P.realmName(p),
+          realmTitle: P.realmTitle(p),
           need: P.need(p),
           left: P.lifespanLeft(s, p),
           power: P.power(s, p),
@@ -2706,8 +3016,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
   const stars = (n, max) => '●'.repeat(n) + '○'.repeat(Math.max(0, (max || 5) - n));
-  const DANGER = ['太平', '偶有妖兽', '有些凶险', '凶险', '十分凶险', '九死一生'];
+  const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生'];
   const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓'];
+  const realmOf = (realm) => P.realmName({ realm });
+  const techLine = (t) => t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : '';
+  const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : '修为');
 
   function toast(msg, ms) {
     let box = document.getElementById('toasts');
@@ -2772,7 +3085,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const bottom = PAGES.map((p) => `<button class="${UI.page === p.id ? 'on' : ''}" data-act="page" data-p="${p.id}">${p.short || p.name}</button>`).join('');
     root.innerHTML = `
       <div class="app">
-        <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(ov.me.name)} · ${esc(ov.date)}</div>${nav}</nav>
+        <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(CF.world.region)}</div><div class="sub">${esc(ov.me.name)} · ${esc(ov.date)}</div>${nav}</nav>
         <main id="main"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
         <aside class="right" aria-label="最近经历">${renderAside()}</aside>
       </div>
@@ -2794,7 +3107,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const o = CF.origins, st = UI.start;
     return `<div class="start">
       <h1 style="text-align:center">家族修仙录</h1>
-      <p class="muted" style="text-align:center">你只是一个刚满十六岁的修士。世界不会等你，也不保证你走运。</p>
+      <p class="muted" style="text-align:center">${esc(CF.world.region)}，东弥州有名的穷土，灵机匮乏，没有大派。<br>你只是一个十六岁的少年。世界不会等你，也不保证你走运。</p>
       <div class="card"><h3>继续</h3><div class="row">
         <button class="primary" data-act="continue" ${UI.hasAuto ? '' : 'disabled'}>继续上次（自动存档）</button>
         <button data-act="openSaves">读取存档 / 导入</button>
@@ -2802,9 +3115,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       <div class="card"><h3>新的一生</h3>
         <div class="grid">${Object.keys(o).map((k) => `<div class="card origin ${st.origin === k ? 'sel' : ''}" data-act="pickOrigin" data-k="${k}" tabindex="0" role="button" aria-pressed="${st.origin === k}">
           <h3>${o[k].name}</h3><p class="muted">${o[k].blurb}</p>
-          <div class="stat"><span>起点</span><b>炼气${CF.realms.stageNames[1][o[k].realm.stage - 1]}</b></div>
-          <div class="stat"><span>灵石</span><b>${o[k].stone}</b></div>
-          <div class="stat"><span>功法</span><b>${CF.techniques[o[k].technique].name}</b></div>
+          <div class="stat"><span>起点</span><b>${realmOf(o[k].realm)}</b></div>
+          <div class="stat"><span>符钱</span><b>${o[k].stone}</b></div>
+          <div class="stat"><span>练炁术</span><b>${o[k].technique ? CF.techniques[o[k].technique].name : '无'}</b></div>
           <div class="stat"><span>身家</span><b>${Object.entries(o[k].inv).map(([i, n]) => CF.items[i].name + '×' + n).join('、') || '无'}</b></div>
         </div>`).join('')}</div>
         <div class="row" style="margin-top:1em">
@@ -2814,7 +3127,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           <label>种子 <input type="text" id="in-seed" value="${esc(st.seed)}" placeholder="随机" style="width:9em"></label>
           <button class="primary" data-act="newGame">踏入仙途</button>
         </div>
-        <p class="muted">灵根与资质由种子决定。种子相同、选择相同，这一生就逐位相同。小族子弟的家族会以你的姓氏命名。</p>
+        <p class="muted">资质与世界由种子决定。种子相同、选择相同，这一生就逐位相同。修道家族子弟的家族会以你的姓氏命名。</p>
+        <p class="muted">世界与设定取自鹓扶君《仙业》的东弥州南域：胎息、练炁、筑基、紫府、洞玄、金丹，玄真派、五光宗、花神府、金谷墟市、地渊。</p>
       </div></div>`;
   }
 
@@ -2832,41 +3146,44 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const place = ov.place;
     const pv = Game.view.place(s, place.id);
     const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a ? '' : 'disabled'}>${esc(to.name)} <span class="muted">${l.days} 天 · ${DANGER[to.danger]}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}</span></button>`; }).join('');
+    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>`;
+    const fit = ov.fit;
     const disabled = s.ended || s.pending.length;
     return `
       <div class="grid">
         <div class="card hl">
           <div class="row between"><h2 style="margin:0">${esc(me.name)}</h2><span class="muted">${me.sex === 'M' ? '男' : '女'} · ${ov.age} 岁 · ${esc(ov.faction ? ov.faction.name : '散修')}</span></div>
-          <div class="big">${esc(ov.realm)}</div>
-          ${need ? `<div class="row between"><span class="muted">修为</span><span class="num">${n1(me.progress)} / ${need}${ov.full ? ' <span class="warn">已圆满</span>' : ''}</span></div>${bar(prog, ov.full ? 'good' : '')}` : ''}
+          <div class="big">${esc(ov.realmTitle)}${ov.title ? ' <span class="tag">' + esc(ov.title) + '</span>' : ''}</div>
+          ${need ? `<div class="row between"><span class="muted">${progLabel(me.realm.major)}</span><span class="num">${n1(me.progress)} / ${need}${ov.full ? ' <span class="warn">已圆满</span>' : ''}</span></div>${bar(prog, ov.full ? 'good' : '')}` : ''}
           <div class="stat"><span>${trace('修炼速度', ov.speed.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span><b>${ov.speed.total} / 年</b></div>
           <div class="stat"><span>寿元</span><b class="${ov.left < 15 ? 'bad' : ''}">余 ${ov.left} 年（上限 ${ov.lifespan}）</b></div>
           <div class="stat"><span>伤势</span><b>${health}</b></div>
           <div class="stat"><span>${trace('斗法战力', ov.power.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span><b>${ov.power.total}</b></div>
-          <div class="stat"><span>灵根 / 资质</span><b>${CF.roots.names[me.root.type]}${me.root.mutant ? '（' + me.root.mutant + '）' : ' ' + me.root.elements.join('')} / ${me.aptitude}</b></div>
-          <div class="stat"><span>功法</span><b>《${esc(ov.tech.name)}》 适配 ${ov.fit}</b></div>
-          <div class="stat"><span>灵石</span><b>${n0(ov.stone)}</b></div>
-          ${ov.pillUntil ? `<div class="stat"><span>聚气丹药力</span><b>至 ${T.fmt(ov.pillUntil)}</b></div>` : ''}
+          <div class="stat"><span>资质</span><b>${me.aptitude}${me.daoji ? ' · ' + CF.daojiNames[me.daoji] : ''}${me.yixiang ? ' · ' + CF.yixiangNames[me.yixiang] : ''}</b></div>
+          <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
+          ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
+          <div class="stat"><span>符钱</span><b>${n0(ov.stone)}</b></div>
+          ${ov.pillUntil ? `<div class="stat"><span>${esc(CF.items.qiju.name)}药力</span><b>至 ${T.fmt(ov.pillUntil)}</b></div>` : ''}
           <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         </div>
         <div class="card">
           <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc(pv.typeName)}</span></div>
-          <div class="stat"><span>灵气</span><b>${stars(place.qi)} ${QI[place.qi]}${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
+          <div class="stat"><span>灵机</span><b>${stars(place.qi)} ${QI[place.qi]} · 属「${esc(place.attr)}」${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
           <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(place.danger)} ${DANGER[place.danger]}</b></div>
           <div class="stat"><span>势力</span><b>${pv.faction ? esc(pv.faction.name) : '无人管辖'}</b></div>
           <div class="stat"><span>此地的人</span><b>${pv.people.length} 人 <button class="link" data-act="page" data-p="people">看看</button></b></div>
-          ${pv.market ? `<div class="stat"><span>坊市</span><b><button class="link" data-act="page" data-p="bag">去逛逛</button></b></div>` : ''}
+          ${pv.market ? `<div class="stat"><span>${place.type === 'city' ? '集市' : '货架'}</span><b><button class="link" data-act="page" data-p="bag">去逛逛</button></b></div>` : ''}
           <h3 style="margin-top:.8em">道路</h3><div class="col">${travel || '<span class="muted">无路可走</span>'}</div>
         </div>
       </div>
-      ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>冲击${esc(bt.target)}</h3>
-        <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死</span>` : ''} · 需 ${T.dur(bt.days)}</p>
+      ${bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : '冲击' + esc(bt.target)}</h3>
+        <p>成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.tianfa ? '（天罚）' : ''}</span>` : ''} · 需 ${T.dur(bt.days)}</p>
         <p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>
-        <div class="reqs">${FX.CU.requirements(s, me).map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}</div>`).join('')}</div>
-        ${bt.can.ok ? '' : `<p class="bad">暂不能冲关：${esc(bt.can.reason)}</p>`}</div>` : ''}
+        ${reqList(ov.reqs)}
+        ${bt.can.ok ? '' : `<p class="bad">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}</div>` : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : ''}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
         ${['修炼', '外出', '营生', '物品'].map((g) => grp(g).length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${grp(g).map(btn).join('')}</div></div>` : '').join('')}
-        <p class="muted" style="margin-bottom:0">闭关一年以上可能被打扰；游历多半一无所获，偶有遭遇。时间一过就回不来。</p>
+        <p class="muted" style="margin-bottom:0">闭关一年以上可能被打扰；游历多半一无所获，偶有遭遇。练炁以后可以把符钱炼进去修行，奢费但不挑地方。时间一过就回不来。</p>
       </div>`;
   };
 
@@ -2888,9 +3205,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         <circle cx="${X(p)}" cy="${Y(p)}" r="${here ? 13 : 10}"/>
         <text x="${X(p)}" y="${Y(p) + 28}" class="pname">${esc(p.name)}</text></g>`;
     }).join('');
-    return `<h2>地图</h2>
+    return `<h2>地图 <span class="muted">${esc(cw.region)}</span></h2>
       <div class="card map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="世界地图">${lines.join('')}${nodes}</svg></div>
-      <p class="muted">点地点看详情。<span class="legend t-town">●</span>坊市 <span class="legend t-sect">●</span>宗门 <span class="legend t-clan">●</span>家族驻地 <span class="legend t-wild">●</span>山野 <span class="legend t-danger">●</span>险地；描金边的是你去过的地方，大圈是你所在之处。</p>`;
+      <p class="muted">点地点看详情。${Object.keys(cw.placeTypes).map((k) => `<span class="legend t-${k}">●</span>${esc(cw.placeTypes[k].name)}`).join(' ')}；描金边的是你去过的地方，大圈是你所在之处。</p>`;
   };
 
   /* ---------- 人物 ---------- */
@@ -2924,13 +3241,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const sellable = inv.filter(([k]) => CF.items[k]);
     const learn = A.filter((a) => a.type === 'learn');
     return `<h2>行囊</h2>
-      <div class="card"><div class="stat"><span>灵石</span><b class="big">${n0(ov.stone)}</b></div>
+      <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
-        <h3>功法</h3>${ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(CF.techniques[t].grade)}阶 · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}">改修（1 个月）</button>` : ''; })()}</span></div>`).join('')}
+        <h3>法门</h3>${ov.manuals.length ? ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
       </div>
-      ${m ? `<div class="card"><h3>${esc(ov.place.name)}坊市 <span class="muted">（${m.year} 年货架，每年换一次）</span></h3>
-        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty}</span></span><span class="row"><b>${x.price} 灵石</b><button data-act="buy" data-k="${esc(x.item)}" ${x.qty > 0 && ov.stone >= x.price ? '' : 'disabled'}>买 1</button></span></div>`).join('')}
-        ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖兽材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地没有坊市。坊市在坊市、宗门两类地方。</p></div>`}`;
+      ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
+        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b><button data-act="buy" data-k="${esc(x.item)}" ${x.qty > 0 && ov.stone >= x.price ? '' : 'disabled'}>买 1</button></span></div>`).join('')}
+        ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}`;
   };
 
   /* ---------- 纪事 ---------- */
@@ -2947,7 +3264,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角改造的第 1 阶段：主角、世界、时间、修炼与遭遇都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼与遭遇都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -2977,9 +3294,10 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const p = v.p;
       return `<div class="row between"><h2>${esc(p.name)}</h2><button data-act="close" aria-label="关闭">✕</button></div>
         <p>${p.sex === 'M' ? '男' : '女'} · ${v.age} 岁 · ${esc(v.faction)} · ${p.status === 'alive' ? '在' + esc(v.place) : '已故'}</p>
-        <div class="stat"><span>境界</span><b>${esc(v.realm)}</b></div>
+        <div class="stat"><span>境界</span><b>${esc(v.realmTitle)}</b></div>
         <div class="stat"><span>战力</span><b>${v.power}</b></div>
-        ${v.isMe ? `<div class="stat"><span>灵根 / 资质</span><b>${CF.roots.names[p.root.type]} / ${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
+        ${p.daoji ? `<div class="stat"><span>根基</span><b>${CF.daojiNames[p.daoji]}${p.yixiang ? ' · ' + CF.yixiangNames[p.yixiang] : ''}</b></div>` : ''}
+        ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         ${v.isMe ? `<h3>生平</h3><p>${esc(v.life)}</p>` : ''}
         <h3>${v.isMe ? '人生记录' : '你与此人'}</h3><div class="log">${v.history.slice().reverse().map((e) => `<p><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">无</p>'}</div>`;
@@ -2991,12 +3309,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const next = v.route && v.route.path.length > 1 ? A.find((a) => a.type === 'travel' && a.to === v.route.path[1]) : null;
       return `<div class="row between"><h2>${esc(p.name)}</h2><button data-act="close" aria-label="关闭">✕</button></div>
         <p>${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''}${v.here ? ' · <b class="warn">你在这里</b>' : v.visited ? ' · 去过' : ' · 没去过'}</p>
-        <div class="stat"><span>灵气</span><b>${stars(p.qi)} ${QI[p.qi]}</b></div>
+        <div class="stat"><span>灵机</span><b>${stars(p.qi)} ${QI[p.qi]} · 属「${esc(p.attr)}」</b></div>
+        ${v.fit ? `<div class="stat"><span>你在此采气</span><b class="${v.fit.value >= 1 ? 'good' : v.fit.value < 0.5 ? 'bad' : ''}">${esc(v.fit.short)} ×${v.fit.value}</b></div>` : ''}
+        ${v.faction && v.faction.blurb ? `<p class="muted">${esc(v.faction.blurb)}</p>` : ''}
         <div class="stat"><span>危险</span><b class="${p.danger >= 3 ? 'bad' : ''}">${stars(p.danger)} ${DANGER[p.danger]}</b></div>
         <div class="stat"><span>相邻</span><span>${p.links.map((l) => esc(s.places[l.to].name) + ' ' + l.days + '天').join('、')}</span></div>
         ${v.here ? '' : v.route ? `<p>从你所在之处出发：${v.route.path.map((id) => esc(s.places[id].name)).join(' → ')}，共 ${v.route.days} 天。路是一段一段走的，每段都可能出事。</p>
           ${next ? `<div class="row"><button class="primary" data-act="do" data-i="${A.indexOf(next)}" data-close="1">先走第一段：${esc(next.label)}</button></div>` : ''}` : ''}
-        ${v.visited ? `<p class="muted">此地有 ${v.people.length} 人${v.market ? '，有坊市' : ''}。</p>` : ''}`;
+        ${v.visited ? `<p class="muted">此地有 ${v.people.length} 人${v.market ? '，可以买卖东西' : ''}。</p>` : ''}`;
     },
     ending() {
       const s = UI.s, p = P.player(s), r = Game.view.rating(s);

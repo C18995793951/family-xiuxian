@@ -31,11 +31,13 @@
         const bt = FX.CU.gateKind(p) ? FX.CU.chance(s, p) : null;
         return {
           t: s.t, year: s.year, date: FX.T.fmt(s.t),
-          me: p, age: P.age(s, p), realm: P.realmName(p), need: P.need(p), full: P.isFull(p),
+          me: p, age: P.age(s, p), realm: P.realmName(p), realmTitle: P.realmTitle(p), title: P.title(p), need: P.need(p), full: P.isFull(p),
           left: P.lifespanLeft(s, p), lifespan: P.lifespanTotal(p),
           speed: FX.CU.breakdown(s, p, { pill: s.player.qijuUntil > s.t }),
           power: P.powerBreakdown(s, p),
-          tech: P.techOf(s, p), fit: FX.CU.techFit(s, p),
+          tech: P.techOf(s, p), lianqi: P.lianqiOf(p), fit: FX.CU.attrFit(s, p, place),
+          coinPerYear: FX.CU.coinPerYear(p),
+          reqs: FX.CU.requirements(s, p),
           faction: p.factionId ? s.factions[p.factionId] : null,
           place, stone: s.player.stone, inv: s.player.inv, manuals: s.player.manuals,
           pillUntil: s.player.qijuUntil > s.t ? s.player.qijuUntil : null,
@@ -50,6 +52,7 @@
         return {
           place: pl,
           typeName: C().world.placeTypes[pl.type].name,
+          fit: FX.CU.attrFit(s, me, pl),
           faction: pl.factionId ? s.factions[pl.factionId] : null,
           visited: s.player.visited.includes(id),
           here: me.locationId === id,
@@ -67,6 +70,7 @@
           p, isMe,
           age: P.age(s, p),
           realm: P.realmName(p),
+          realmTitle: P.realmTitle(p),
           need: P.need(p),
           left: P.lifespanLeft(s, p),
           power: P.power(s, p),

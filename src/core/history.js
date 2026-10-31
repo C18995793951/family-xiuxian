@@ -26,18 +26,21 @@
   // 文本模板（config 区块）：同一键可有多个变体，按记录 id 轮换，不消耗随机数
   const TX = (FX.CONFIG.text = {
     start: ['{name}，{origin}，{age} 岁，{realm}。这一年，{name}站在{place}，仙路从此开始。'],
-    cultivate: ['{name}在{place}修炼 {dur}，修为 +{gain}。', '{name}于{place}闭关 {dur}，修为增长 {gain}。'],
-    cultivate_idle: ['{name}在{place}修炼 {dur}，修为已到瓶颈，未见增长。'],
-    cultivate_cut: ['{name}的闭关在第 {done} 天被打断（原定 {dur}），修为 +{gain}。'],
+    cultivate: ['{name}在{place}{verb} {dur}，{what} +{gain}。', '{name}于{place}{verb} {dur}，{what}增长 {gain}。'],
+    cultivate_idle: ['{name}在{place}{verb} {dur}，{what}已到头，未见增长。'],
+    cultivate_cut: ['{name}的{verb}在第 {done} 天被打断（原定 {dur}），{what} +{gain}。'],
     realm_up: ['{name}修为精进，晋入{realm}。'],
-    break_ok: ['{name}冲击{target}成功（成功率 {chance}%），寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}。'],
+    lianqi_start: ['{name}胎息壮大到头，依《{tech}》采气炼炁，踏入练炁境界，从此可称羽士。'],
+    taixi_ok: ['{name}静坐中忽有所感，证得胎息气感（成功率 {chance}%），从此脱离凡身，寿元上限增至 {life}。', '{name}悟得那一点先天真阳（成功率 {chance}%），成就胎息。'],
+    taixi_fail: ['{name}参悟胎息未成（成功率 {chance}%），{loss}。'],
+    break_ok: ['{name}冲击{target}成功（成功率 {chance}%）{extra}，寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}{extra}。'],
     break_fail: ['{name}冲击{target}失败（成功率 {chance}%），{loss}。'],
     travel: ['{name}自{from}赶到{to}，路上走了 {dur}。'],
     travel_cut: ['{name}自{from}前往{to}，行至{at}出了变故。'],
     explore_nothing: ['{name}在{place}游历 {dur}，一无所获。', '{name}在{place}转了 {dur}，没遇上什么事。', '{name}在{place}走了 {dur}，只看了些山水。'],
     explore_herb: ['{name}在{place}采得{loot}。'],
     explore_rumor: ['{name}在{place}听闻：{rumor}'],
-    explore_trouble: ['{name}在{place}{what}，损失灵石 {loss}。'],
+    explore_trouble: ['{name}在{place}{what}，损失符钱 {loss}。'],
     explore_trouble_none: ['{name}在{place}{what}，好在身上没什么值钱东西。'],
     explore_fortune: ['{name}在{place}得了一桩机缘：{loot}。'],
     explore_fortune_downgraded: ['{name}在{place}寻到一处旧人洞府，只剩些残余：{loot}。'],
@@ -51,13 +54,15 @@
     flee_ok: ['{name}从{foe}手下脱身（成功率 {chance}%）。'],
     flee_fail: ['{name}没能从{foe}手下逃脱（成功率 {chance}%），{hurt}。'],
     avoid: ['{name}远远避开了{foe}，未起冲突。'],
-    work: ['{name}在{place}做了 {dur}「{job}」，得灵石 {stone}。'],
-    stipend: ['{faction}发放份例，灵石 +{stone}。'],
+    work: ['{name}在{place}做了 {dur}「{job}」，得符钱 {stone}。'],
+    stipend: ['{faction}发放份例，符钱 +{stone}。'],
     rest: ['{name}在{place}静养 {dur}，{state}。'],
-    buy: ['{name}在{place}买下{item}×{qty}，花去灵石 {cost}。'],
-    sell: ['{name}在{place}卖出{item}×{qty}，得灵石 {gain}。'],
+    buy: ['{name}在{place}买下{item}×{qty}，花去符钱 {cost}。'],
+    sell: ['{name}在{place}卖出{item}×{qty}，得符钱 {gain}。'],
     use_item: ['{name}服下{item}，{effect}。'],
-    learn: ['{name}改修《{tech}》。'],
+    learn: ['{name}改修《{tech}》{loss}。'],
+    learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
+    cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}。'],
     injury_heal: ['{name}伤势痊愈。'],
     disturb: ['{name}闭关时，{what}。'],
     npc_break: ['传闻：{name}（{faction}）成就{target}。'],
@@ -166,7 +171,7 @@
     const fac = p.factionId && s.factions[p.factionId] ? s.factions[p.factionId].name : '无门无派';
     const parts = [];
     parts.push(`${p.name}，${p.sex === 'M' ? '男' : '女'}，生于 ${p.birthYear} 年，${fac}。`);
-    parts.push(`${C().roots.names[p.root.type]}，资质 ${p.aptitude}。修至${P.realmName(p)}${brks.length ? '，' + brks.join('，') : ''}${fails ? `；冲关失败 ${fails} 次` : ''}。`);
+    parts.push(`资质 ${p.aptitude}${p.daoji ? '，' + C().daojiNames[p.daoji] : ''}${p.yixiang ? '，' + C().yixiangNames[p.yixiang] : ''}。修至${P.realmName(p)}${brks.length ? '，' + brks.join('，') : ''}${fails ? `；冲关失败 ${fails} 次` : ''}。`);
     if (pl) {
       const st = pl.stats;
       parts.push(`一生修炼 ${T.dur(st.cultivateDays)}，游历 ${st.explores} 次（${st.exploreNothing} 次空手而归），斗法 ${st.fights} 场、胜 ${st.wins} 场，走过 ${pl.visited.length} 处地方。`);

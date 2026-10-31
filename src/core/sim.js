@@ -57,21 +57,21 @@
     let place, faction = null;
     const places = Object.values(s.places);
     if (O.faction) {
-      faction = Object.values(s.factions).find((f) => f.type === O.faction && (O.faction !== 'clan' || s.places[f.seatId].surname === surname));
+      faction = Object.values(s.factions).find((f) => (O.factionKey ? f.key === O.factionKey : f.type === O.faction) && (O.faction !== 'clan' || s.places[f.seatId].surname === surname));
       place = s.places[faction.seatId];
-    } else place = R.pick(r, places.filter((p) => p.type === O.place));
+    } else place = places.find((p) => p.name === O.placeName) || R.pick(r, places.filter((p) => p.type === O.place));
     const sex = opts.sex === 'F' || opts.sex === 'M' ? opts.sex : R.chance(r, 0.5) ? 'M' : 'F';
     const given = (opts.given || '').trim().slice(0, 3);
     const p = P().create(s, {
       name: given ? surname + given : null, surname, sex, birthYear: s.year - cf.life.adultAge,
-      realm: Object.assign({}, O.realm), aptitude: Math.round(U.clamp(R.normal(r, 50, 15), 10, 95)),
+      realm: Object.assign({}, O.realm), aptitude: Math.round(U.clamp(R.normal(r, cf.aptitude.playerMean, cf.aptitude.sd), 10, cf.aptitude.max)),
       techniqueId: O.technique, locationId: place.id, factionId: faction ? faction.id : null, role: faction ? 'member' : 'loose',
     });
     s.player = {
       id: p.id,
       stone: O.stone,
       inv: Object.assign({}, O.inv),
-      manuals: [O.technique],
+      manuals: O.technique ? [O.technique] : [],
       qijuUntil: 0,
       visited: [place.id],
       lastFortuneT: -1e9,
@@ -80,6 +80,11 @@
     if (faction) {
       faction.relToPlayer = 20;
       if (faction.leaderId) P().adjustRelation(s, p.id, faction.leaderId, 10, faction.type === 'clan' ? '族人' : '同门');
+      if (faction.type === 'sect') {
+        // 同门里先认得一两个人
+        const mates = P().living(s).filter((q) => q.factionId === faction.id && q.id !== faction.leaderId && q.id !== p.id).slice(0, 2);
+        for (const q of mates) P().adjustRelation(s, p.id, q.id, 8, '同门');
+      }
     }
     for (const pl of places) if (W().hasMarket(s, pl.id)) W().refreshMarket(s, pl.id);
     H().add(s, {
@@ -106,8 +111,8 @@
       const healMult = mode === 'rest' ? cf.life.restHealMult : 1;
       if (P().heal(p, step * healMult)) H().add(s, { type: 'health', tags: ['伤愈'], actors: [p.id], key: 'injury_heal', pov: true, params: { name: p.name }, severity: 1 });
       if (mode === 'cultivate') {
-        const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t }).total;
-        if (P().isFull(p) && CU().gateKind(p)) p.fullDays += step;
+        const rate = CU().breakdown(s, p, { pill: s.player.qijuUntil > s.t, coin: !!opts.coin }).total;
+        if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
         s.player.stats.cultivateDays += step;
       }
@@ -151,7 +156,8 @@
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
     if (P().alive(pl) && pl.factionId && s.factions[pl.factionId]) {
       const f = s.factions[pl.factionId];
-      const st = cf.factionTypes[f.type].stipend;
+      const arr = cf.factionTypes[f.type].stipend;
+      const st = arr[Math.min(arr.length - 1, f.type === 'sect' ? f.tier : 0)];
       if (st > 0) { s.player.stone += st; H().add(s, { type: 'stipend', tags: ['份例'], actors: [pl.id], factions: [f.id], key: 'stipend', pov: true, params: { faction: f.name, stone: st }, severity: 1 }); }
     }
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
@@ -189,6 +195,7 @@
     const RT = C().rating;
     const parts = [
       { label: '最高境界', value: p.peakRank * RT.perRank },
+      { label: '道基与紫府', value: (p.daoji === 3 ? 2 : 0) + (p.yixiang === 3 ? 3 : p.yixiang === 2 ? 1 : 0) },
       { label: '足迹（' + s.player.visited.length + ' 处）', value: Math.min(RT.extraMax, Math.floor(s.player.visited.length / 2)) },
       { label: '斗法胜场', value: Math.min(RT.extraMax, Math.floor(s.player.stats.wins / 3)) },
       { label: '知交', value: Math.min(RT.extraMax, P().relationsOf(s, p.id).filter((r) => r.type === 'close').length * 2) },
@@ -212,7 +219,7 @@
     for (const r of s.relations) if (!s.people[r.a] || !s.people[r.b]) fail('关系引用了不存在的人物');
     for (const f of Object.values(s.factions)) if (!s.places[f.seatId]) fail(f.name + ' 驻地不存在');
     for (const pl of Object.values(s.places)) for (const l of pl.links) if (!s.places[l.to]) fail(pl.name + ' 的道路通向不存在的地点');
-    if (!(s.player.stone >= 0) || !Number.isInteger(s.player.stone)) fail('灵石数量异常：' + s.player.stone);
+    if (!(s.player.stone >= 0) || !Number.isInteger(s.player.stone)) fail('符钱数量异常：' + s.player.stone);
     for (const k in s.player.inv) if (!(s.player.inv[k] >= 0) || !Number.isInteger(s.player.inv[k])) fail('物品数量异常：' + k);
     for (const e of s.pending) if (!FX.Ev.valid(s, e.bound)) fail('待决事件引用失效');
     return true;

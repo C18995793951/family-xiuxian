@@ -135,6 +135,7 @@ svg.map .node.seen circle { stroke: var(--accent); }
 svg.map .node.here circle { stroke: #fff3dc; stroke-width: 3; }
 svg.map .node:focus-visible circle { stroke: #fff; stroke-width: 4; }
 svg.map .pname { fill: var(--text); font-size: 12px; text-anchor: middle; }
+.t-city circle, .legend.t-city { fill: #b08bb8; color: #b08bb8; }
 .t-town circle, .legend.t-town { fill: #c9a25a; color: #c9a25a; }
 .t-sect circle, .legend.t-sect { fill: #7a8fb5; color: #7a8fb5; }
 .t-clan circle, .legend.t-clan { fill: #5b9a85; color: #5b9a85; }

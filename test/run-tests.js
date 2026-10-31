@@ -135,14 +135,18 @@ check('4', '存档一致（含有待决事件时存档）', () => {
 check('4b', '存档校验能拒绝损坏文件与旧版家族存档', () => {
   const s = FX.Game.newGame({ origin: 'loose', seed: 'corrupt' });
   const t = FX.Save.serialize(s);
-  const bad1 = FX.Save.deserialize(t.replace('"stone":30', '"stone":31'));
+  const st0 = '"stone":' + FX.CONFIG.origins.loose.stone;
+  assert(t.includes(st0), '找不到要篡改的字段');
+  const bad1 = FX.Save.deserialize(t.replace(st0, '"stone":' + (FX.CONFIG.origins.loose.stone + 1)));
   assert(!bad1.ok && /校验和/.test(bad1.error), '篡改未被发现');
   assert(!FX.Save.deserialize('{"state":').ok, '坏 JSON 未被拒绝');
   const o = JSON.parse(t); o.schemaVersion = 99;
   assert(/版本/.test(FX.Save.deserialize(o).error), '新版本存档未被拒绝');
   const old = JSON.parse(t); old.schemaVersion = 1; delete old.checksum;
   assert(/旧版/.test(FX.Save.deserialize(old).error), '旧版家族存档没有给出明确提示');
-  return '校验和、JSON、版本、旧版家族存档四类错误均给出可读提示';
+  const v2 = JSON.parse(t); v2.schemaVersion = 2; delete v2.checksum;
+  assert(/仙业/.test(FX.Save.deserialize(v2).error), '换世界之前的存档没有给出明确提示');
+  return '校验和、JSON、版本、旧版家族存档、换世界前的存档五类错误均给出可读提示';
 });
 
 check('5', '可复现（同种子同策略两次运行哈希逐位相同）', () => {
@@ -252,12 +256,12 @@ check('10', '原则二：求取类行动至少三成没有收获', () => {
   for (let i = 0; i < 300; i++) {
     const s = FX.Game.newGame({ origin: 'loose', seed: 'brk' + i });
     const p = FX.P.player(s);
-    p.realm = { major: 1, stage: 9 }; p.progress = FX.P.need(p);
+    p.realm = { major: 2, stage: 9 }; p.progress = FX.P.need(p);
     const r = FX.CU.attempt(s, p);
     tries++; if (!r.success) fails++;
   }
   assert(fails > 0 && fails < tries, '冲关结果没有随机性');
-  return `全部求取 ${agg.seek} 次中 ${(share * 100).toFixed(1)}% 无收获；各策略均 ≥ 30%；无筑基丹冲筑基 ${tries} 次失败 ${fails} 次`;
+  return `全部求取 ${agg.seek} 次中 ${(share * 100).toFixed(1)}% 无收获；各策略均 ≥ 30%；不服大造元珠冲筑基 ${tries} 次失败 ${fails} 次`;
 });
 
 check('11', '性能（每模拟一年 < 20ms）', () => {

@@ -16,43 +16,59 @@ const pickEvent = (FX, s, style) => {
 
 // 返回下一步行动
 const STRATEGIES = {
-  // 苦修：以闭关为主，能突破就突破，攒钱买筑基丹，伤了就养
+  // 苦修：以闭关为主，能突破就突破；缺什么（练炁术、冲关外药、开府真法）就攒钱去买；伤了就养
   diligent(FX, s, rng) {
     const A = FX.Game.actions(s);
     const ov = FX.Game.view.overview(s);
+    const me = ov.me, CF = FX.CONFIG;
     const find = (f) => A.find((a) => a.ok && f(a));
-    if (ov.me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || find((a) => a.type === 'rest');
+    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || find((a) => a.type === 'rest');
+    // 有更好的练炁术就研习（练炁前期才换）
+    const curTier = ov.lianqi ? ov.lianqi.tier : 0;
+    const learn = find((a) => a.type === 'learn' && CF.techniques[a.tech].tier > curTier && (!me.techniqueId || (me.realm.major === 2 && me.realm.stage <= 3)));
+    if (learn) return learn;
+    const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
-    if (br && (ov.breakthrough.kind !== 'zhuji' || ov.inv.zhuji > 0 || ov.age > ov.lifespan - 25)) return br;
-    if (ov.pillUntil === null) { const q = find((a) => a.type === 'use' && a.item === 'qiju'); if (q) return q; }
+    // 等大造元珠最多等八年，再等不到就硬冲
+    if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * FX.CONFIG.daysPerYear || ov.age > ov.lifespan - 25)) return br;
+    if (ov.pillUntil === null && me.realm.major >= 2) { const q = find((a) => a.type === 'use' && a.item === 'qiju'); if (q) return q; }
     const mk = s.markets[ov.place.id];
-    const qslot = mk && mk.stock.find((x) => x.item === 'qiju' && x.qty > 0);
-    if (qslot && ov.stone >= qslot.price + 150 && !(ov.inv.qiju > 0) && !(ov.breakthrough && ov.breakthrough.kind === 'zhuji')) return { type: 'buy', item: 'qiju', qty: 1 };
-    // 卖掉杂物
-    for (const k of ['herb', 'beastHide', 'beastCore', 'rareHerb']) if (ov.inv[k] > 0 && mk) return { type: 'sell', item: k, qty: ov.inv[k] };
-    // 修为圆满且缺筑基丹：去有坊市的地方买，或者打工攒钱
-    // 换到自己能借到灵气最足、又还算安全的地方修炼
-    const here0 = ov.place.id;
-    const qiHere = FX.CU.qiFor(s, ov.me);
-    const spots = Object.values(s.places).filter((p) => p.danger <= 1 && p.qi > qiHere && (!p.factionId || p.factionId === ov.me.factionId || !['sect', 'clan'].includes(p.type)));
-    const goal = spots.map((p) => ({ p, r: FX.World.route(s, here0, p.id) })).filter((x) => x.r).sort((a, b) => b.p.qi - a.p.qi || a.r.days - b.r.days)[0];
-    if (goal && !(ov.breakthrough && ov.breakthrough.kind === 'zhuji' && !(ov.inv.zhuji > 0))) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
-    if (ov.breakthrough && ov.breakthrough.kind === 'zhuji' && !(ov.inv.zhuji > 0)) {
-      const m = s.markets[ov.place.id];
-      const slot = m && m.stock.find((x) => x.item === 'zhuji' && x.qty > 0);
-      if (slot && ov.stone >= slot.price) return { type: 'buy', item: 'zhuji', qty: 1 };
-      const w = find((a) => a.type === 'work');
-      if (w && ov.stone < 450) return w;
-      // 去最近的、今年货架上有筑基丹的坊市（测试用的机器人直接看货架，玩家得靠传闻）
-      const here = ov.place.id;
-      const markets = Object.values(s.places).filter((p) => p.id !== here && s.markets[p.id] && s.markets[p.id].stock.some((x) => x.item === 'zhuji' && x.qty > 0 && x.price <= ov.stone));
+    for (const k of CF.loot) if (ov.inv[k] > 0 && mk) return { type: 'sell', item: k, qty: ov.inv[k] };
+    // 眼下缺的东西
+    const want = [];
+    if (me.realm.major === 1 && !ov.lianqi) want.push((x) => x.startsWith('tech:') && CF.techniques[x.slice(5)].kind === 'lianqi');
+    if (bt && bt.kind === 'zhuji' && !(ov.inv.zhuji > 0)) want.push((x) => x === 'zhuji');
+    const need = FX.CU.minorNeed(me);
+    if (need && !((ov.inv[need.item] || 0) >= need.qty)) want.push((x) => x === need.item);
+    if (bt && bt.kind === 'zifu' && !FX.CU.bestKaifu(s)) want.push((x) => x.startsWith('tech:kaifu'));
+    if (bt && bt.kind === 'jindan' && !(ov.inv.ningdan > 0)) want.push((x) => x === 'ningdan');
+    const wanted = (x) => want.some((f) => f(x));
+    const here = ov.place.id;
+    if (want.length) {
+      const slot = mk && mk.stock.find((x) => wanted(x.item) && x.qty > 0);
+      if (slot && ov.stone >= slot.price) return { type: 'buy', item: slot.item, qty: 1 };
+      // 去最近的、今年货架上有、买得起的地方（测试用的机器人直接看货架，玩家得靠传闻）
+      const markets = Object.values(s.places).filter((p) => p.id !== here && s.markets[p.id] && s.markets[p.id].stock.some((x) => wanted(x.item) && x.qty > 0 && x.price <= ov.stone));
       const best = markets.map((p) => FX.World.route(s, here, p.id)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
       if (best) return find((a) => a.type === 'travel' && a.to === best.path[1]);
-      return find((a) => a.type === 'cultivate' && a.days === 90);
+      const w = find((a) => a.type === 'work');
+      if (w && rng() < 0.6) return w;
     }
-    if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && a.days === 360);
-    if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && a.days === 360);
-    return find((a) => a.type === 'cultivate' && a.days === 360);
+    const qslot = mk && mk.stock.find((x) => x.item === 'qiju' && x.qty > 0);
+    if (me.realm.major >= 2 && qslot && ov.stone >= qslot.price + 150 && !(ov.inv.qiju > 0) && !want.length) return { type: 'buy', item: 'qiju', qty: 1 };
+    // 换到自己修得最快、又还算安全的地方（练炁以上才看灵机与属相）
+    if (me.realm.major >= 2 && !want.length) {
+      const rateAt = (p) => { const lim = CF.cultivation.outsiderQi[p.type]; const qi = lim !== undefined && p.factionId && p.factionId !== me.factionId ? Math.min(p.qi, lim) : p.qi; const f = FX.CU.attrFit(s, me, p); return CF.cultivation.qiMult[qi] * (f ? f.value : 1); };
+      const cur = rateAt(ov.place);
+      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: FX.World.route(s, here, p.id) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
+      if (goal) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
+      // 钱多时以符钱修行
+      const coin = find((a) => a.type === 'cultivate' && a.coin && a.days === 360);
+      if (coin && ov.stone > coin.cost * 3 && CF.cultivation.qiMult[CF.cultivation.coin.qi] > cur) return coin;
+    }
+    if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
   },
   // 游侠：四处走、四处游历，修炼只占一部分
   wanderer(FX, s, rng) {
@@ -61,16 +77,19 @@ const STRATEGIES = {
     if (ov.me.health.state !== 'healthy') return A.find((a) => a.type === 'use' && a.item === 'heal') || A.find((a) => a.type === 'rest');
     const br = A.find((a) => a.type === 'breakthrough');
     if (br && (ov.breakthrough.kind !== 'zhuji' || ov.inv.zhuji > 0)) return br;
+    const lr = A.find((a) => a.type === 'learn' && !ov.me.techniqueId);
+    if (lr) return lr;
     const r = rng();
     if (r < 0.35) return A.find((a) => a.type === 'explore' && a.days === 30);
     if (r < 0.55) { const t = A.filter((a) => a.type === 'travel'); return t[Math.floor(rng() * t.length)]; }
     if (r < 0.65) { const b = A.filter((a) => a.type === 'befriend' || a.type === 'consult'); if (b.length) return b[Math.floor(rng() * b.length)]; }
-    for (const k of ['herb', 'beastHide', 'beastCore', 'rareHerb']) if (ov.inv[k] > 0 && s.markets[ov.place.id]) return { type: 'sell', item: k, qty: ov.inv[k] };
-    return A.find((a) => a.type === 'cultivate' && a.days === 180);
+    for (const k of FX.CONFIG.loot) if (ov.inv[k] > 0 && s.markets[ov.place.id]) return { type: 'sell', item: k, qty: ov.inv[k] };
+    if (ov.me.realm.major === 1 && !ov.lianqi && s.markets[ov.place.id]) { const t = s.markets[ov.place.id].stock.find((x) => x.item.startsWith('tech:') && x.qty > 0 && x.price <= ov.stone && FX.CONFIG.techniques[x.item.slice(5)].kind === 'lianqi'); if (t) return { type: 'buy', item: t.item, qty: 1 }; }
+    return A.find((a) => a.type === 'cultivate' && !a.coin && a.days === 180);
   },
   // 随机：在合法行动里均匀乱选（找崩溃用）
   random(FX, s, rng) {
-    const A = FX.Game.actions(s).filter((a) => a.ok && a.type !== 'cultivate' || (a.type === 'cultivate' && a.days <= 360));
+    const A = FX.Game.actions(s).filter((a) => a.ok && (a.type !== 'cultivate' || a.days <= 360));
     return A[Math.floor(rng() * A.length)];
   },
 };

@@ -1,5 +1,6 @@
 /* ============================================================
  * cultivation —— 修炼速度、境界晋升与突破（主角与 NPC 共用一套公式）
+ * 凡人悟胎息 → 胎息壮大、得练炁术后转入练炁 → 练炁九层 → 筑基 → 紫府 → 洞玄 → 金丹
  * ============================================================ */
 (function (G) {
   'use strict';
@@ -11,43 +12,26 @@
   const H = () => FX.H;
 
   const CU = {};
+  const inv = (s, p) => (P().isPlayer(s, p) ? s.player.inv : {});
 
-  CU.techFit = (s, p) => {
-    const t = P().techOf(s, p);
-    if (!t.elements.length) return 1;
-    if (p.root.type === 'mutant') return C().fitMin + 0.1; // 变异灵根需特定功法
-    const overlap = p.root.elements.filter((e) => t.elements.includes(e)).length / t.elements.length;
-    return Math.round((C().fitMin + (C().fitMax - C().fitMin) * overlap) * 100) / 100;
+  /* ---------- 采气属相 ---------- */
+  // 此人在某地采气的合适程度（练炁、筑基看练炁术的属相；紫府以上不太挑；凡人、胎息不采外气）
+  CU.attrFit = (s, p, place) => {
+    const F = C().attrFit;
+    const m = p.realm.major;
+    if (m <= 1) return null;
+    if (m >= 6) return { value: F.jindan, label: '金丹诸气浑成，不为采气所困', short: '诸气浑成' };
+    if (m >= 4) return { value: F.zifu, label: '紫府纯化灵机，不拘属相', short: '不拘属相' };
+    const t = P().lianqiOf(p);
+    if (!t) return { value: 0, label: '没有练炁术，炼化不了灵气', short: '无练炁术' };
+    const a = place ? place.attr : null;
+    if (t.attrs.includes(a)) return { value: F.match, label: '此地灵气属「' + a + '」，与《' + t.name + '》相合', short: '「' + a + '」气相合' };
+    if (t.opp.includes(a)) return { value: F.opp, label: '此地灵气属「' + a + '」，与《' + t.name + '》相冲', short: '「' + a + '」气相冲' };
+    return { value: F.neutral, label: '此地灵气属「' + a + '」，与《' + t.name + '》不相合', short: '「' + a + '」气不相合' };
   };
+  CU.techFit = (s, p) => { const f = CU.attrFit(s, p, s.places[p.locationId]); return f ? f.value : 1; };
 
-  CU.techCapped = (s, p) => {
-    const t = P().techOf(s, p);
-    return !!t.capMajor && (p.realm.major > t.capMajor || (p.realm.major === t.capMajor && p.realm.stage >= t.capStage)) && P().isFull(p);
-  };
-
-  // 修炼速度构成（每年，可追溯）。opts.pill：是否在聚气丹药效内
-  CU.breakdown = (s, p, opts) => {
-    const cf = C(), cc = cf.cultivation;
-    const F = [];
-    if (!P().hasRoot(p) || p.realm.major === 0) return { total: 0, factors: [{ label: '无灵根或未入道', value: 0 }] };
-    F.push({ label: '境界基础值', value: cf.realms.baseGain[p.realm.major] });
-    F.push({ label: '灵根（' + cf.roots.names[p.root.type] + '）', value: cf.roots.speed[p.root.type] });
-    F.push({ label: '资质 ' + p.aptitude, value: Math.round((cc.aptBase + (p.aptitude / 100) * cc.aptRange) * 100) / 100 });
-    const t = P().techOf(s, p);
-    F.push({ label: '功法 ' + t.name + '（适配 ' + CU.techFit(s, p) + '）', value: Math.round(t.mult * CU.techFit(s, p) * 100) / 100 });
-    const place = s.places[p.locationId];
-    const qi = CU.qiFor(s, p);
-    F.push({ label: '灵气 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
-    if (opts && opts.pill) F.push({ label: '聚气丹', value: 1 + cc.qijuBonus });
-    if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
-    if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
-    if (CU.techCapped(s, p)) F.push({ label: '功法残缺，已到尽头', value: 0 });
-    let total = 1;
-    for (const f of F) total *= f.value;
-    return { total: Math.round(total * 100) / 100, factors: F };
-  };
-
-  // 此人在所在地能借到的灵气（宗门、家族驻地只对自己人开放）
+  // 此人在所在地能借到的灵机（宗门、家族驻地只对自己人开放）
   CU.qiFor = (s, p) => {
     const place = s.places[p.locationId];
     if (!place) return 1;
@@ -56,185 +40,291 @@
     return place.qi;
   };
 
+  // 以符钱修行一年要花多少符钱（胎息以下炼不了外物，返回 null）
+  CU.coinPerYear = (p) => C().cultivation.coin.perYear[p.realm.major] || null;
+
+  // 修炼速度构成（每年，可追溯）。opts.pill：中孚丹药效内；opts.coin：以符钱修行
+  CU.breakdown = (s, p, opts) => {
+    const cf = C(), cc = cf.cultivation;
+    const m = p.realm.major;
+    const F = [];
+    if (m === 0) F.push({ label: '静坐参悟胎息气感', value: cf.realms.baseGain[0] });
+    else if (m === 1) F.push({ label: '壮大胎息（不假外求）', value: cf.realms.baseGain[1] });
+    else F.push({ label: '境界基础值', value: cf.realms.baseGain[m] });
+    F.push({ label: '资质 ' + p.aptitude, value: Math.round((cc.aptBase + (p.aptitude / 100) * cc.aptRange) * 100) / 100 });
+    if (m >= 2) {
+      const t = P().techOf(s, p);
+      if (t.kind !== 'none') F.push({ label: '法门《' + t.name + '》', value: t.mult });
+      const place = s.places[p.locationId];
+      if (opts && opts.coin) {
+        F.push({ label: '以符钱修行（符钱属「元」，人人可炼）', value: cf.attrFit.coin });
+        F.push({ label: '符钱灵气', value: cc.qiMult[cc.coin.qi] });
+      } else {
+        const fit = CU.attrFit(s, p, place);
+        F.push({ label: fit.label, value: fit.value });
+        const qi = CU.qiFor(s, p);
+        F.push({ label: '灵机 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
+      }
+      if (opts && opts.pill) F.push({ label: '中孚丹', value: 1 + cc.qijuBonus });
+    }
+    if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
+    if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
+    let total = 1;
+    for (const f of F) total *= f.value;
+    return { total: Math.round(total * 100) / 100, factors: F };
+  };
+
   CU.updateLifespan = (s, p) => { p.lifespanMax = P().lifespanMaxFor(p.realm.major, p.realm.stage); };
 
-  // 炼气一至八层修满自动晋升；返回晋升的层数
+  // 修为封顶（到了要冲关、或缺练炁术的地方）
+  CU.capped = (p) => {
+    const m = p.realm.major;
+    if (m === 1) return !P().lianqiOf(p);
+    if (m === 2) return p.realm.stage === 9;
+    return true;
+  };
+
+  // 自动晋升：胎息壮大到头且有练炁术 → 练炁一层；练炁一至八层修满 → 下一层。返回晋升的层数
   CU.autoAdvance = (s, p) => {
     let n = 0;
-    while (p.realm.major === 1 && p.realm.stage < 9 && p.progress >= P().need(p) && n < 10) {
+    const isPlayer = P().isPlayer(s, p);
+    if (p.realm.major === 1 && P().lianqiOf(p) && p.progress >= P().need(p)) {
+      p.progress -= P().need(p);
+      p.realm = { major: 2, stage: 1 };
+      CU.updateLifespan(s, p);
+      n++;
+      if (isPlayer) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'lianqi_start', params: { name: p.name, tech: P().lianqiOf(p).name }, severity: 3, pov: true });
+    }
+    while (p.realm.major === 2 && p.realm.stage < 9 && p.progress >= P().need(p) && n < 12) {
       p.progress -= P().need(p);
       p.realm.stage++;
+      CU.updateLifespan(s, p);
       n++;
-      if (P().isPlayer(s, p)) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'realm_up', params: { name: p.name, realm: P().realmName(p) }, severity: 2, pov: true });
+      if (isPlayer) H().add(s, { type: 'realm', tags: ['修炼'], actors: [p.id], key: 'realm_up', params: { name: p.name, realm: P().realmName(p) }, severity: 2, pov: true });
     }
     const rk = P().realmRank(p);
     if (rk > p.peakRank) p.peakRank = rk;
     return n;
   };
 
+  // 从凡人起累计的修为（用来算跨层增长）
+  CU.total = (p) => {
+    const cf = C().realms;
+    let b = 0;
+    for (let m = 0; m < p.realm.major; m++) for (const x of cf.need[m]) b += x;
+    for (let i = 0; i < p.realm.stage - 1; i++) b += cf.need[p.realm.major][i];
+    return b + p.progress;
+  };
+
   // 加修为（已到瓶颈时封顶，等待突破）；返回实际增加的修为
   CU.addProgress = (s, p, amount) => {
-    if (p.realm.major === 0 || amount <= 0) return 0;
-    const before = p.progress + CU.levelBase(p);
+    if (amount <= 0) return 0;
+    const before = CU.total(p);
     p.progress += amount;
-    if (p.realm.major > 1 || p.realm.stage === 9) p.progress = Math.min(p.progress, P().need(p));
+    if (CU.capped(p)) p.progress = Math.min(p.progress, P().need(p));
     CU.autoAdvance(s, p);
-    if (p.realm.major > 1 || p.realm.stage === 9) p.progress = Math.min(p.progress, P().need(p));
-    return Math.max(0, p.progress + CU.levelBase(p) - before);
-  };
-  // 本大境界内已累计的修为（用来算跨层增长）
-  CU.levelBase = (p) => {
-    if (p.realm.major !== 1) return 0;
-    let b = 0;
-    for (let i = 0; i < p.realm.stage - 1; i++) b += C().realms.need[1][i];
-    return b;
+    if (CU.capped(p)) p.progress = Math.min(p.progress, P().need(p));
+    return Math.max(0, CU.total(p) - before);
   };
 
   /* ---------- 突破 ---------- */
   CU.gateKind = (p) => {
-    if (p.realm.major === 1 && p.realm.stage === 9) return 'zhuji';
-    if (p.realm.major === 2 && p.realm.stage < 3) return 'minor';
-    if (p.realm.major === 2 && p.realm.stage === 3) return 'jindan';
-    if (p.realm.major === 3 && p.realm.stage < 3) return 'minor';
+    const m = p.realm.major, st = p.realm.stage;
+    if (m === 0) return 'taixi';
+    if (m === 2 && st === 9) return 'zhuji';
+    if (m >= 3 && m <= 5) return st < 3 ? 'minor' : ['zifu', 'dongxuan', 'jindan'][m - 3];
     return null;
   };
+  const NEXT = { taixi: { major: 1, stage: 1 }, zhuji: { major: 3, stage: 1 }, zifu: { major: 4, stage: 1 }, dongxuan: { major: 5, stage: 1 }, jindan: { major: 6, stage: 1 } };
+  CU.nextRealm = (p) => { const k = CU.gateKind(p); return k === 'minor' ? { major: p.realm.major, stage: p.realm.stage + 1 } : NEXT[k] || null; };
   CU.targetName = (p) => {
-    const k = CU.gateKind(p);
-    if (k === 'zhuji') return '筑基';
-    if (k === 'jindan') return '金丹';
-    if (k === 'minor') return C().realms.names[p.realm.major] + C().realms.stageNames[p.realm.major][p.realm.stage];
-    return '';
+    const n = CU.nextRealm(p);
+    if (!n) return '';
+    return CU.gateKind(p) === 'minor' ? P().realmTitle({ realm: n }) : C().realms.names[n.major];
   };
+  // 本重修到下一重需要的外药
+  CU.minorNeed = (p) => (CU.gateKind(p) === 'minor' ? C().breakthrough.minorNeeds[p.realm.major + '.' + p.realm.stage] || null : null);
 
-  const inv = (s, p) => (P().isPlayer(s, p) ? s.player.inv : {});
+  // 主角手上最好的开府真法
+  CU.bestKaifu = (s) => s.player.manuals.filter((t) => C().techniques[t].kind === 'kaifu').sort((a, b) => C().techniques[b].grade - C().techniques[a].grade)[0] || null;
+  const pickKaifuByGrade = (g) => Object.keys(C().techniques).find((k) => C().techniques[k].kind === 'kaifu' && C().techniques[k].grade === g);
 
-  CU.canAttempt = (s, p) => {
-    if (!P().alive(p) || p.realm.major === 0) return { ok: false, reason: '尚未入道' };
+  CU.canAttempt = (s, p, opts) => {
+    if (!P().alive(p)) return { ok: false, reason: '已故' };
     const k = CU.gateKind(p);
-    if (!k) return { ok: false, reason: p.realm.major === 3 && p.realm.stage === 3 ? '已到本版境界上限' : '炼气前八层修满自动晋升' };
-    if (!P().isFull(p)) return { ok: false, reason: '修为未圆满（' + Math.floor(p.progress) + '/' + P().need(p) + '）' };
+    const isPlayer = P().isPlayer(s, p);
+    if (!k) {
+      if (p.realm.major === 1) return { ok: false, reason: P().lianqiOf(p) ? '胎息壮大到头，便自然转入练炁' : '缺一门练炁术，胎息壮大到头也转不进练炁' };
+      if (p.realm.major === 2) return { ok: false, reason: '练炁一至八层没有关隘，修满自动晋升' };
+      return { ok: false, reason: '已到本版境界上限' };
+    }
+    if (!P().isFull(p)) return { ok: false, reason: (k === 'taixi' ? '气感尚浅' : '修为未圆满') + '（' + Math.floor(p.progress) + '/' + P().need(p) + '）' };
     if (s.t < p.restUntil) return { ok: false, reason: '上次失败后需休养，至 ' + FX.T.fmt(p.restUntil) };
     if (p.health.state === 'heavy') return { ok: false, reason: '重伤未愈' };
-    const t = P().techOf(s, p);
+    const B = C().breakthrough;
+    const need = CU.minorNeed(p);
+    if (need && isPlayer && !(inv(s, p)[need.item] >= need.qty)) return { ok: false, reason: '缺' + C().items[need.item].name + (need.qty > 1 ? '（需 ' + need.qty + ' 份）' : '') + '：' + need.why };
+    if (need && !isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺外药' };
+    if (k === 'zifu' && isPlayer && !CU.bestKaifu(s)) return { ok: false, reason: '缺一篇开府真法，开辟不了紫府' };
+    if (k === 'zifu' && !isPlayer && !(opts && opts.kaifu)) return { ok: false, reason: '缺开府真法' };
     if (k === 'jindan') {
-      if (t.capMajor === 2) return { ok: false, reason: t.name + '残缺，无法冲击金丹' };
-      if (CU.qiFor(s, p) < C().breakthrough.jindan.minQi) return { ok: false, reason: '需在灵气 ' + C().breakthrough.jindan.minQi + ' 级以上之地结丹' };
-      if (P().isPlayer(s, p) && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺少凝丹灵物（结丹必需，坊市偶有出售，约 2400 灵石）' };
+      if (CU.qiFor(s, p) < B.jindan.minQi) return { ok: false, reason: '需在灵机 ' + B.jindan.minQi + ' 级以上之地结丹' };
+      if (isPlayer && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺凝丹大药（结丹必需，宗门、墟市偶有出售）' };
+      if (!isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺凝丹大药' };
     }
     return { ok: true, kind: k };
   };
 
-  // 冲关的前置条件清单（界面逐条打勾）
+  // 下一步的前置条件清单（界面逐条打勾）。没有关隘的地方也列出来，好让玩家知道缺什么
   CU.requirements = (s, p) => {
     const k = CU.gateKind(p);
-    if (!k) return [];
     const B = C().breakthrough;
-    const out = [{ label: '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
-    if (k === 'zhuji') out.push({ label: '筑基丹（可选：有则 +' + B.zhuji.pill + '%，没有则 −' + B.zhuji.noPillPenalty + '%）', ok: P().isPlayer(s, p) && s.player.inv.zhuji > 0, optional: true, note: '坊市稀有货，约 ' + C().items.zhuji.price + ' 灵石' });
+    const I = C().items;
+    const has = (item, n) => P().isPlayer(s, p) && (s.player.inv[item] || 0) >= (n || 1);
+    if (p.realm.major === 1) {
+      const t = P().lianqiOf(p);
+      return [
+        { label: '胎息壮大到头', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) },
+        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '凡人国集市、墟市偶有劣等练炁术出售；宗门弟子可向长老房请授' },
+      ];
+    }
+    if (!k) return [];
+    const out = [{ label: k === 'taixi' ? '气感积累圆满' : '修为圆满', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) }];
+    if (k === 'taixi') {
+      const near = p.nearDeathT !== null && s.t - p.nearDeathT <= B.taixi.lifeDeathYears * C().daysPerYear;
+      out.push({ label: '近 ' + B.taixi.lifeDeathYears + ' 年在生死之间走过一遭（可选：+' + B.taixi.lifeDeath + '%）', ok: near, optional: true, note: '死生畏怖，神明自得；身受重伤后活下来的人更容易悟得胎息' });
+    }
+    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', ok: has('zhuji'), optional: true, note: '墟市、宗门的稀有货，约 ' + I.zhuji.price + ' 符钱' });
+    const need = CU.minorNeed(p);
+    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), ok: has(need.item, need.qty), note: need.why + '，约 ' + I[need.item].price + ' 符钱一份' });
+    if (k === 'zifu') {
+      const kf = P().isPlayer(s, p) ? CU.bestKaifu(s) : null;
+      out.push({ label: '一篇开府真法', ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '墟市偶有下乘开府真法；上乘的只在大派世族流转' });
+    }
     if (k === 'jindan') {
-      const t = P().techOf(s, p);
-      out.push({ label: '功法能通往金丹', ok: t.capMajor !== 2, note: t.capMajor === 2 ? '《' + t.name + '》是残卷，止步筑基' : '' });
-      out.push({ label: '在灵气 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
-      out.push({ label: '凝丹灵物', ok: P().isPlayer(s, p) && s.player.inv.ningdan > 0, note: '坊市、宗门偶有出售，约 ' + C().items.ningdan.price + ' 灵石' });
+      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: I.ningdan.name, ok: has('ningdan'), note: '宗门、墟市偶有出售，约 ' + I.ningdan.price + ' 符钱' });
     }
     out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
     if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
     return out;
   };
 
-  // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有筑基丹
+  // 成功率与每一项修正（决定前必须列出）。opts.pill：NPC 是否有大造元珠；opts.kaifuGrade：NPC 开府真法品第
   CU.chance = (s, p, opts) => {
     const B = C().breakthrough;
     const k = CU.gateKind(p);
     if (!k) return null;
+    const isPlayer = P().isPlayer(s, p);
     const parts = [];
-    const cfg = k === 'minor' ? B.minor : B[k];
+    const cfg = B[k];
     parts.push({ label: '基础成功率', value: cfg.base });
-    parts.push({ label: '资质 ' + p.aptitude, value: U.round1((p.aptitude - 50) * B.aptitudeFactor) });
-    parts.push({ label: C().roots.names[p.root.type], value: C().roots.breakMod[p.root.type] });
-    const fit = CU.techFit(s, p);
-    parts.push({ label: '功法适配', value: U.round1(U.clamp(((fit - 1) / 0.25) * C().fitBreakMax, -C().fitBreakMax, C().fitBreakMax)) + (P().techOf(s, p).breakBonus || 0) });
-    const hasPill = P().isPlayer(s, p) ? inv(s, p).zhuji > 0 : !!(opts && opts.pill);
-    if (k === 'zhuji') {
-      if (hasPill) parts.push({ label: '服用筑基丹', value: B.zhuji.pill });
-      else parts.push({ label: '无筑基丹', value: -B.zhuji.noPillPenalty });
+    parts.push({ label: '资质 ' + p.aptitude, value: U.round1((p.aptitude - 50) * (cfg.aptFactor || B.aptitudeFactor)) });
+    if (k === 'taixi') {
+      if (p.nearDeathT !== null && s.t - p.nearDeathT <= cfg.lifeDeathYears * C().daysPerYear) parts.push({ label: '借生死得胎息', value: cfg.lifeDeath });
     }
-    if (k === 'jindan' && (!P().isPlayer(s, p) || inv(s, p).ningdan > 0)) parts.push({ label: '凝丹灵物', value: B.jindan.pill });
-    const qi = CU.qiFor(s, p);
-    if (qi >= B.qiBonusMin) parts.push({ label: '灵气 ' + qi + ' 级之地', value: B.qiBonus });
+    let hasPill = false, kaifu = null;
+    if (k === 'zhuji') {
+      const t = P().lianqiOf(p);
+      const tier = t ? t.tier : 1;
+      parts.push({ label: '真炁' + C().tierNames[tier], value: (tier - 4) * 2 });
+      hasPill = isPlayer ? inv(s, p).zhuji > 0 : !!(opts && opts.pill);
+      if (hasPill) parts.push({ label: '服用' + C().items.zhuji.name, value: cfg.pill });
+    }
+    if (k === 'zifu' || k === 'dongxuan' || k === 'jindan') {
+      if (p.daoji) parts.push({ label: C().daojiNames[p.daoji], value: B.daojiMod[p.daoji] });
+    }
+    if (k === 'zifu') {
+      kaifu = isPlayer ? CU.bestKaifu(s) : pickKaifuByGrade((opts && opts.kaifuGrade) || 1);
+      if (kaifu) parts.push({ label: '《' + C().techniques[kaifu].name + '》（' + C().gradeNames[C().techniques[kaifu].grade] + '）', value: B.yixiangMod[C().techniques[kaifu].grade] });
+    }
+    if ((k === 'dongxuan' || k === 'jindan') && p.yixiang) parts.push({ label: C().yixiangNames[p.yixiang], value: B.yixiangMod[p.yixiang] });
+    if (k !== 'taixi') {
+      const qi = CU.qiFor(s, p);
+      if (qi >= B.qiBonusMin) parts.push({ label: '灵机 ' + qi + ' 级之地', value: B.qiBonus });
+    }
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
-    if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -p.failCount * B.failPenalty });
+    if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
-    if (p.root.mutant === '冰') parts.push({ label: '冰灵根', value: C().roots.mutantIceBreak });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
     const max = k === 'minor' ? B.max : B.majorMax;
     total = U.clamp(total, B.min, max);
-    const death = k === 'minor' ? 0 : B[k].deathChance;
-    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, usesPill: k === 'zhuji' && hasPill, days: cfg.days };
+    const death = cfg.deathChance || 0;
+    return { kind: k, target: CU.targetName(p), chance: Math.round(total), parts, max, death: Math.round(death * 1000) / 10, tianfa: !!cfg.tianfa, usesPill: hasPill, kaifu, days: cfg.days };
   };
 
   CU.attempt = (s, p, opts) => {
-    const can = CU.canAttempt(s, p);
+    const can = CU.canAttempt(s, p, opts);
     if (!can.ok) return { ok: false, error: can.reason };
     const ch = CU.chance(s, p, opts);
     const B = C().breakthrough;
     const target = ch.target;
     const r = s.rng;
     const isPlayer = P().isPlayer(s, p);
-    if (isPlayer && ch.usesPill) s.player.inv.zhuji--;
-    if (isPlayer && ch.kind === 'jindan') s.player.inv.ningdan--;
+    const need = CU.minorNeed(p);
+    if (isPlayer) {
+      if (ch.usesPill) s.player.inv.zhuji--;
+      if (need) s.player.inv[need.item] -= need.qty;
+      if (ch.kind === 'jindan') s.player.inv.ningdan--;
+    }
     const success = R.next(r) * 100 < ch.chance;
     const res = { ok: true, success, chance: ch.chance, target, kind: ch.kind };
     const causes = (opts && opts.causeIds) || [];
     const fac = P().factionName(s, p);
     const known = isPlayer || P().relValue(s, p.id, s.player.id) !== 0;
     if (success) {
+      const next = CU.nextRealm(p);
+      if (ch.kind === 'zhuji') { const t = P().lianqiOf(p); p.daoji = P().daojiOf(t ? t.tier : 1); }
+      if (ch.kind === 'zifu') { p.kaifuId = ch.kaifu; p.yixiang = C().techniques[ch.kaifu].grade; }
       p.progress = 0;
-      if (ch.kind === 'zhuji') p.realm = { major: 2, stage: 1 };
-      else if (ch.kind === 'jindan') p.realm = { major: 3, stage: 1 };
-      else p.realm = { major: p.realm.major, stage: p.realm.stage + 1 };
+      p.realm = next;
       p.fullDays = 0;
       p.failCount = 0;
       CU.updateLifespan(s, p);
       if (P().realmRank(p) > p.peakRank) p.peakRank = P().realmRank(p);
+      const extra = ch.kind === 'zhuji' ? '，筑下' + C().daojiNames[p.daoji] : ch.kind === 'zifu' ? '，开出' + C().yixiangNames[p.yixiang] : ch.tianfa ? '，扛过了天罚' : '';
       if (isPlayer) {
         res.hid = H().add(s, {
-          type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: 'break_ok', pov: true,
-          params: { name: p.name, target, chance: ch.chance, life: P().lifespanTotal(p), ok: true },
+          type: 'breakthrough', tags: ['突破', '成功'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_ok' : 'break_ok', pov: true,
+          params: { name: p.name, target: ch.kind === 'minor' ? target : P().realmTitle(p), chance: ch.chance, life: P().lifespanTotal(p), extra, ok: true },
           severity: ch.kind === 'minor' ? 3 : 5, causeIds: causes,
         });
         H().markFirst(s, 'break_' + ch.kind, res.hid);
       } else if (ch.kind !== 'minor') {
         res.hid = H().add(s, {
           type: 'npc_break', tags: ['突破'], actors: [p.id], factions: p.factionId ? [p.factionId] : [], key: 'npc_break', pov: known,
-          params: { name: p.name, faction: fac, target, ok: true }, severity: ch.kind === 'jindan' ? 4 : 2, causeIds: causes,
+          params: { name: p.name, faction: fac, target, ok: true }, severity: p.realm.major >= 4 ? 4 : 2, causeIds: causes,
         });
       }
     } else {
       p.failCount++;
-      p.restUntil = s.t + B.restYears * C().daysPerYear;
+      const cfg = ch.kind === 'minor' ? B.minor : B[ch.kind];
+      p.restUntil = s.t + (cfg.restYears || B.restYears) * C().daysPerYear;
       p.fullDays = 0;
       let loss;
       if (ch.kind === 'minor') {
         p.progress = Math.floor(p.progress * (1 - B.minor.failLoss));
-        loss = '修为受损一成';
+        loss = '修为受损一成' + (need ? '，' + C().items[need.item].name + '也白白耗去' : '');
+      } else if (cfg.mild) {
+        const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
+        p.progress = Math.floor(p.progress * (1 - frac));
+        loss = '那一点气感又散了大半，只能从头再养';
       } else {
-        const cfg = B[ch.kind];
         const frac = R.range(r, cfg.failLossMin, cfg.failLossMax);
         p.progress = Math.floor(p.progress * (1 - frac));
         P().injure(s, p, 'heavy');
-        loss = '修为跌落 ' + Math.round(frac * 100) + '%，身受重伤';
+        loss = (ch.tianfa ? '被天罚所伤，' : '') + '修为跌落 ' + Math.round(frac * 100) + '%，身受重伤';
       }
       if (isPlayer) {
         res.hid = H().add(s, {
-          type: 'breakthrough', tags: ['突破', '失败'], actors: [p.id], key: 'break_fail', pov: true,
-          params: { name: p.name, target, chance: ch.chance, loss, ok: false }, severity: ch.kind === 'minor' ? 2 : 4, causeIds: causes,
+          type: 'breakthrough', tags: ['突破', '失败'], actors: [p.id], key: ch.kind === 'taixi' ? 'taixi_fail' : 'break_fail', pov: true,
+          params: { name: p.name, target, chance: ch.chance, loss, ok: false }, severity: ch.kind === 'minor' || cfg.mild ? 2 : 4, causeIds: causes,
         });
       }
-      if (ch.kind !== 'minor' && R.chance(r, ch.death / 100)) {
-        P().kill(s, p, '冲击' + target + '失败', res.hid ? [res.hid] : [], { key: 'break' });
+      if (ch.death && R.chance(r, ch.death / 100)) {
+        P().kill(s, p, '冲击' + target + '失败' + (ch.tianfa ? '，殒于天罚' : ''), res.hid ? [res.hid] : [], { key: 'break' });
         res.died = true;
       }
     }
@@ -243,16 +333,22 @@
 
   /* ---------- NPC 一年的修炼（世界模拟）---------- */
   CU.npcYear = (s, p) => {
-    if (!P().alive(p) || p.realm.major === 0) return;
-    const cc = C().cultivation;
+    if (!P().alive(p)) return;
+    const cc = C().cultivation, B = C().breakthrough;
     const dil = R.range(s.rng, cc.npcDiligence[0], cc.npcDiligence[1]);
     const rate = CU.breakdown(s, p).total;
-    if (P().isFull(p)) { p.fullDays += C().daysPerYear; } else CU.addProgress(s, p, rate * dil);
-    if (P().isFull(p) && CU.gateKind(p) && CU.canAttempt(s, p).ok && R.chance(s.rng, C().breakthrough.npcTryChance)) {
-      const fac = p.factionId && s.factions[p.factionId];
-      const pillP = C().breakthrough.npcPill[fac ? fac.type : 'none'];
-      CU.attempt(s, p, { pill: R.chance(s.rng, pillP) });
-    }
+    if (P().isFull(p) && CU.gateKind(p)) p.fullDays += C().daysPerYear;
+    else CU.addProgress(s, p, rate * dil);
+    if (!P().isFull(p) || !CU.gateKind(p) || !R.chance(s.rng, B.npcTryChance)) return;
+    const fac = p.factionId && s.factions[p.factionId];
+    const pillP = B.npcPill[fac ? fac.type : 'none'];
+    const opts = {
+      pill: R.chance(s.rng, pillP),
+      items: R.chance(s.rng, Math.min(1, pillP * 1.5)),
+      kaifu: R.chance(s.rng, Math.min(1, pillP + 0.2)),
+      kaifuGrade: R.weighted(s.rng, [1, 2, 3], (g) => B.npcKaifu[g]),
+    };
+    if (CU.canAttempt(s, p, opts).ok) CU.attempt(s, p, opts);
   };
 
   FX.CU = CU;
