@@ -185,3 +185,5 @@ svg.map .road { stroke-width: 3; }
   .stat > .row button { min-height: 38px; padding: .3em .6em; }
   .kv { grid-template-columns: 1fr 1fr; }
 }
+.stat > span:first-child:has(+ b) { flex: 0 0 auto; white-space: nowrap; }
+.stat > b { text-align: right; }

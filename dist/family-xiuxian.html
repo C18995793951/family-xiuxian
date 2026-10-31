@@ -192,6 +192,8 @@ svg.map .road { stroke-width: 3; }
   .stat > .row button { min-height: 38px; padding: .3em .6em; }
   .kv { grid-template-columns: 1fr 1fr; }
 }
+.stat > span:first-child:has(+ b) { flex: 0 0 auto; white-space: nowrap; }
+.stat > b { text-align: right; }
 
 </style>
 </head>
@@ -6320,10 +6322,13 @@ svg.map .road { stroke-width: 3; }
     // 玉宸九殿：元神以后入殿任职，各殿职权不同
     const halls = A.filter((x) => x.type === 'hall');
     const HD = CF.house.halls, myHall = ov.me.hall;
+    const awayR = FX.Sect.awayReason(s, f);
+    const hallAway = halls.some((a) => a.reason === awayR);
     const hallCard = f.key === 'yuchen' && (halls.length || myHall) ? `<div class="card ${myHall ? '' : 'hl'}"><h3>玉宸九殿</h3>
         ${myHall ? `<p>你在<b>${esc(HD.defs[myHall].name)}</b>任${esc(HD.rankNames[FX.Sect.hallRank(ov.me)])}：${esc(HD.defs[myHall].duty)}。<br><span class="good">职权：${esc(HD.defs[myHall].perk)}</span></p>` : '<p class="warn">你已成元神，可以入九殿任职了。各殿职权不同，挑一处；转殿要隔 ' + HD.every + ' 年。元神为长老，返虚为副殿主，纯阳以上为殿主，职权跟着加重。</p>'}
+        ${hallAway && (!myHall || isOpen('halls', false)) ? `<p class="bad small">入殿、转殿${esc(awayR)}。 <button class="link" data-act="goto" data-id="${v.seat.id}">赶回去</button></p>` : ''}
         ${myHall ? `<div>${foldBtn('halls', false, '其余八殿')}</div>` : ''}
-        ${!myHall || isOpen('halls', false) ? halls.map((a) => { const d = HD.defs[a.hall]; return `<div class="stat"><span><b>${esc(d.name)}</b> <span class="muted small">${esc(d.duty)}</span><br><span class="small">${esc(d.perk)}</span>${a.ok ? '' : '<br><span class="bad small">' + esc(a.reason) + '</span>'}</span><span class="row"><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'}>${myHall ? '转入' : '入此殿'}</button></span></div>`; }).join('') : ''}
+        ${!myHall || isOpen('halls', false) ? halls.map((a) => { const d = HD.defs[a.hall]; return `<div class="stat"><span><b>${esc(d.name)}</b> <span class="muted small">${esc(d.duty)}</span><br><span class="small">${esc(d.perk)}</span>${a.ok || a.reason === awayR ? '' : '<br><span class="bad small">' + esc(a.reason) + '</span>'}</span><span class="row"><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'}>${myHall ? '转入' : '入此殿'}</button></span></div>`; }).join('') : ''}
       </div>` : '';
     const tab = UI.sectTab || 'main';
     const body = tab === 'lib' ? `<div class="card">${libHtml}</div>`
