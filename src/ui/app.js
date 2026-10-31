@@ -25,7 +25,24 @@
   const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生', '金丹也会殒命', '元神方可涉足'];
   const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '灵窟', '洞天'];
   const realmOf = (realm) => P.realmName({ realm });
-  const techLine = (t) => t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
+  const ART_TYPES = { atk: '攻伐', def: '护身', dun: '遁法', xiu: '辅修' };
+  const typeLine = (t) => t.type.map((x) => ART_TYPES[x]).join('、');
+  // 一门道术眼下的威能（按进境）
+  const artEff = (p, k) => {
+    const t = CF.techniques[k], A = FX.Ars, out = [];
+    if (t.type.includes('atk')) out.push('战力 +' + Math.round(A.artVal(p, k, 'atk') * 100) + '%');
+    if (t.type.includes('def')) out.push('战力 +' + Math.round(A.artVal(p, k, 'def') * 100) + '%、落败重伤少 ' + Math.round(A.artVal(p, k, 'defHurt') * 100) + '%');
+    if (t.type.includes('dun')) out.push('逃遁 +' + Math.round(A.artVal(p, k, 'dunFlee')) + '、赶路省 ' + Math.round(A.artVal(p, k, 'dunTravel') * 100) + '%');
+    return out.join('；');
+  };
+  const gearEff = (p, g) => {
+    const A = FX.Ars, v = (k) => A.gearValFor(p, g, k);
+    const weak = A.useF(p, g) < 1 ? '（境界不够，驱策吃力）' : '';
+    if (g.slot === 'atk') return '战力 ×' + Math.round(v('atk') * 100) / 100 + weak;
+    if (g.slot === 'def') return '战力 ×' + Math.round(v('def') * 100) / 100 + '、落败重伤少 ' + Math.round(v('defHurt') * 100) + '%' + weak;
+    return '逃遁 +' + Math.round(v('dunFlee')) + '、赶路省 ' + Math.round(v('dunTravel') * 100) + '%' + weak;
+  };
+  const techLine = (t) => t.kind === 'shu' ? `${CF.shuRankNames[t.rank]} · ${typeLine(t)}` : t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
   const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : '修为');
 
   function toast(msg, ms) {
@@ -286,12 +303,38 @@
         ${coming.length ? `<p>在途：${coming.map((o) => esc(FX.World.itemName(o.item)) + '（约 ' + T.fmt(o.due) + ' 到）').join('、')}</p>` : ''}
         ${orders.map((a) => `<div class="stat"><span>${esc(FX.World.itemName(a.item))}</span><span class="row"><b>${a.cost} 符钱</b><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">托人代寻</button></span></div>`).join('')}
         ${orders.length ? '' : '<p class="muted">要托人代寻，得去金谷墟市（浮玉泊）。</p>'}</div>` : '';
+    // 道术与神通
+    const me = ov.me, artsK = ov.manuals.filter((t) => CF.techniques[t].kind === 'shu');
+    const prac = A.filter((a) => a.type === 'practice');
+    const artsCard = `<div class="card"><h3>道术与神通</h3><p class="muted">得了玉简还要参习：入门、小成、中成、大成。攻伐、护身各算最好的一门；神通要金丹法力才使得出。</p>
+      ${artsK.length ? artsK.map((k) => {
+        const t = CF.techniques[k], lv = FX.Ars.level(me, k), xp = (me.arts || {})[k] || 0, th = CF.arts.xp[t.rank];
+        const mine = prac.filter((a) => a.tech === k), why = (mine.find((a) => !a.ok) || {}).reason;
+        const eff = lv ? artEff(me, k) : '';
+        return `<div class="stat"><span>《${esc(t.name)}》 <span class="tag">${esc(CF.shuRankNames[t.rank])}</span> <b>${esc(FX.Ars.levelName(lv))}</b>${lv < 4 ? ` <span class="muted">${Math.floor(xp)}/${th[lv]}</span>` : ''}<br><span class="muted">${esc(typeLine(t))}${eff ? ' · 眼下' + esc(eff) : ''} · ${esc(t.desc)}</span></span>
+          <span class="row">${lv < 4 ? mine.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">参习 ${esc(T.dur(a.days))}</button>`).join('') : '<span class="tag t-good">大成</span>'}${why ? ' <span class="muted">' + esc(why) + '</span>' : ''}</span></div>`;
+      }).join('') : '<p class="muted">还没有道术。坊市里十几枚符钱就能买到下乘道术，宗门长老房也传；大派的神通要拿道功换。</p>'}</div>`;
+    // 法器
+    const gear = me.gear || [];
+    const ga = A.filter((a) => a.group === '法器');
+    const gShort = (a) => a.type === 'jilian' ? '祭炼 ' + a.n + ' 道（' + n0(a.cost) + '）' : a.type === 'lianxing' ? '炼形（' + n0(a.cost) + '）' : a.type === 'lianhua' ? '炼化 ' + T.dur(a.days) : a.type === 'chongzhu' ? '熔' + CF.items[a.item].name + '重铸' : '卖 ' + n0(a.gain);
+    const gearCard = `<div class="card"><h3>法器</h3><p class="muted">攻伐、护身、遁行三类各用最好的一件。炼形一次至多十道禁制；上品符器再炼形就成了法器，要金丹法力和本命精血；道器只有纯阳以上掌控得了。</p>
+      ${gear.length ? gear.map((g) => {
+        const inUse = FX.Ars.best(me, g.slot) === g;
+        const acts = ga.filter((a) => a.gid === g.id);
+        const lx = acts.find((a) => a.type === 'lianxing' && !a.ok) || acts.find((a) => a.type === 'jilian' && !a.ok);
+        const ling = g.ling === undefined ? 100 : Math.floor(g.ling);
+        return `<div class="stat"><span><b>${esc(g.name)}</b> <span class="tag">${esc(CF.gear.slotNames[g.slot])}</span> ${esc(FX.Ars.gradeName(g))} · ${g.jin} 道禁制${inUse ? ' <span class="tag t-good">在用</span>' : ''}<br><span class="muted">${esc(gearEff(me, g))} · 材质够炼形到${esc(CF.gear.gradeNames[g.cap])}${g.grade >= 4 && ling < 100 ? ' · 器灵炼化 ' + ling + '%' : ''}${lx ? ' · ' + esc(lx.reason) : ''}</span></span>
+          <span class="row">${acts.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.label + (a.reason ? '：' + a.reason : ''))}">${esc(gShort(a))}</button>`).join('')}</span></div>`;
+      }).join('') : '<p class="muted">身上没有符器。坊市里有飞剑、法衣、飞梭，宗门库藏也能拿道功换。</p>'}</div>`;
     return `<h2>行囊</h2>
       <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
         ${ov.me.realm.major >= 2 && s.player.inv.qiju ? `<p class="muted" style="margin:.4em 0 0">闭关、修炼时${esc(CF.items.qiju.name)}药力一尽就从行囊里续服一颗 · ${autoPillBtn()}</p>` : ''}
-        <h3>法门</h3>${ov.manuals.length ? ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
+        <h3>法门</h3>${ov.manuals.filter((t) => CF.techniques[t].kind !== 'shu').length ? ov.manuals.filter((t) => CF.techniques[t].kind !== 'shu').map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
       </div>
+      ${artsCard}
+      ${gearCard}
       ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
         ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b>${buyBtns(x)}</span></div>`).join('')}
         ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}
@@ -319,7 +362,7 @@
       const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech);
       const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
       const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true);
-      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}</span></span><span class="row">${right}</span></div>`;
+      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
@@ -406,6 +449,8 @@
         <div class="stat"><span>境界</span><b>${esc(v.realmTitle)}</b></div>
         <div class="stat"><span>战力</span><b>${v.power}</b></div>
         ${P.rootNames(p).length ? `<div class="stat"><span>根基</span><b>${esc(P.rootNames(p).join(' · '))}</b></div>` : ''}
+        ${(p.gear || []).length ? `<div class="stat"><span>法器</span><b>${p.gear.map((g) => esc(FX.Ars.title(g))).join('、')}</b></div>` : ''}
+        ${Object.keys(p.arts || {}).some((k) => FX.Ars.level(p, k) > 0) ? `<div class="stat"><span>道术神通</span><b>${Object.keys(p.arts).filter((k) => FX.Ars.level(p, k) > 0).map((k) => esc(FX.Ars.artLabel(p, k))).join('、')}</b></div>` : ''}
         ${p.bio ? `<p class="muted">《仙业》人物 · ${esc(p.bio)}</p>` : ''}
         ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>

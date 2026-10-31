@@ -27,7 +27,7 @@
   Sect.hasHouse = (f) => !!f && (f.type === 'sect' || f.type === 'clan');
   Sect.mine = (s) => { const p = me(s); const f = p.factionId ? s.factions[p.factionId] : null; return Sect.hasHouse(f) ? f : null; };
   Sect.library = (f) => Sect.def(f).library || [];
-  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : !x.minTier || f.tier >= x.minTier));
+  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : (!x.minTier || f.tier >= x.minTier) && (!x.only || x.only === f.key)));
   Sect.atSeat = (s, f) => me(s).locationId === f.seatId;
   Sect.awayReason = (s, f) => '要回到' + s.places[f.seatId].name + '才能办';
   Sect.taskMerit = (p) => HS().taskMerit[p.realm.major] || 0;
@@ -144,7 +144,13 @@
     for (const e of Sect.library(f)) {
       if (s.player.manuals.includes(e.tech)) continue;
       const t = cf.techniques[e.tech], cost = e.merit || 0;
-      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才传' : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
+      // 神通不传无缘之人：有的看金丹品第、元神法相、道基，有的要先修过上卷
+      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才传'
+        : e.minPin && !(p.danPin && p.danPin <= e.minPin) ? '要' + cf.realms.danPinNames[e.minPin] + '以上才传'
+        : e.minXiang && !(p.xiang >= e.minXiang) ? '要' + cf.realms.xiangNames[e.minXiang] + '以上才传'
+        : e.minDaoji && !(p.daoji >= e.minDaoji) ? '要' + cf.daojiNames[e.minDaoji] + '以上才传'
+        : e.needTech && !s.player.manuals.includes(e.needTech) ? '要先修过《' + cf.techniques[e.needTech].name + '》'
+        : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
       add({ type: 'sect_learn', tech: e.tech, days: HS().learnDays, cost, label: (cost ? '以 ' + cost + ' ' + M() + '换《' : '请授《') + t.name + '》', group: '库藏', ok: !why, reason: why });
     }
     // 库藏兑换
@@ -203,7 +209,7 @@
     if (!s.player.manuals.includes(a.tech)) s.player.manuals.push(a.tech);
     const t = C().techniques[a.tech];
     H().add(s, { type: 'learn', tags: ['功法', '宗门'], actors: [p.id], factions: [f.id], key: a.cost ? 'sect_learn_merit' : 'sect_learn', pov: true, severity: 2, params: { name: p.name, faction: f.name, tech: t.name, cost: a.cost, merit: M() } });
-    const hint = t.kind === 'lianqi' && p.techniqueId !== a.tech ? '，可去行囊里研习' : '';
+    const hint = t.kind === 'lianqi' && p.techniqueId !== a.tech ? '，可去行囊里研习' : t.kind === 'shu' ? '，可去行囊里参习' : '';
     return { text: '得了《' + t.name + '》' + hint };
   };
 

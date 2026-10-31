@@ -77,6 +77,8 @@
         F.push({ label: '灵机 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
       }
       if (opts && opts.pill) F.push({ label: '中孚丹', value: 1 + cc.qijuBonus });
+      const aux = FX.Ars.cultFactor(s, p);
+      if (aux) F.push(aux);
     }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
     if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
@@ -301,6 +303,8 @@
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
     if (p.failCount > 0 && cfg.failBonus) parts.push({ label: '此前参悟 ' + p.failCount + ' 次，渐有心得', value: Math.min(cfg.failBonusCap, p.failCount * cfg.failBonus) });
     else if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
+    const aux = FX.Ars.breakPart(s, p, k);
+    if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
@@ -408,7 +412,10 @@
       kaifu: R.chance(s.rng, Math.min(1, pillP + 0.2)),
       kaifuGrade: R.weighted(s.rng, [1, 2, 3], (g) => B.npcKaifu[g]),
     };
+    const was = p.realm.major;
     if (CU.canAttempt(s, p, opts).ok) CU.attempt(s, p, opts);
+    // 境界上去了，随身的法器、道术也跟着换一换
+    if (P().alive(p) && p.realm.major > was) FX.Ars.npcKit(s, p);
   };
 
   FX.CU = CU;

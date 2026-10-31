@@ -186,8 +186,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 7,
-    gameVersion: '0.5.0-xianye5',
+    schemaVersion: 8,
+    gameVersion: '0.6.0-xianye6',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -206,8 +206,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     realms: {
       // major: 0 凡人 1 胎息 2 练炁 3 筑基 4 紫府 5 洞玄 6 金丹 7 元神 8 返虚 9 纯阳 10 合道
       names: ['凡人', '胎息', '练炁', '筑基', '紫府', '洞玄', '金丹', '元神', '返虚', '纯阳', '合道'],
-      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称链师，金丹、元神称真人，返虚、纯阳称真君，合道称道君
-      titles: { 2: '羽士', 4: '高功', 5: '链师', 6: '真人', 7: '真人', 8: '真君', 9: '真君', 10: '道君' },
+      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称炼师，金丹、元神称真人，返虚、纯阳称真君，合道称道君
+      titles: { 2: '羽士', 4: '高功', 5: '炼师', 6: '真人', 7: '真人', 8: '真君', 9: '真君', 10: '道君' },
       stageNames: {
         0: [''],
         1: [''],
@@ -319,9 +319,39 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.2, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备；比下乘开府真法强，不如上乘的' },
       dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九还、炼神还虚的中乘道书，中域坊市常备，大派长老房可用道功换' },
       dao_high: { kind: 'dao', name: '太上元神真解', grade: 3, mult: 1.6, price: 250000, desc: '直指元神、返虚的根本道典，只在八派六宗的真传之间流转' },
+
+      /* 道术与神通（kind: 'shu'）：照原著，正统仙道里道术分下、中、上三乘，道术之上才是神通；
+       * 金丹真人的法力才撑得起神通的损耗，洞玄以下斗法只能用道术。玉宸派的八功九书是神通里的无上大神通。
+       * rank：1 下乘、2 中乘、3 上乘、4 神通、5 无上大神通。type：atk 攻伐、def 护身、dun 遁法、xiu 辅助修行（可以兼几类）。
+       * 得了玉简还要参习：入门、小成、中成、大成，越往上越见威能。
+       * 下乘、中乘里「庚金剑气术」是游戏拟的名目，其余名目都出自原著。 */
+      qijia: { kind: 'shu', rank: 1, type: ['def'], minMajor: 1, name: '气甲术', price: 15, desc: '以胎息、真炁结一层气甲护身。下乘道术里最常见的一门，坊市里十几枚符钱就能买到' },
+      xuejia: { kind: 'shu', rank: 1, type: ['def'], minMajor: 1, name: '血甲术', price: 25, desc: '以自身血气凝甲，比气甲术凶些，伤身也多些' },
+      gengjin: { kind: 'shu', rank: 1, type: ['atk'], minMajor: 1, name: '庚金剑气术', price: 30, desc: '把真炁炼作一缕金锐之气伤人，下乘道术里的寻常杀伐手段' },
+      hufeng: { kind: 'shu', rank: 1, type: ['dun'], minMajor: 1, name: '小呼风唤雾术', price: 20, desc: '呼风唤雾，遮人耳目，逃遁时好用' },
+      jinren: { kind: 'shu', rank: 1, type: ['dun', 'def'], minMajor: 1, name: '金人代形', price: 40, desc: '临危时化出一具金人替身挡灾，本体趁机脱身' },
+      jiexing: { kind: 'shu', rank: 2, type: ['atk'], minMajor: 2, name: '解形遁变之术', price: 900, desc: '附在所驱之物上，可出幽入冥、形随影变、分化无穷，叫人防不胜防' },
+      sanjing: { kind: 'shu', rank: 2, type: ['dun'], minMajor: 2, name: '散景敛形术', price: 700, desc: '敛去自家形迹气机，还能拿一缕雾气仿出别人的气机来蒙骗对手' },
+      dongjing: { kind: 'shu', rank: 2, type: ['xiu'], minMajor: 2, name: '动静雷音导引术', price: 1200, desc: '五光宗辅助练炁的导引法门。练炁时修炼速度 +12%（大成时）', xiu: { cult: { majors: [2], mult: 0.12 } } },
+      dari: { kind: 'shu', rank: 3, type: ['atk', 'def'], minMajor: 2, name: '先天大日神光', price: 26000, desc: '能攻能守的上乘道术：放出去如一轮天日巡空，荡灭一切；收回来以神光裹住身躯，辟邪护命。无需外物引子，只是极难修持' },
+      sishan: { kind: 'shu', rank: 3, type: ['xiu', 'atk'], minMajor: 3, name: '四山斗决', price: 20000, desc: '玉宸派长赢院弟子筑基三重时多选它来破紫府壁障：修到中成，神意可勘破虚空迷障。冲紫府成功率 +12（大成时），也是一门护道杀伐之术', xiu: { brk: { zifu: 12 } } },
+      pili: { kind: 'shu', rank: 3, type: ['dun'], minMajor: 2, name: '霹雳飞雷遁法', price: 24000, desc: '玉宸上真所创的上乘遁法，化作雷光遁走，真炁足够时一日千里' },
+      jiguang: { kind: 'shu', rank: 3, type: ['dun'], minMajor: 2, name: '极光大遁', price: 24000, need: 'ganyin', desc: '怙照宗的上乘遁法，遁速冠绝同侪。入门要一块干银星矿作引子' },
+      xiaoyuanci: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 5, name: '小元磁神光', price: 30000, desc: '从先天魔宗大神通「上极元磁仙光」拆分简化而来，正合洞玄修为使用，极克剑修' },
+      zqsl_up: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 2, name: '紫清神雷·上卷', price: 30000, desc: '玉宸四大神通雷法之首「紫清神雷」被前辈拆成上下两卷，只修上卷时是一门上乘道术，正合金丹以下斗法。成丹后得了下卷，两卷合一才是神通' },
+      shenlie: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 2, name: '神烈剑经', price: 26000, desc: '一部上乘剑经，赤明派剑修多从它入门' },
+      zqsl: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '紫清神雷', price: 0, merge: 'zqsl_up', desc: '上下两卷合一的紫清神雷，长于破煞炼魔，叱咤之音震荡百里。要先修过上卷，进境从上卷接着算' },
+      beidou: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '北斗罡雷', price: 0, desc: '玉宸除太乙神雷之外杀力最盛的四大神通雷法之一。非有缘法、根性的弟子不授' },
+      wuyin: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '五阴擒拿大手印', price: 0, desc: '怙照宗的神通。南域万宝楼当年错收了这门神通放在楼里卖，一夜之间满楼覆灭' },
+      jianqi: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '剑气雷音', price: 0, merge: 'shenlie', desc: '赤明派剑修的神通境界：剑气破空时隐有雷音。要先修过神烈剑经，进境接着算' },
+      taiyi: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '太乙神雷', price: 0, desc: '玉宸八功九书之首，九州四海从来排第一的杀伐神通，中乙剑派的剑术、先天魔宗的魔功都不及它' },
+      xukong: { kind: 'shu', rank: 5, type: ['def', 'dun'], minMajor: 6, name: '虚空大罗法', price: 0, desc: '玉宸八功之一。施展时身形化入虚空，神光打来也只是穿身而过' },
+      meihua: { kind: 'shu', rank: 5, type: ['xiu'], minMajor: 6, name: '梅花易数', price: 0, desc: '玉宸八功里的占验法：明天理、得凶吉、预未来。冲元神及以上各关成功率 +8（大成时）', xiu: { brk: { yuanshen: 8, fanxu: 8, chunyang: 8, sanzai: 8, hedao: 8 } } },
+      lianjian: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '炼剑成丝', price: 0, merge: 'jianqi', desc: '赤明派剑道的极境之一，剑炼成丝，无物不断。要先修过剑气雷音' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
     gradeNames: ['', '下乘', '中乘', '上乘'],
+    shuRankNames: ['', '下乘道术', '中乘道术', '上乘道术', '神通', '无上大神通'],
     daojiNames: ['', '下品道基', '中品道基', '上品道基'],
     yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
     daojiTiers: [4, 7], // 真炁阶数 ≥4 中品、≥7 上品
@@ -492,18 +522,18 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       // library：长老房能请授的功法（merit 为所需道功，0 即白给；minMajor 为最低大境界）
       // join：拜入条件。base 基础成功率；maxAge 年龄上限；closed 表示眼下不收人
       {
-        key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄链师，传闻是玉宸派下辖的数百道脉之一',
-        library: [{ tech: 'dingjin' }, { tech: 'sanqi_kaifu', minMajor: 3 }, { tech: 'chiyang', merit: 150, note: '派中收着的外派抄本' }],
+        key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄炼师，传闻是玉宸派下辖的数百道脉之一',
+        library: [{ tech: 'dingjin' }, { tech: 'sanqi_kaifu', minMajor: 3 }, { tech: 'chiyang', merit: 150, note: '派中收着的外派抄本' }, { tech: 'qijia' }, { tech: 'gengjin', merit: 5 }, { tech: 'jiexing', merit: 60, minMajor: 2 }],
         join: { minMajor: 1, base: 55, maxAge: 60 },
       },
       {
         key: 'wuguang', name: '五光宗', type: 'sect', tier: 2, seat: '五光宗', tech: 'chiyang', blurb: '南域勉强算得上玄门正统的二流宗门，宗中有元神真君驻世，不问俗务',
-        library: [{ tech: 'chiyang' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        library: [{ tech: 'chiyang' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'gengjin' }, { tech: 'dongjing', merit: 80, minMajor: 2 }],
         join: { minMajor: 2, base: 15, maxAge: 40 },
       },
       {
         key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人',
-        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'hufeng' }, { tech: 'sanjing', merit: 60, minMajor: 2 }],
         join: { closed: '花神府只在「撷芳宴」上收人，眼下没有开宴' },
       },
       { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易', leader: 'huaiwu' },
@@ -512,19 +542,26 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         key: 'yuchen', name: '玉宸派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
         blurb: '玄门八派之一。本宗占着东域宵明大泽这口灵窟，设九殿；另有青阳、长赢、白商、玄英四大下院教导弟子。玄真派这样的小宗只是它下辖的数百道脉之一，道脉出身的金丹真人可凭道脉符书改投',
         transferNote: '落籍白商院（四大下院里最不看出身的一院）',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
+          { tech: 'sishan', merit: 800 }, { tech: 'pili', merit: 1500 }, { tech: 'zqsl_up', merit: 2000, minDaoji: 2 },
+          { tech: 'zqsl', merit: 6000, minMajor: 6, minPin: 4, needTech: 'zqsl_up' }, { tech: 'beidou', merit: 9000, minMajor: 6, minPin: 3 },
+          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2 }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3 },
+          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3 }],
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
         key: 'chiming', name: '赤明派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
         blurb: '玄门八派之一，据北域鹿台山，北域诸国都在它治下。真传多出自玄门世族，收外人只看金丹品第',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
+          { tech: 'shenlie', merit: 1500 }, { tech: 'dari', merit: 2500 }, { tech: 'jianqi', merit: 7000, minMajor: 6, needTech: 'shenlie' },
+          { tech: 'lianjian', merit: 35000, minMajor: 7, needTech: 'jianqi' }],
         join: { minMajor: 6, base: 15, pin: 8 },
       },
       {
         key: 'huzhao', name: '怙照宗', type: 'sect', tier: 3, outer: true, tech: 'handou',
         blurb: '魔道六宗之一，山门在西域极西处，与玉宸、赤明「二玄」在东弥州维持着玄魔平衡。行事酷烈，当年南域的万宝楼错卖了它一门神通，一夜之间满楼覆灭。收人不问出身，只是正直之人入不了它的门',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 },
+          { tech: 'jiguang', merit: 1500 }, { tech: 'xiaoyuanci', merit: 2500, minMajor: 5 }, { tech: 'wuyin', merit: 7000, minMajor: 6 }],
         join: { minMajor: 6, base: 40, refuseTrait: '正直' },
       },
       { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱', leader: 'miaonan' },
@@ -535,18 +572,22 @@ label { display: inline-flex; gap: .4em; align-items: center; }
      * realm 为 [大境界, 重数]；faction 为势力键；role 为 leader 时接任该势力之主。 */
     notables: [
       { key: 'huaiwu', name: '怀悟洞主', sex: 'M', realm: [5, 3], age: 330, faction: 'jingu', role: 'leader', daoji: 2, yixiang: 2, jinhong: 2,
-        bio: '南域有名的散修链师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
+        gear: [{ name: '怀悟洞', slot: 'def', grade: 4, jin: 33 }, { name: '飞剑', slot: 'atk', grade: 3, jin: 28 }], arts: { jiexing: 4, sanjing: 3 },
+        bio: '南域有名的散修炼师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
       { key: 'miaonan', name: '苗南老祖', sex: 'M', realm: [3, 3], age: 170, faction: 'miaonan', role: 'leader', traits: ['贪婪'],
+        gear: [{ name: '五方升阳旗', slot: 'atk', grade: 5, jin: 42, ling: 40 }], arts: { xuejia: 4, hufeng: 4 },
         bio: '苗南峰的魔道流寇，筑基三重，手执一面「五方升阳旗」，带着苗南七子在路上收买路符钱。几回被紫府高功出手追杀都逃得性命，丹粟国几家小门派都要看他脸色。' },
       { key: 'junyao', name: '君尧', sex: 'M', realm: [7, 1], age: 520, faction: 'yuchen', role: 'elder', tech: 'ziqing', aptitude: 95, daoji: 3, yixiang: 3, jinhong: 4, danPin: 1, xiang: 4,
+        gear: [{ name: '元都斩魔剑', slot: 'atk', grade: 6, jin: 58 }, { name: '紫弥宝衣', slot: 'def', grade: 3, jin: 30 }, { name: '玉景飞宫', slot: 'dun', grade: 5, jin: 46 }], arts: { zqsl: 4, beidou: 4, xukong: 3 },
         bio: '玉宸派道子，上届丹元大会的魁首，玉宸派里上一个得了「斗法胜」名号的人。成道前曾在天外觅得一篇上乘开府真法，如今被称作宇内元神第一。' },
       { key: 'yanxi', name: '颜熙', sex: 'M', realm: [8, 1], age: 2600, placeKey: 'donghai', tech: 'linghe', aptitude: 40, daoji: 1, yixiang: 1, jinhong: 1, danPin: 9, xiang: 2,
+        gear: [{ name: '飞剑', slot: 'atk', grade: 5, jin: 50 }, { name: '宝衣', slot: 'def', grade: 5, jin: 45 }, { name: '云舟', slot: 'dun', grade: 5, jin: 50 }], arts: { dari: 4, pili: 4 },
         bio: '南域散修出身的真君。道书里记着他是低阶真炁、下等道基、下等紫府异象、末等先天金汞，却逆反根果，一路证得元神、返虚，在东海开辟了「舜烈碧云源固」洞天，与东海龙族牵连甚深。九州四海的散修里只出了这一个颜熙。' },
     ],
 
     factionTypes: {
       sect: { name: '宗门' },
-      clan: { name: '修道家族', library: [{ tech: 'guiyuan' }, { tech: 'kaifu_low', merit: 120, minMajor: 3 }] },
+      clan: { name: '修道家族', library: [{ tech: 'guiyuan' }, { tech: 'kaifu_low', merit: 120, minMajor: 3 }, { tech: 'qijia' }, { tech: 'xuejia', merit: 5 }] },
       league: { name: '墟市' },
       evil: { name: '魔道' },
     },
@@ -571,14 +612,26 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         { item: 'qiju', merit: 3, clan: true },
         { item: 'heal', merit: 2, clan: true },
         { item: 'fuqi1', merit: 30 },
+        { item: 'fayi1', merit: 25 },
+        { item: 'suo1', merit: 25 },
         { item: 'zhuji', merit: 40, minMajor: 2, clan: true },
         { item: 'danmusha', merit: 90, minMajor: 3, clan: true },
         { item: 'yanshou', merit: 120, minMajor: 3 },
         { item: 'fuqi2', merit: 150, minMajor: 3 },
+        { item: 'fayi2', merit: 140, minMajor: 3 },
+        { item: 'suo2', merit: 140, minMajor: 3 },
         { item: 'yusui', merit: 220, minMajor: 4 },
         { item: 'wujing', merit: 160, minMajor: 4 },
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
         { item: 'fuqi3', merit: 1500, minMajor: 6, minTier: 3 },
+        { item: 'fayi3', merit: 1400, minMajor: 6, minTier: 3 },
+        { item: 'suo3', merit: 1400, minMajor: 6, minTier: 3 },
+        { item: 'miluo', merit: 400, minMajor: 6, minTier: 3 },
+        { item: 'lingtian', merit: 30000, minMajor: 8, minTier: 3 },
+        { item: 'chenshan', merit: 1200, minMajor: 6, only: 'yuchen' },
+        { item: 'ziyi', merit: 1200, minMajor: 6, only: 'yuchen' },
+        { item: 'yujing', merit: 6000, minMajor: 6, only: 'yuchen' },
+        { item: 'ganyin', merit: 600, minMajor: 2, only: 'huzhao' },
         { item: 'dingshen', merit: 2000, minMajor: 6, minTier: 3 },
         { item: 'zhengyang', merit: 500, minMajor: 6, minTier: 3 },
       ],
@@ -622,7 +675,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         rounds: 4, foeBase: 2600, foeMult: [1.4, 1.9, 2.5, 3.2],
         foes: ['斗枢派', '太符宫', '中乙剑派', '北极苑', '阴景派', '九真教', '神御宗', '血河宗', '先天魔宗', '瘟癀宗', '玄酆洞', '玉宸派', '赤明派', '怙照宗'],
         // 按胜场：0 落选，1–2 有名次，3 前列，4 魁首
-        reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2 }, { merit: 600, zhengyang: 3, dingshen: 1 }, { merit: 1200, xudu: 1, zhengyang: 3 }] },
+        reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2, miluo: 1 }, { merit: 600, zhengyang: 3, dingshen: 1, huanghua: 1 }, { merit: 1200, xudu: 1, zhengyang: 3, huanghua: 1 }] },
       // 流火宏化洞天：旁门纯阳火霞老祖开辟的下等洞天，漂泊万载后落回胥都天，悬在鹤鸣山上空。
       // 玉宸派与赤明派赌斗三场赢下了它，每隔些年门户显世，玉宸门人可入内寻造化（原著里是四院弟子去，这里金丹以上的门人才放进去）
       liuhuo: { name: '流火宏化洞天显世', every: [20, 35], first: [8, 20], years: 3, place: '鹤鸣山', faction: 'yuchen', minMajor: 6, days: 120,
@@ -673,9 +726,24 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
       ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '在浮玉泊托金谷墟市代寻，约三年一定送到；五光宗、花神府弟子可用道功换；货架上偶尔也有' },
       yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
-      fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
-      fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
-      fuqi3: { name: '上品符器', price: 40000, desc: '大派真传才配得起的符器，斗法战力 ×2.2（只算最好的一件）', power: 2.2 },
+      // 符器、法器：到手就收进「法器」一栏（gear 是它的底子）。攻伐、护身、遁行三类各用最好的一件
+      fuqi1: { name: '飞剑（下品符器）', price: 350, desc: '一炼形、十道禁制的下品飞剑，材质还经得起再炼形一次', gear: { name: '飞剑', slot: 'atk', grade: 1, jin: 10, cap: 2 } },
+      fuqi2: { name: '飞剑（中品符器）', price: 1500, desc: '二炼形、二十道禁制的中品飞剑', gear: { name: '飞剑', slot: 'atk', grade: 2, jin: 20, cap: 3 } },
+      fuqi3: { name: '飞剑（上品符器）', price: 40000, desc: '三炼形、三十道禁制，大派真传才配得起；材质还够金丹真人以本命精血祭成法器', gear: { name: '飞剑', slot: 'atk', grade: 3, jin: 30, cap: 4 } },
+      fayi1: { name: '法衣（下品符器）', price: 300, desc: '织进十道禁制的法衣，落败时少受重伤', gear: { name: '法衣', slot: 'def', grade: 1, jin: 10, cap: 2 } },
+      fayi2: { name: '法衣（中品符器）', price: 1400, desc: '二十道禁制的中品法衣', gear: { name: '法衣', slot: 'def', grade: 2, jin: 20, cap: 3 } },
+      fayi3: { name: '法衣（上品符器）', price: 36000, desc: '三十道禁制的上品法衣', gear: { name: '法衣', slot: 'def', grade: 3, jin: 30, cap: 4 } },
+      suo1: { name: '飞梭（下品符器）', price: 300, desc: '代步的飞梭，赶路快些，逃起来也容易些', gear: { name: '飞梭', slot: 'dun', grade: 1, jin: 10, cap: 2 } },
+      suo2: { name: '飞梭（中品符器）', price: 1400, desc: '二十道禁制的中品飞梭', gear: { name: '飞梭', slot: 'dun', grade: 2, jin: 20, cap: 3 } },
+      suo3: { name: '飞梭（上品符器）', price: 36000, desc: '三十道禁制的上品飞梭', gear: { name: '飞梭', slot: 'dun', grade: 3, jin: 30, cap: 4 } },
+      chenshan: { name: '沉山印', price: 30000, desc: '玉宸上宗下赐门人的上品符器，一印压下如山岳倾倒', gear: { name: '沉山印', slot: 'atk', grade: 3, jin: 30, cap: 4 } },
+      ziyi: { name: '紫弥宝衣', price: 30000, desc: '玉宸派的独门手笔，上品符器。下院里得了它的，无一例外都是被上宗看重的人', gear: { name: '紫弥宝衣', slot: 'def', grade: 3, jin: 30, cap: 4 } },
+      yujing: { name: '玉景飞宫', price: 400000, desc: '玉宸派灵宝殿炼给门人的飞宫，下品法器，生有器灵。遁速极快，守御也强。到手要先炼化器灵', gear: { name: '玉景飞宫', slot: 'dun', grade: 4, jin: 40, cap: 5, ling: 10 } },
+      // 宝材：粗胚的材质决定能打入多少禁制；把宝材熔进去重铸，才能再往上炼形
+      miluo: { name: '弥罗铁', price: 20000, desc: '世间修士梦寐以求的粗胚材器。熔进一件符器、法器里重铸，材质上限高一品', where: '中域坊市常备；八派六宗弟子可用道功换' },
+      huanghua: { name: '黄华秘髓', price: 90000, desc: '有价无市的宝材，熔进去材质上限高两品', where: '中域坊市偶尔有；丹元大会前列、流火宏化洞天深处' },
+      lingtian: { name: '灵天素景精金', price: 0, desc: '传说中的宝材，熔进去材质便够祭成道器', where: '八派六宗库藏，返虚真君才换得到' },
+      ganyin: { name: '干银星矿', price: 30000, desc: '旷世奇珍，修极光大遁入门的引子', where: '怙照宗库藏；中域坊市偶尔有' },
       dingshen: { name: '定神玄香', price: 60000, desc: '冲击元神时点上，安定心神，成功率 +12（冲关时耗掉）', where: '中域坊市常备；八派六宗弟子可用道功换' },
       zhengyang: { name: '正阳丹砂', price: 20000, desc: '推升丹力的真砂，没有隐患。金丹真人服下一枚，修为 +2500（只对金丹有用）', where: '中域坊市常备；八派六宗弟子可用道功换' },
       dongtianji: { name: '洞天残基', price: 0, desc: '从流火宏化洞天深处剥下的一块洞天根基。开辟洞天时用上，省一半符钱、一年工夫（用时耗掉）', where: '流火宏化洞天深处' },
@@ -686,6 +754,53 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       beastHide: { name: '妖物皮骨', price: 8, desc: '斗杀妖物所得，可卖钱' },
     },
     usable: ['qiju', 'heal', 'yanshou', 'zhengyang', 'xudu'],
+
+    /* ---------- 法器 ----------
+     * 照原著的祭器法：一方粗胚先「炼形」洗去杂芜，才能铭刻禁制。炼形一次，至多十道禁制，便是下品符器；
+     * 再炼形一次又能打入十道，便是中品，以此类推。上品符器之上是法器（生出真识、有器灵），再往上是道器。
+     * 粗胚的材质决定能炼形几次（cap），熔进宝材重铸可以抬高。
+     * 别人的法器器灵不认你，要先炼化（ling 0–100），没炼化完只发挥得出一部分威能。
+     * 原著称「三器三宝」：仙人之下是符器、法器、道器；仙人之上是纯均灵宝、上玄真宝、先天至宝（游戏只做到道器）。 */
+    gear: {
+      gradeNames: ['', '下品符器', '中品符器', '上品符器', '下品法器', '中品法器', '上品法器', '道器'],
+      slotNames: { atk: '攻伐', def: '护身', dun: '遁行' },
+      maxGrade: 7,
+      atk: [1, 1.25, 1.6, 2.2, 2.9, 3.7, 4.6, 6.0],        // 攻伐：斗法战力倍数（满禁制时）
+      def: [1, 1.08, 1.16, 1.28, 1.42, 1.58, 1.76, 2.1],   // 护身：斗法战力倍数
+      defHurt: [0, 0.1, 0.18, 0.26, 0.36, 0.46, 0.56, 0.7], // 护身：落败时重伤、身死的机会减去几成
+      dunFlee: [0, 6, 10, 15, 22, 28, 34, 42],             // 遁行：逃遁成功率加成
+      dunTravel: [0, 0.06, 0.12, 0.18, 0.26, 0.33, 0.4, 0.5], // 遁行：赶路省下几成时日
+      jinCost: [0, 20, 80, 400, 3000, 8000, 20000, 60000], // 祭炼一道禁制的符钱
+      jinDays: [0, 4, 8, 15, 40, 60, 90, 150],             // 祭炼一道禁制的天数
+      lianCost: [0, 0, 300, 3000, 60000, 150000, 400000, 1500000], // 炼形到这一品的符钱
+      lianDays: [0, 0, 60, 180, 720, 1080, 1800, 3600],
+      minMajor: [0, 2, 3, 4, 6, 6, 7, 9],  // 祭炼这一品的禁制、炼形到这一品要的境界（法器要金丹法力和本命精血；道器只有纯阳、道君掌控得了）
+      // 境界不够的人驱策高品法器费力不讨好：金丹以下用法器、纯阳以下用道器，只发挥得出这几成
+      underUse: 0.4,
+      lingDays: [0, 0, 0, 0, 720, 1080, 1440, 2880], // 金丹真人把一件外来法器的器灵炼化到底要的天数；境界越高越快
+      capMax: 6,       // 寻常宝材至多把材质抬到上品法器
+      matCap: { miluo: 1, huanghua: 2, lingtian: 7 },
+      value: [0, 300, 1500, 40000, 300000, 800000, 2000000, 8000000],
+      sellRatio: 0.5,
+      lootChance: 0.35, // 打退劫修时缴获其随身一件法器的机会
+      // NPC 随身法器的称呼（游戏拟的通称）
+      names: { atk: ['飞剑', '雷珠', '法印', '金锤', '飞刀'], def: ['法衣', '宝衣', '法罩', '宝圈'], dun: ['飞梭', '云舟', '遁界符'] },
+    },
+    /* ---------- 道术与神通的进境 ---------- */
+    arts: {
+      levelNames: ['未入门', '入门', '小成', '中成', '大成'],
+      levelFrac: [0, 0.25, 0.5, 0.75, 1],
+      // 各进境累计要参习的天数（按资质、境界折算），按 rank
+      // 原著里大派真传多是在元神第七重障关前后才把一门神通修到大成，无上大神通入门还要更慢
+      xp: { 1: [20, 60, 150, 300], 2: [45, 135, 320, 640], 3: [180, 720, 1800, 3600], 4: [720, 3600, 14400, 36000], 5: [7200, 21600, 54000, 108000] },
+      rankBase: [0, 1, 2, 3, 6, 7], // 境界高出这一档，参习就快些（每高一个大境界 +25%）
+      practiceDays: [90, 360, 1800, 3600],
+      atk: [0, 0.1, 0.22, 0.45, 0.9, 1.6],      // 大成时斗法战力 +几成（只算最好的一门）
+      def: [0, 0.05, 0.1, 0.2, 0.35, 0.6],
+      defHurt: [0, 0.1, 0.18, 0.3, 0.45, 0.6],
+      dunFlee: [0, 6, 12, 20, 28, 38],
+      dunTravel: [0, 0.05, 0.1, 0.2, 0.3, 0.4],
+    },
     zhengyangGain: 2500,
     xuduGain: 30000,
     loot: ['herb', 'rareHerb', 'beastCore', 'beastHide'],
@@ -696,7 +811,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     market: {
       city: {
         staples: [{ item: 'heal', qty: [1, 3] }],
-        rare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }],
+        rare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }, { item: 'tech:qijia', w: 1 }, { item: 'tech:hufeng', w: 1 }],
         slots: 1, chance: 0.6,
       },
       town: {
@@ -706,6 +821,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           { item: 'zhuji', qty: [1, 2] },
           { item: 'danmusha', qty: [1, 1] },
           { item: 'fuqi1', qty: [1, 1] },
+          { item: 'fayi1', qty: [1, 1] },
+          { item: 'suo1', qty: [1, 1] },
+          { item: 'tech:qijia', qty: [1, 1] },
+          { item: 'tech:xuejia', qty: [1, 1] },
+          { item: 'tech:gengjin', qty: [1, 1] },
+          { item: 'tech:hufeng', qty: [1, 1] },
+          { item: 'tech:jinren', qty: [1, 1] },
           { item: 'tech:linghe', qty: [1, 1] },
           { item: 'tech:guiyuan', qty: [1, 1] },
           { item: 'tech:kaifu_low', qty: [1, 1] },
@@ -715,6 +837,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           { item: 'wujing', w: 2, qty: [1, 3] },
           { item: 'yanshou', w: 1 },
           { item: 'fuqi2', w: 1 },
+          { item: 'fayi2', w: 0.8 },
+          { item: 'suo2', w: 0.8 },
+          { item: 'tech:jiexing', w: 0.6 },
+          { item: 'tech:sanjing', w: 0.6 },
+          { item: 'tech:dari', w: 0.15 },
           { item: 'tech:chiyang', w: 1 },
           { item: 'tech:xuanshui', w: 1 },
           { item: 'ningdan', w: 0.4 },
@@ -747,6 +874,12 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           { item: 'qiju', qty: [10, 20] },
           { item: 'heal', qty: [5, 10] },
           { item: 'fuqi2', qty: [1, 2] },
+          { item: 'fayi2', qty: [1, 2] },
+          { item: 'suo2', qty: [1, 2] },
+          { item: 'miluo', qty: [1, 2] },
+          { item: 'tech:jiexing', qty: [1, 1] },
+          { item: 'tech:sanjing', qty: [1, 1] },
+          { item: 'tech:dongjing', qty: [1, 1] },
           { item: 'ningdan', qty: [1, 2] },
           { item: 'wujing', qty: [3, 6] },
           { item: 'yusui', qty: [1, 3] },
@@ -756,8 +889,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           { item: 'tech:dao_mid', qty: [1, 1] },
           { item: 'tech:kaifu_high', qty: [1, 1] },
         ],
-        rare: [{ item: 'fuqi3', w: 2 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 }],
-        slots: 2, chance: 0.6,
+        rare: [{ item: 'fuqi3', w: 2 }, { item: 'fayi3', w: 1.5 }, { item: 'suo3', w: 1.5 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 },
+          { item: 'huanghua', w: 0.8 }, { item: 'ganyin', w: 0.6 }, { item: 'tech:dari', w: 0.8 }, { item: 'tech:xiaoyuanci', w: 0.6 }, { item: 'tech:sishan', w: 0.5 }],
+        slots: 3, chance: 0.7,
       },
       priceSwing: 0.2,
       sellRatio: 0.7,
@@ -1033,6 +1167,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     buy: ['{name}在{place}买下{item}×{qty}，花去符钱 {cost}。'],
     sell: ['{name}在{place}卖出{item}×{qty}，得符钱 {gain}。'],
     use_item: ['{name}服下{item}，{effect}。'],
+    practice: ['{name}参习{rank}《{tech}》{dur}，{state}。'],
+    art_up: ['{name}参习{rank}《{tech}》{dur}，{state}。'],
+    jilian: ['{name}给{gear}打入 {n} 道禁制，如今是{title}。'],
+    lianxing: ['{name}把{gear}再炼形一次，成了{grade}{extra}。'],
+    lianhua: ['{name}炼化{gear}的器灵，到了 {ling}%。'],
+    lianhua_done: ['{name}把{gear}的器灵炼化到底，从此如臂使指。'],
+    chongzhu: ['{name}把{item}熔进{gear}重铸，材质够炼形到{cap}了。'],
+    sell_gear: ['{name}卖掉{gear}，得符钱 {gain}。'],
     learn: ['{name}改修《{tech}》{loss}。'],
     learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
     cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}{pills}。'],
@@ -1207,7 +1349,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   P.xiangName = (p) => (p.xiang ? C().realms.xiangNames[p.xiang] : '');
   // 一路下来的根底成色：道基、紫府异象、先天金汞、金丹品第、元神法相
   P.rootNames = (p) => [p.daoji ? C().daojiNames[p.daoji] : '', p.yixiang ? C().yixiangNames[p.yixiang] : '', P.jinhongName(p), P.danPinName(p), P.xiangName(p)].filter(Boolean);
-  // 名位：羽士、高功、链师、真人
+  // 名位：羽士、高功、炼师、真人
   P.title = (p) => C().realms.titles[p.realm.major] || '';
   // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20–22，元神 23，返虚 24
   const offsets = () => {
@@ -1262,10 +1404,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
     if (p.realm.major >= 6 && p.danPin) F.push({ label: P.danPinName(p), value: U.round1((1 + (5 - p.danPin) * C().realms.danPinPower) * 100) / 100 });
     if (p.realm.major >= 7 && p.xiang) F.push({ label: P.xiangName(p), value: U.round1((1 + (p.xiang - 2) * C().realms.xiangPower) * 100) / 100 });
-    if (P.isPlayer(s, p)) {
-      const best = Object.keys(C().items).filter((k) => C().items[k].power && s.player.inv[k] > 0).sort((a, b) => C().items[b].power - C().items[a].power)[0];
-      if (best) F.push({ label: C().items[best].name, value: C().items[best].power });
-    }
+    // 随身法器与道术、神通（见 arsenal.js；主角与 NPC 同一套算法）
+    for (const f of FX.Ars.powerFactors(s, p)) F.push(f);
     if (p.health.state !== 'healthy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: P.healthCoef(p) });
     let total = 1;
     for (const f of F) total *= f.value;
@@ -1359,6 +1499,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       notable: o.notable || null,         // 原著人物的键
       bio: o.bio || '',                   // 原著人物的小传
       daoId: o.daoId || null,             // 金丹以后修的道书（NPC）
+      gear: [],                           // 随身法器（见 arsenal.js）
+      arts: {},                           // 道术、神通：键 → 已参习的天数
       nearDeathT: null,                   // 上一次在生死之间走过（重伤）的时刻
       locationId: o.locationId,
       factionId: o.factionId || null,
@@ -1506,6 +1648,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         F.push({ label: '灵机 ' + qi + ' 级' + (place ? '（' + place.name + (qi < place.qi ? '，外人只能在山门外修炼' : '') + '）' : ''), value: cc.qiMult[qi] });
       }
       if (opts && opts.pill) F.push({ label: '中孚丹', value: 1 + cc.qijuBonus });
+      const aux = FX.Ars.cultFactor(s, p);
+      if (aux) F.push(aux);
     }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
     if (p.health.state === 'light' || p.health.state === 'heavy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
@@ -1730,6 +1874,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
     if (p.failCount > 0 && cfg.failBonus) parts.push({ label: '此前参悟 ' + p.failCount + ' 次，渐有心得', value: Math.min(cfg.failBonusCap, p.failCount * cfg.failBonus) });
     else if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
+    const aux = FX.Ars.breakPart(s, p, k);
+    if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
@@ -1837,7 +1983,10 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       kaifu: R.chance(s.rng, Math.min(1, pillP + 0.2)),
       kaifuGrade: R.weighted(s.rng, [1, 2, 3], (g) => B.npcKaifu[g]),
     };
+    const was = p.realm.major;
     if (CU.canAttempt(s, p, opts).ok) CU.attempt(s, p, opts);
+    // 境界上去了，随身的法器、道术也跟着换一换
+    if (P().alive(p) && p.realm.major > was) FX.Ars.npcKit(s, p);
   };
 
   FX.CU = CU;
@@ -2020,6 +2169,9 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       if (d.aptitude) q.aptitude = d.aptitude;
       for (const k of ['daoji', 'yixiang', 'jinhong', 'danPin', 'xiang']) if (d[k] !== undefined) q[k] = d[k];
       if (d.traits) q.traits = d.traits.slice();
+      // 原著里写明的随身法器、道术
+      if (d.gear) { q.gear = d.gear.map((g, i) => Object.assign({ id: 'n' + i, cap: g.grade, ling: 100 }, g)); }
+      if (d.arts) { q.arts = {}; for (const k in d.arts) q.arts[k] = C().arts.xp[C().techniques[k].rank][d.arts[k] - 1]; }
       s.usedNames[d.name] = 1;
       if (d.role === 'leader' && f) {
         const old = s.people[f.leaderId];
@@ -2135,6 +2287,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2));
     if (realm.major >= 7) p.xiang = CU().xiangFor(p, R.int(r, 0, 3));
     if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
+    FX.Ars.npcKit(s, p);
     return p;
   };
   const CU = () => FX.CU;
@@ -2206,7 +2359,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   W.itemName = (key) => {
     if (!key.startsWith('tech:')) return C().items[key] ? C().items[key].name : key;
     const t = C().techniques[key.slice(5)];
-    return (t.kind === 'kaifu' ? '开府真法' : t.kind === 'dao' ? '道书' : '练炁术') + '《' + t.name + '》';
+    return (t.kind === 'kaifu' ? '开府真法' : t.kind === 'dao' ? '道书' : t.kind === 'shu' ? C().shuRankNames[t.rank] : '练炁术') + '《' + t.name + '》';
   };
   W.sellPrice = (s, key) => Math.max(1, Math.floor(C().items[key].price * C().market.sellRatio));
 
@@ -2407,6 +2560,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     else parts.push({ label: '对方不如你', value: Math.round(Math.min(20, (1 / ratio - 1) * 10)) });
     if (p.traits.includes('谨慎')) parts.push({ label: '谨慎', value: C().traits.cautiousFlee });
     if (p.health.state !== 'healthy') parts.push({ label: '带伤', value: p.health.state === 'heavy' ? -25 : -10 });
+    for (const x of FX.Ars.fleeParts(s, p)) parts.push(x);
     const chance = Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 95));
     return { chance, parts };
   };
@@ -2414,10 +2568,11 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   // 落败受伤；对手远强于自己且伤重时可能身死。返回描述与是否身死
   Combat.hurt = (s, p, foePower, foeName, causeIds) => {
     const E = C().encounter;
-    const heavy = R.chance(s.rng, E.lossHeavyShare);
+    const cut = FX.Ars.hurtCut(s, p); // 护身法器、护身道术挡下几成
+    const heavy = R.chance(s.rng, E.lossHeavyShare * (1 - cut));
     const my = P().power(s, p); // 强弱按交手时算，不按受伤之后算
     P().injure(s, p, heavy ? 'heavy' : 'light');
-    if (heavy && foePower >= 2 * my && R.chance(s.rng, E.deathWhenOutmatched)) {
+    if (heavy && foePower >= 2 * my && R.chance(s.rng, E.deathWhenOutmatched * (1 - cut))) {
       P().kill(s, p, '败于' + foeName + '之手', causeIds, { key: 'fight' });
       return { text: '伤重不治', died: true };
     }
@@ -2496,7 +2651,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         s2.player.stone += got;
         P().injure(s2, p, 'light');
         P().adjustRelation(s2, s2.player.id, p.id, -60, '交手');
-        return `缴获符钱 ${got}，与${p.name}结仇`;
+        const g = FX.Ars.loot(s2, p);
+        return `缴获符钱 ${got}${g ? '，夺下' + g : ''}，与${p.name}结仇`;
       },
       onLose(s2) { const lost = Math.floor(s2.player.stone * R.range(s2.rng, 0.3, 0.6)); s2.player.stone -= lost; P().adjustRelation(s2, s2.player.id, p.id, -30, '交手'); },
     };
@@ -2544,7 +2700,14 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           if (roll < 0.35) return { text: '深处早被人搬空，只剩几只空玉瓶', days: 10 };
           if (roll < 0.65) { const q = R.int(s.rng, 2, 4); giveItem(s, 'qiju', q); return { text: `寻得${C().items.qiju.name}×${q}`, gain: true, days: 10 }; }
           if (roll < 0.82) { const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得符钱 ${st}`, gain: true, days: 10 }; }
-          if (roll < 0.9) { giveItem(s, 'fuqi1', 1); return { text: `寻得一件${C().items.fuqi1.name}`, gain: true, days: 10 }; }
+          if (roll < 0.86) { const k = R.pick(s.rng, ['fuqi1', 'fayi1', 'suo1']); giveItem(s, k, 1); return { text: `寻得一件${C().items[k].name}`, gain: true, days: 10 }; }
+          if (roll < 0.93) {
+            // 前人留下的道术玉简：多是中下乘，偶尔是上乘
+            const arts = ['gengjin', 'xuejia', 'jinren', 'jiexing', 'sanjing', 'dari', 'xiaoyuanci'];
+            const t = R.weighted(s.rng, arts, (k) => ({ gengjin: 3, xuejia: 3, jinren: 3, jiexing: 2, sanjing: 2, dari: 0.4, xiaoyuanci: 0.2 }[k]));
+            if (!s.player.manuals.includes(t)) { s.player.manuals.push(t); return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 }; }
+            const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得一卷你已会的道术玉简，另有符钱 ${st}`, gain: true, days: 10 };
+          }
           const t = R.weighted(s.rng, ['guiyuan', 'chiyang', 'xuanshui', 'handou', 'kaifu_low'], (k) => ({ guiyuan: 3, chiyang: 3, xuanshui: 3, handou: 1, kaifu_low: 1 }[k]));
           if (!s.player.manuals.includes(t)) s.player.manuals.push(t);
           return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 };
@@ -2889,7 +3052,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     // 赶路
     for (const l of place.links) {
       const open = W().linkOpen(p, l);
-      add({ type: 'travel', to: l.to, days: l.days, label: '前往' + s.places[l.to].name + '（' + l.days + ' 天）', group: '赶路', ok: open, reason: open ? '' : C().world.outer.gate.why });
+      const days = FX.Ars.travelDays(s, p, l.days);
+      add({ type: 'travel', to: l.to, days, label: '前往' + s.places[l.to].name + '（' + days + ' 天）', group: '赶路', ok: open, reason: open ? '' : C().world.outer.gate.why });
     }
     // 差事
     const job = cf.actions.work[place.type];
@@ -2903,6 +3067,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     FX.Sect.list(s, add);
     // 天下大事与洞府（见 saga.js）
     FX.Saga.list(s, add);
+    // 道术参习、法器祭炼（见 arsenal.js）
+    FX.Ars.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -2924,13 +3090,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
     if (s.ended) return { ok: false, error: '这一生已经结束' };
     if (s.pending.length) return { ok: false, error: '眼前还有事要先决断' };
-    if (a && (a.type === 'buy' || a.type === 'sell')) return Act[a.type](s, a.item, a.qty);
+    if (a && (a.type === 'buy' || a.type === 'sell')) { const r = Act[a.type](s, a.item, a.qty); FX.Ars.sync(s); return r; }
     const item = a && Act.find(s, a);
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
@@ -2945,7 +3111,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       req.qty = Math.floor(a.qty);
       if (item.cost * req.qty > s.player.stone) return { ok: false, error: '符钱不够（需 ' + item.cost * req.qty + '）' };
     }
-    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type])(s, req);
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type] || FX.Ars.DO[item.type])(s, req);
+    FX.Ars.sync(s);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
   };
@@ -3367,7 +3534,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   Sect.hasHouse = (f) => !!f && (f.type === 'sect' || f.type === 'clan');
   Sect.mine = (s) => { const p = me(s); const f = p.factionId ? s.factions[p.factionId] : null; return Sect.hasHouse(f) ? f : null; };
   Sect.library = (f) => Sect.def(f).library || [];
-  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : !x.minTier || f.tier >= x.minTier));
+  Sect.store = (f) => HS().store.filter((x) => (f.type === 'clan' ? x.clan : (!x.minTier || f.tier >= x.minTier) && (!x.only || x.only === f.key)));
   Sect.atSeat = (s, f) => me(s).locationId === f.seatId;
   Sect.awayReason = (s, f) => '要回到' + s.places[f.seatId].name + '才能办';
   Sect.taskMerit = (p) => HS().taskMerit[p.realm.major] || 0;
@@ -3484,7 +3651,13 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     for (const e of Sect.library(f)) {
       if (s.player.manuals.includes(e.tech)) continue;
       const t = cf.techniques[e.tech], cost = e.merit || 0;
-      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才传' : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
+      // 神通不传无缘之人：有的看金丹品第、元神法相、道基，有的要先修过上卷
+      const why = e.minMajor && p.realm.major < e.minMajor ? '要到' + cf.realms.names[e.minMajor] + '才传'
+        : e.minPin && !(p.danPin && p.danPin <= e.minPin) ? '要' + cf.realms.danPinNames[e.minPin] + '以上才传'
+        : e.minXiang && !(p.xiang >= e.minXiang) ? '要' + cf.realms.xiangNames[e.minXiang] + '以上才传'
+        : e.minDaoji && !(p.daoji >= e.minDaoji) ? '要' + cf.daojiNames[e.minDaoji] + '以上才传'
+        : e.needTech && !s.player.manuals.includes(e.needTech) ? '要先修过《' + cf.techniques[e.needTech].name + '》'
+        : cost > s.player.merit ? M() + '不够（需 ' + cost + '）' : away;
       add({ type: 'sect_learn', tech: e.tech, days: HS().learnDays, cost, label: (cost ? '以 ' + cost + ' ' + M() + '换《' : '请授《') + t.name + '》', group: '库藏', ok: !why, reason: why });
     }
     // 库藏兑换
@@ -3543,7 +3716,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     if (!s.player.manuals.includes(a.tech)) s.player.manuals.push(a.tech);
     const t = C().techniques[a.tech];
     H().add(s, { type: 'learn', tags: ['功法', '宗门'], actors: [p.id], factions: [f.id], key: a.cost ? 'sect_learn_merit' : 'sect_learn', pov: true, severity: 2, params: { name: p.name, faction: f.name, tech: t.name, cost: a.cost, merit: M() } });
-    const hint = t.kind === 'lianqi' && p.techniqueId !== a.tech ? '，可去行囊里研习' : '';
+    const hint = t.kind === 'lianqi' && p.techniqueId !== a.tech ? '，可去行囊里研习' : t.kind === 'shu' ? '，可去行囊里参习' : '';
     return { text: '得了《' + t.name + '》' + hint };
   };
 
@@ -4032,7 +4205,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     const p = me(s), dy = SG().danyuan, rw = dy.reward[wins];
     const names = ['没能进前列', '得了个名次', '得了个靠前的名次', '名列前茅', '夺得魁首'];
     const got = [];
-    for (const k of ['xudu', 'zhengyang', 'dingshen']) if (rw[k]) { give(s, k, rw[k]); got.push(C().items[k].name + (rw[k] > 1 ? '×' + rw[k] : '')); }
+    for (const k of ['xudu', 'zhengyang', 'dingshen', 'miluo', 'huanghua']) if (rw[k]) { give(s, k, rw[k]); got.push(C().items[k].name + (rw[k] > 1 ? '×' + rw[k] : '')); }
     let merit = '';
     if (Sect().mine(s)) { s.player.merit += rw.merit; merit = '，本门记' + C().house.meritName + ' ' + rw.merit; }
     const what = '胜 ' + wins + ' 场，' + names[wins] + (got.length ? '，得' + got.join('、') : '') + merit;
@@ -4085,7 +4258,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
     onWin(s2) {
       const p = pl(s2), lh = SG().liuhuo;
       const got = [lhGain(s2, lhVal(layer === 'deep' ? lh.deepGain : lh.midGain, p))];
-      if (layer === 'deep') { give(s2, 'dongtianji', 1); got.push(C().items.dongtianji.name); } else { const it = p.realm.major === 6 ? 'zhengyang' : 'dingshen'; give(s2, it, p.realm.major === 6 ? 2 : 1); got.push(C().items[it].name + (p.realm.major === 6 ? '×2' : '')); }
+      if (layer === 'deep') { give(s2, 'dongtianji', 1); got.push(C().items.dongtianji.name); if (R.chance(s2.rng, 0.5)) { give(s2, 'huanghua', 1); got.push(C().items.huanghua.name); } } else { const it = p.realm.major === 6 ? 'zhengyang' : 'dingshen'; give(s2, it, p.realm.major === 6 ? 2 : 1); got.push(C().items[it].name + (p.realm.major === 6 ? '×2' : '')); }
       return got.join('，得');
     },
   })), {
@@ -4262,6 +4435,376 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   FX.Saga = Saga;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- core/arsenal.js ---------- */
+/* ============================================================
+ * arsenal —— 法器与道术、神通
+ * 照《仙业》：
+ *  · 祭器法首重炼形，其次禁制。炼形一次、十道禁制是下品符器，再炼形一次又能打入十道，以此类推；
+ *    上品符器之上是法器（生出真识，有器灵），再往上是道器。粗胚的材质决定能炼形几次。
+ *  · 正统仙道里道术分下、中、上三乘，道术之上才是神通；金丹真人的法力才撑得起神通。
+ *    道术要参习，分入门、小成、中成、大成。
+ * 主角和 NPC 用同一套算法：p.gear 是随身法器，p.arts 是各门道术已参习的天数。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const R = FX.RNG;
+  const U = FX.U;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const Sim = () => FX.Sim;
+  const T = () => FX.T;
+  const W = () => FX.World;
+
+  const Ars = {};
+  const GC = () => C().gear;
+  const AC = () => C().arts;
+  const TQ = (k) => C().techniques[k];
+  const me = (s) => P().player(s);
+  const SLOTS = ['atk', 'def', 'dun'];
+
+  /* ---------- 法器 ---------- */
+  Ars.gradeName = (g) => GC().gradeNames[g.grade];
+  const lingOf = (g) => (g.ling === undefined ? 100 : g.ling);
+  const lingF = (g) => (g.grade >= 4 ? 0.3 + (0.7 * lingOf(g)) / 100 : 1);
+  // 按禁制多少在本品与上一品之间折算
+  const interp = (tbl, g) => {
+    const lo = tbl[g.grade - 1], hi = tbl[g.grade];
+    return lo + (hi - lo) * U.clamp((g.jin - 10 * (g.grade - 1)) / 10, 0, 1);
+  };
+  // key：atk/def 是倍数，defHurt/dunFlee/dunTravel 是加成
+  Ars.gearVal = (g, key) => {
+    const v = interp(GC()[key], g);
+    return key === 'atk' || key === 'def' ? 1 + (v - 1) * lingF(g) : v * lingF(g);
+  };
+  const slotKey = { atk: 'atk', def: 'def', dun: 'dunFlee' };
+  // 持有人境界不够时，法器、道器只发挥得出几成（金丹才使得顺法器，纯阳以上才掌控得了道器）
+  Ars.useF = (p, g) => (g.grade >= 7 ? (p.realm.major >= 9 ? 1 : GC().underUse) : g.grade >= 4 ? (p.realm.major >= 6 ? 1 : GC().underUse) : 1);
+  Ars.gearValFor = (p, g, key) => { const v = Ars.gearVal(g, key), f = Ars.useF(p, g); return key === 'atk' || key === 'def' ? 1 + (v - 1) * f : v * f; };
+  Ars.best = (p, slot) => {
+    let best = null, bv = -1;
+    for (const g of p.gear || []) if (g.slot === slot) { const v = Ars.gearValFor(p, g, slotKey[slot]); if (v > bv) { bv = v; best = g; } }
+    return best;
+  };
+  Ars.title = (g) => g.name + '（' + Ars.gradeName(g) + ' · ' + g.jin + ' 道禁制' + (g.grade >= 4 && lingOf(g) < 100 ? ' · 器灵炼化 ' + Math.floor(lingOf(g)) + '%' : '') + '）';
+  Ars.value = (g) => Math.round(interp(GC().value, g));
+  Ars.make = (s, spec) => {
+    s.player.gearSeq = (s.player.gearSeq || 0) + 1;
+    return { id: 'g' + s.player.gearSeq, name: spec.name, slot: spec.slot, grade: spec.grade, jin: spec.jin, cap: spec.cap || spec.grade, ling: spec.ling === undefined ? 100 : spec.ling };
+  };
+
+  /* ---------- 道术、神通 ---------- */
+  Ars.isArt = (k) => !!TQ(k) && TQ(k).kind === 'shu';
+  // 进境：-1 没有玉简；0 未入门；1 入门 … 4 大成
+  Ars.level = (p, k) => {
+    const xp = (p.arts || {})[k];
+    if (xp === undefined) return 0;
+    const th = AC().xp[TQ(k).rank];
+    let lv = 0;
+    while (lv < 4 && xp >= th[lv]) lv++;
+    return lv;
+  };
+  Ars.levelName = (lv) => AC().levelNames[lv];
+  // 一门道术在某一项上的效果（神通要金丹法力才使得出）
+  Ars.artVal = (p, k, key) => {
+    const t = TQ(k), lv = Ars.level(p, k);
+    if (!lv || p.realm.major < t.minMajor) return 0;
+    if (t.rank >= 4 && p.realm.major < 6) return 0;
+    return AC()[key][t.rank] * AC().levelFrac[lv];
+  };
+  const ARTKEY = { atk: 'atk', def: 'def', defHurt: 'def', dunFlee: 'dun', dunTravel: 'dun' };
+  Ars.bestArt = (p, key) => {
+    let best = null, bv = 0;
+    for (const k in p.arts || {}) {
+      if (!Ars.isArt(k) || !TQ(k).type.includes(ARTKEY[key])) continue;
+      const v = Ars.artVal(p, k, key);
+      if (v > bv) { bv = v; best = k; }
+    }
+    return best ? { k: best, v: bv } : null;
+  };
+  Ars.artLabel = (p, k) => C().shuRankNames[TQ(k).rank] + '《' + TQ(k).name + '》' + Ars.levelName(Ars.level(p, k));
+
+  /* ---------- 汇总到斗法、逃遁、赶路、修炼 ---------- */
+  Ars.powerFactors = (s, p) => {
+    const F = [];
+    for (const slot of ['atk', 'def']) {
+      const g = Ars.best(p, slot);
+      if (g) { const v = Ars.gearValFor(p, g, slot); if (v > 1) F.push({ label: GC().slotNames[slot] + ' ' + Ars.title(g) + (Ars.useF(p, g) < 1 ? '（境界不够，驱策吃力）' : ''), value: U.round1(v * 100) / 100 }); }
+      const a = Ars.bestArt(p, slot);
+      if (a) F.push({ label: Ars.artLabel(p, a.k), value: U.round1((1 + a.v) * 100) / 100 });
+    }
+    return F;
+  };
+  const both = (a, b) => 1 - (1 - a) * (1 - b);
+  // 落败时重伤、身死的机会减去几成
+  Ars.hurtCut = (s, p) => {
+    const g = Ars.best(p, 'def'), a = Ars.bestArt(p, 'defHurt');
+    return Math.min(0.85, both(g ? Ars.gearValFor(p, g, 'defHurt') : 0, a ? a.v : 0));
+  };
+  Ars.fleeParts = (s, p) => {
+    const parts = [];
+    const g = Ars.best(p, 'dun'), a = Ars.bestArt(p, 'dunFlee');
+    if (g) parts.push({ label: g.name, value: Math.round(Ars.gearValFor(p, g, 'dunFlee')) });
+    if (a) parts.push({ label: '《' + TQ(a.k).name + '》', value: Math.round(a.v) });
+    return parts;
+  };
+  Ars.travelCut = (s, p) => {
+    const g = Ars.best(p, 'dun'), a = Ars.bestArt(p, 'dunTravel');
+    return Math.min(0.7, both(g ? Ars.gearValFor(p, g, 'dunTravel') : 0, a ? a.v : 0));
+  };
+  Ars.travelDays = (s, p, days) => Math.max(1, Math.round(days * (1 - Ars.travelCut(s, p))));
+  // 辅助修行的道术：修炼速度倍数
+  Ars.cultFactor = (s, p) => {
+    let best = null;
+    for (const k in p.arts || {}) {
+      const t = TQ(k);
+      if (!t || !t.xiu || !t.xiu.cult || !t.xiu.cult.majors.includes(p.realm.major)) continue;
+      const lv = Ars.level(p, k);
+      const v = 1 + t.xiu.cult.mult * AC().levelFrac[lv];
+      if (lv && (!best || v > best.value)) best = { label: '《' + t.name + '》' + Ars.levelName(lv), value: U.round1(v * 100) / 100 };
+    }
+    return best;
+  };
+  // 辅助修行的道术：冲某一关的成功率加成
+  Ars.breakPart = (s, p, kind) => {
+    let best = null;
+    for (const k in p.arts || {}) {
+      const t = TQ(k);
+      if (!t || !t.xiu || !t.xiu.brk || !t.xiu.brk[kind]) continue;
+      const lv = Ars.level(p, k);
+      const v = Math.round(t.xiu.brk[kind] * AC().levelFrac[lv]);
+      if (v > 0 && (!best || v > best.value)) best = { label: '《' + t.name + '》' + Ars.levelName(lv), value: v };
+    }
+    return best;
+  };
+
+  /* ---------- 收拾行囊：符器、法器到手就收进法器一栏；合卷的神通接上原来的进境 ---------- */
+  Ars.sync = (s) => {
+    const p = me(s);
+    if (!p) return;
+    p.gear = p.gear || [];
+    p.arts = p.arts || {};
+    const inv = s.player.inv;
+    for (const k of Object.keys(inv)) {
+      const it = C().items[k];
+      if (!it || !it.gear || !(inv[k] > 0)) continue;
+      for (let i = 0; i < inv[k]; i++) p.gear.push(Ars.make(s, it.gear));
+      delete inv[k];
+    }
+    for (const k of s.player.manuals) {
+      const t = TQ(k);
+      if (!t || t.kind !== 'shu' || !t.merge || p.arts[k] !== undefined || p.arts[t.merge] === undefined) continue;
+      const lv = Ars.level(p, t.merge);
+      p.arts[k] = lv > 0 ? AC().xp[t.rank][lv - 1] : 0;
+    }
+  };
+
+  /* ---------- 行动清单 ---------- */
+  const majorName = (m) => C().realms.names[m];
+  Ars.list = (s, add) => {
+    const p = me(s), cf = C(), inv = s.player.inv;
+    p.gear = p.gear || [];
+    p.arts = p.arts || {};
+    // 参习道术、神通
+    for (const k of s.player.manuals) {
+      const t = TQ(k);
+      if (!t || t.kind !== 'shu') continue;
+      const lv = Ars.level(p, k);
+      if (lv >= 4) continue;
+      const started = p.arts[k] !== undefined;
+      const why = p.realm.major < t.minMajor ? '要到' + majorName(t.minMajor) + '才练得动'
+        : t.need && !started && !(inv[t.need] > 0) ? '入门要一块' + cf.items[t.need].name + '作引子'
+        : p.health.state === 'heavy' ? '重伤未愈' : '';
+      for (const d of AC().practiceDays) add({ type: 'practice', tech: k, days: d, label: '参习《' + t.name + '》' + T().dur(d), group: '道术', ok: !why, reason: why });
+    }
+    // 法器：祭炼禁制、炼形、炼化器灵、熔宝材重铸、卖掉
+    const G = GC();
+    const market = W().hasMarket(s, p.locationId);
+    for (const g of p.gear) {
+      const room = 10 * g.grade - g.jin;
+      if (room > 0) {
+        for (const n of [1, 5, 10, room].filter((x, i, arr) => x <= room && arr.indexOf(x) === i)) {
+          const cost = n * G.jinCost[g.grade], days = n * G.jinDays[g.grade];
+          const why = p.realm.major < G.minMajor[g.grade] ? '要到' + majorName(G.minMajor[g.grade]) + '才祭炼得动' + G.gradeNames[g.grade] : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
+          add({ type: 'jilian', gid: g.id, n, days, cost, label: '给' + g.name + '祭炼 ' + n + ' 道禁制（' + cost + ' 符钱，' + T().dur(days) + '）', group: '法器', ok: !why, reason: why });
+        }
+      } else if (g.grade < G.maxGrade) {
+        const ng = g.grade + 1, cost = G.lianCost[ng];
+        const why = g.grade >= g.cap ? '粗胚材质到头了，要熔进宝材重铸' : p.realm.major < G.minMajor[ng] ? '要到' + majorName(G.minMajor[ng]) + '才炼形得了' + G.gradeNames[ng] : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
+        add({ type: 'lianxing', gid: g.id, days: G.lianDays[ng], cost, label: '把' + g.name + '炼形为' + G.gradeNames[ng] + '（' + cost + ' 符钱，' + T().dur(G.lianDays[ng]) + '）', group: '法器', ok: !why, reason: why });
+      }
+      if (g.grade >= 4 && lingOf(g) < 100) {
+        for (const d of [90, 360]) add({ type: 'lianhua', gid: g.id, days: d, label: '炼化' + g.name + '的器灵 ' + T().dur(d), group: '法器', ok: p.realm.major >= 3, reason: p.realm.major >= 3 ? '' : '筑基以后才炼化得动法器' });
+      }
+      for (const mat in G.matCap) {
+        if (!(inv[mat] > 0)) continue;
+        const top = mat === 'lingtian' ? G.maxGrade : G.capMax;
+        if (g.cap >= top) continue;
+        add({ type: 'chongzhu', gid: g.id, item: mat, days: 30, label: '把' + cf.items[mat].name + '熔进' + g.name + '重铸（材质上限到' + G.gradeNames[Math.min(top, mat === 'lingtian' ? top : g.cap + G.matCap[mat])] + '）', group: '法器' });
+      }
+      if (market) add({ type: 'sell_gear', gid: g.id, days: 0, gain: Math.round(Ars.value(g) * G.sellRatio), label: '卖掉' + g.name + '（' + Math.round(Ars.value(g) * G.sellRatio) + ' 符钱）', group: '法器' });
+    }
+  };
+
+  /* ---------- 结算 ---------- */
+  const DO = {};
+  const gearOf = (s, id) => (me(s).gear || []).find((g) => g.id === id);
+
+  // 参习：资质高的快；境界高出这门道术一档，参习也快些
+  Ars.practiceRate = (p, k) => {
+    const t = TQ(k);
+    return (0.6 + p.aptitude / 100) * (1 + 0.25 * Math.max(0, p.realm.major - AC().rankBase[t.rank]));
+  };
+  DO.practice = (s, a) => {
+    const p = me(s), t = TQ(a.tech);
+    if (t.need && p.arts[a.tech] === undefined) { s.player.inv[t.need]--; p.arts[a.tech] = 0; }
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    const before = Ars.level(p, a.tech);
+    p.arts[a.tech] = (p.arts[a.tech] || 0) + r.used * Ars.practiceRate(p, a.tech);
+    const after = Ars.level(p, a.tech);
+    const up = after > before;
+    const state = up ? '修至' + Ars.levelName(after) : after >= 4 ? '已到大成' : '离' + Ars.levelName(after + 1) + '还差些火候';
+    H().add(s, { type: 'learn', tags: ['道术'], actors: [p.id], key: up ? 'art_up' : 'practice', pov: true, severity: up ? 2 : 1, params: { name: p.name, tech: t.name, dur: T().dur(r.used), state, rank: C().shuRankNames[t.rank] } });
+    return { text: '参习《' + t.name + '》' + T().dur(r.used) + '，' + state, interrupted: r.interrupted };
+  };
+
+  DO.jilian = (s, a) => {
+    const p = me(s), g = gearOf(s, a.gid), G = GC();
+    s.player.stone -= a.cost;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    const done = Math.min(a.n, Math.floor(r.used / G.jinDays[g.grade] + 1e-9));
+    if (done < a.n) s.player.stone += (a.n - done) * G.jinCost[g.grade]; // 没祭完的退回
+    g.jin += done;
+    H().add(s, { type: 'item', tags: ['法器'], actors: [p.id], key: 'jilian', pov: true, severity: 1, params: { name: p.name, gear: g.name, n: done, title: Ars.title(g) } });
+    return { text: '给' + g.name + '打入 ' + done + ' 道禁制，如今是' + Ars.title(g), interrupted: r.interrupted };
+  };
+
+  DO.lianxing = (s, a) => {
+    const p = me(s), g = gearOf(s, a.gid);
+    s.player.stone -= a.cost;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.used < a.days) { s.player.stone += a.cost; return { text: '炼形到一半出了变故，只得停手（符钱没耗掉）', interrupted: true }; }
+    g.grade++;
+    let extra = '';
+    // 以本命精血和法力祭成法器，器灵初生就认你为主
+    if (g.grade === 4) { g.ling = 100; extra = '，器中孕出真识，生了器灵'; }
+    H().add(s, { type: 'item', tags: ['法器'], actors: [p.id], key: 'lianxing', pov: true, severity: g.grade >= 4 ? 4 : 2, params: { name: p.name, gear: g.name, grade: Ars.gradeName(g), extra } });
+    return { text: g.name + '炼形为' + Ars.gradeName(g) + extra + '，可以接着打入禁制' };
+  };
+
+  DO.lianhua = (s, a) => {
+    const p = me(s), g = gearOf(s, a.gid), G = GC();
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    const speed = p.realm.major >= 6 ? 1 + 0.5 * (p.realm.major - 6) : 0.25;
+    g.ling = Math.min(100, lingOf(g) + (r.used / G.lingDays[g.grade]) * 100 * speed);
+    const done = g.ling >= 100;
+    H().add(s, { type: 'item', tags: ['法器'], actors: [p.id], key: done ? 'lianhua_done' : 'lianhua', pov: true, severity: done ? 3 : 1, params: { name: p.name, gear: g.name, ling: Math.floor(g.ling) } });
+    return { text: done ? g.name + '的器灵认你为主了' : '炼化' + g.name + '的器灵，到了 ' + Math.floor(g.ling) + '%', interrupted: r.interrupted };
+  };
+
+  DO.chongzhu = (s, a) => {
+    const p = me(s), g = gearOf(s, a.gid), G = GC();
+    s.player.inv[a.item]--;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    g.cap = a.item === 'lingtian' ? G.maxGrade : Math.min(G.capMax, g.cap + G.matCap[a.item]);
+    H().add(s, { type: 'item', tags: ['法器'], actors: [p.id], key: 'chongzhu', pov: true, severity: 2, params: { name: p.name, gear: g.name, item: C().items[a.item].name, cap: G.gradeNames[g.cap] } });
+    return { text: '熔进' + C().items[a.item].name + '，' + g.name + '的材质够炼形到' + G.gradeNames[g.cap] + '了', interrupted: r.interrupted };
+  };
+
+  DO.sell_gear = (s, a) => {
+    const p = me(s), g = gearOf(s, a.gid);
+    p.gear = p.gear.filter((x) => x.id !== g.id);
+    s.player.stone += a.gain;
+    H().add(s, { type: 'trade', tags: ['坊市'], actors: [p.id], places: [p.locationId], key: 'sell_gear', pov: true, severity: 1, params: { name: p.name, gear: Ars.title(g), gain: a.gain } });
+    return { text: '卖掉' + g.name + '，得符钱 ' + a.gain };
+  };
+  Ars.DO = DO;
+
+  /* ---------- 斗法缴获：打退的人身上最好的一件法器 ---------- */
+  Ars.loot = (s, foe) => {
+    const p = me(s);
+    if (!foe.gear || !foe.gear.length || !R.chance(s.rng, GC().lootChance)) return null;
+    const g = foe.gear.slice().sort((x, y) => Ars.value(y) - Ars.value(x))[0];
+    foe.gear = foe.gear.filter((x) => x !== g);
+    const mine = Ars.make(s, g);
+    if (mine.grade >= 4) mine.ling = 0; // 器灵不认新主，要慢慢炼化
+    p.gear.push(mine);
+    return Ars.title(mine);
+  };
+
+  /* ---------- NPC 的随身法器与道术：按境界、出身配齐，境界升了就补上 ---------- */
+  // 每个大境界：各类法器 [有的机会, 最低品, 最高品]
+  const NPC_GEAR = {
+    2: { atk: [0.5, 1, 1] },
+    3: { atk: [0.8, 1, 2], def: [0.4, 1, 1] },
+    4: { atk: [0.9, 2, 2], def: [0.6, 1, 2], dun: [0.3, 1, 2] },
+    5: { atk: [1, 2, 3], def: [0.8, 2, 2], dun: [0.6, 2, 2] },
+    6: { atk: [1, 3, 3], def: [0.9, 2, 3], dun: [0.8, 2, 3] },
+    7: { atk: [1, 4, 5], def: [1, 3, 4], dun: [1, 3, 4] },
+    8: { atk: [1, 5, 6], def: [1, 4, 5], dun: [1, 4, 5] },
+    9: { atk: [1, 5, 6], def: [1, 5, 6], dun: [1, 5, 6] },
+    10: { atk: [1, 6, 7], def: [1, 6, 7], dun: [1, 6, 7] },
+  };
+  // 每个大境界：[有道术的机会, 寻常道术最高 rank, 大派门人最高 rank, 进境下限, 进境上限]
+  const NPC_ART = { 1: [0.3, 1, 1, 1, 2], 2: [0.6, 1, 2, 1, 3], 3: [0.7, 2, 2, 1, 3], 4: [0.8, 2, 3, 1, 3], 5: [0.9, 3, 3, 1, 4], 6: [1, 3, 4, 2, 4], 7: [1, 3, 5, 2, 4], 8: [1, 3, 5, 3, 4], 9: [1, 3, 5, 3, 4], 10: [1, 3, 5, 4, 4] };
+  const libArts = (f) => {
+    const d = f && f.key && C().factionDefs.find((x) => x.key === f.key);
+    return d && d.library ? d.library.map((e) => e.tech).filter(Ars.isArt) : [];
+  };
+  const sectOnly = () => {
+    const set = {};
+    for (const d of C().factionDefs) if (d.tier >= 3 && d.library) for (const e of d.library) if (Ars.isArt(e.tech)) set[e.tech] = 1;
+    return set;
+  };
+  Ars.npcKit = (s, p) => {
+    const r = s.rng, m = p.realm.major;
+    p.gear = p.gear || [];
+    p.arts = p.arts || {};
+    const f = p.factionId ? s.factions[p.factionId] : null;
+    const big = !!(f && f.tier >= 3);
+    const gt = NPC_GEAR[m];
+    if (gt) for (const slot of SLOTS) {
+      const row = gt[slot];
+      if (!row || !R.chance(r, row[0])) continue;
+      let grade = R.int(r, row[1], row[2]);
+      if (big && (m === 5 || m === 6) && slot === 'atk' && R.chance(r, 0.5)) grade++;
+      const cur = Ars.best(p, slot);
+      if (cur && cur.grade >= grade) continue;
+      p.gear = p.gear.filter((g) => g.slot !== slot);
+      p.gear.push({ id: 'n' + slot, name: R.pick(r, GC().names[slot]), slot, grade, jin: 10 * (grade - 1) + R.int(r, 3, 10), cap: grade, ling: 100 });
+    }
+    const at = NPC_ART[m];
+    if (!at || !R.chance(r, at[0])) return;
+    const only = sectOnly(), lib = libArts(f);
+    const top = big ? at[2] : at[1];
+    const pool = Object.keys(C().techniques).filter((k) => {
+      const t = TQ(k);
+      if (t.kind !== 'shu' || t.minMajor > m || t.merge || t.need) return false;
+      if (only[k]) return big && lib.includes(k) && t.rank <= top;
+      return t.rank <= Math.min(top, 3);
+    });
+    if (!pool.length) return;
+    const bestRank = Math.max.apply(null, pool.map((k) => TQ(k).rank));
+    const pickFrom = (list) => (list.length ? R.pick(r, list) : null);
+    // 一门攻伐的（尽量取最高一乘），一半的人另有一门护身或遁法
+    const atk = pickFrom(pool.filter((k) => TQ(k).type.includes('atk') && TQ(k).rank >= bestRank - 1));
+    const other = R.chance(r, 0.5) ? pickFrom(pool.filter((k) => !TQ(k).type.includes('atk') && !TQ(k).type.includes('xiu'))) : null;
+    for (const k of [atk, other]) {
+      if (!k || p.arts[k] !== undefined) continue;
+      const lv = R.int(r, at[3], at[4]);
+      p.arts[k] = AC().xp[TQ(k).rank][lv - 1];
+    }
+  };
+
+  FX.Ars = Ars;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- core/save.js ---------- */
 /* ============================================================
  * save（核心部分）—— 序列化、校验、迁移、校验和
@@ -4350,6 +4893,25 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       st.schemaVersion = 7;
       return st;
     },
+    // v7 → v8：法器（炼形、禁制、器灵）与道术、神通。旧的符器收进法器一栏，NPC 配上随身法器和道术
+    7: (st) => {
+      const CF = FX.CONFIG;
+      st.player.gearSeq = st.player.gearSeq || 0;
+      for (const p of Object.values(st.people)) {
+        if (!p.gear) p.gear = [];
+        if (!p.arts) p.arts = {};
+        if (p.id === st.player.id || !FX.P.alive(p)) continue;
+        const d = p.notable && CF.notables.find((x) => x.key === p.notable);
+        if (d && d.gear) p.gear = d.gear.map((g, i) => Object.assign({ id: 'n' + i, cap: g.grade, ling: 100 }, g));
+        else FX.Ars.npcKit(st, p);
+        if (d && d.arts) for (const k in d.arts) p.arts[k] = CF.arts.xp[CF.techniques[k].rank][d.arts[k] - 1];
+      }
+      FX.Ars.sync(st);
+      // 货架补上新货
+      for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
+      st.schemaVersion = 8;
+      return st;
+    },
   };
 
   const REQUIRED = {
@@ -4422,6 +4984,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       if (s.ended) return { ok: false, error: '这一生已经结束' };
       const r = FX.Ev.resolve(s, instId, optId);
       if (r.ok && r.days && FX.P.alive(FX.P.player(s))) FX.Sim.passDays(s, r.days, 'other');
+      FX.Ars.sync(s);
       FX.Sim.checkEnd(s);
       return r;
     },
@@ -4495,7 +5058,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
           return {
             member: true, faction: f, seat: s.places[f.seatId], atSeat: Sect.atSeat(s, f), merit: s.player.merit,
             stipend: Sect.stipend(s, f), taskMerit: Sect.taskMerit(p), missionMerit: Sect.missionMerit(p),
-            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech })),
+            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech,
+              req: [e.minPin ? cf.realms.danPinNames[e.minPin] + '以上' : '', e.minXiang ? cf.realms.xiangNames[e.minXiang] + '以上' : '', e.minDaoji ? cf.daojiNames[e.minDaoji] + '以上' : '', e.needTech ? '先修过《' + cf.techniques[e.needTech].name + '》' : ''].filter(Boolean).join('、') })),
             store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
             submit: cf.house.submit,
             post: Sect.post(s, f, p), postName: Sect.postName(s, f, p),
@@ -4654,7 +5218,24 @@ label { display: inline-flex; gap: .4em; align-items: center; }
   const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生', '金丹也会殒命', '元神方可涉足'];
   const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '灵窟', '洞天'];
   const realmOf = (realm) => P.realmName({ realm });
-  const techLine = (t) => t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
+  const ART_TYPES = { atk: '攻伐', def: '护身', dun: '遁法', xiu: '辅修' };
+  const typeLine = (t) => t.type.map((x) => ART_TYPES[x]).join('、');
+  // 一门道术眼下的威能（按进境）
+  const artEff = (p, k) => {
+    const t = CF.techniques[k], A = FX.Ars, out = [];
+    if (t.type.includes('atk')) out.push('战力 +' + Math.round(A.artVal(p, k, 'atk') * 100) + '%');
+    if (t.type.includes('def')) out.push('战力 +' + Math.round(A.artVal(p, k, 'def') * 100) + '%、落败重伤少 ' + Math.round(A.artVal(p, k, 'defHurt') * 100) + '%');
+    if (t.type.includes('dun')) out.push('逃遁 +' + Math.round(A.artVal(p, k, 'dunFlee')) + '、赶路省 ' + Math.round(A.artVal(p, k, 'dunTravel') * 100) + '%');
+    return out.join('；');
+  };
+  const gearEff = (p, g) => {
+    const A = FX.Ars, v = (k) => A.gearValFor(p, g, k);
+    const weak = A.useF(p, g) < 1 ? '（境界不够，驱策吃力）' : '';
+    if (g.slot === 'atk') return '战力 ×' + Math.round(v('atk') * 100) / 100 + weak;
+    if (g.slot === 'def') return '战力 ×' + Math.round(v('def') * 100) / 100 + '、落败重伤少 ' + Math.round(v('defHurt') * 100) + '%' + weak;
+    return '逃遁 +' + Math.round(v('dunFlee')) + '、赶路省 ' + Math.round(v('dunTravel') * 100) + '%' + weak;
+  };
+  const techLine = (t) => t.kind === 'shu' ? `${CF.shuRankNames[t.rank]} · ${typeLine(t)}` : t.kind === 'lianqi' ? `练炁术 · 真炁${CF.tierNames[t.tier]} · 采「${t.attrs.join('」「')}」气，忌「${t.opp.join('」「')}」` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
   const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : '修为');
 
   function toast(msg, ms) {
@@ -4915,12 +5496,38 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         ${coming.length ? `<p>在途：${coming.map((o) => esc(FX.World.itemName(o.item)) + '（约 ' + T.fmt(o.due) + ' 到）').join('、')}</p>` : ''}
         ${orders.map((a) => `<div class="stat"><span>${esc(FX.World.itemName(a.item))}</span><span class="row"><b>${a.cost} 符钱</b><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">托人代寻</button></span></div>`).join('')}
         ${orders.length ? '' : '<p class="muted">要托人代寻，得去金谷墟市（浮玉泊）。</p>'}</div>` : '';
+    // 道术与神通
+    const me = ov.me, artsK = ov.manuals.filter((t) => CF.techniques[t].kind === 'shu');
+    const prac = A.filter((a) => a.type === 'practice');
+    const artsCard = `<div class="card"><h3>道术与神通</h3><p class="muted">得了玉简还要参习：入门、小成、中成、大成。攻伐、护身各算最好的一门；神通要金丹法力才使得出。</p>
+      ${artsK.length ? artsK.map((k) => {
+        const t = CF.techniques[k], lv = FX.Ars.level(me, k), xp = (me.arts || {})[k] || 0, th = CF.arts.xp[t.rank];
+        const mine = prac.filter((a) => a.tech === k), why = (mine.find((a) => !a.ok) || {}).reason;
+        const eff = lv ? artEff(me, k) : '';
+        return `<div class="stat"><span>《${esc(t.name)}》 <span class="tag">${esc(CF.shuRankNames[t.rank])}</span> <b>${esc(FX.Ars.levelName(lv))}</b>${lv < 4 ? ` <span class="muted">${Math.floor(xp)}/${th[lv]}</span>` : ''}<br><span class="muted">${esc(typeLine(t))}${eff ? ' · 眼下' + esc(eff) : ''} · ${esc(t.desc)}</span></span>
+          <span class="row">${lv < 4 ? mine.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">参习 ${esc(T.dur(a.days))}</button>`).join('') : '<span class="tag t-good">大成</span>'}${why ? ' <span class="muted">' + esc(why) + '</span>' : ''}</span></div>`;
+      }).join('') : '<p class="muted">还没有道术。坊市里十几枚符钱就能买到下乘道术，宗门长老房也传；大派的神通要拿道功换。</p>'}</div>`;
+    // 法器
+    const gear = me.gear || [];
+    const ga = A.filter((a) => a.group === '法器');
+    const gShort = (a) => a.type === 'jilian' ? '祭炼 ' + a.n + ' 道（' + n0(a.cost) + '）' : a.type === 'lianxing' ? '炼形（' + n0(a.cost) + '）' : a.type === 'lianhua' ? '炼化 ' + T.dur(a.days) : a.type === 'chongzhu' ? '熔' + CF.items[a.item].name + '重铸' : '卖 ' + n0(a.gain);
+    const gearCard = `<div class="card"><h3>法器</h3><p class="muted">攻伐、护身、遁行三类各用最好的一件。炼形一次至多十道禁制；上品符器再炼形就成了法器，要金丹法力和本命精血；道器只有纯阳以上掌控得了。</p>
+      ${gear.length ? gear.map((g) => {
+        const inUse = FX.Ars.best(me, g.slot) === g;
+        const acts = ga.filter((a) => a.gid === g.id);
+        const lx = acts.find((a) => a.type === 'lianxing' && !a.ok) || acts.find((a) => a.type === 'jilian' && !a.ok);
+        const ling = g.ling === undefined ? 100 : Math.floor(g.ling);
+        return `<div class="stat"><span><b>${esc(g.name)}</b> <span class="tag">${esc(CF.gear.slotNames[g.slot])}</span> ${esc(FX.Ars.gradeName(g))} · ${g.jin} 道禁制${inUse ? ' <span class="tag t-good">在用</span>' : ''}<br><span class="muted">${esc(gearEff(me, g))} · 材质够炼形到${esc(CF.gear.gradeNames[g.cap])}${g.grade >= 4 && ling < 100 ? ' · 器灵炼化 ' + ling + '%' : ''}${lx ? ' · ' + esc(lx.reason) : ''}</span></span>
+          <span class="row">${acts.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.label + (a.reason ? '：' + a.reason : ''))}">${esc(gShort(a))}</button>`).join('')}</span></div>`;
+      }).join('') : '<p class="muted">身上没有符器。坊市里有飞剑、法衣、飞梭，宗门库藏也能拿道功换。</p>'}</div>`;
     return `<h2>行囊</h2>
       <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
         ${ov.me.realm.major >= 2 && s.player.inv.qiju ? `<p class="muted" style="margin:.4em 0 0">闭关、修炼时${esc(CF.items.qiju.name)}药力一尽就从行囊里续服一颗 · ${autoPillBtn()}</p>` : ''}
-        <h3>法门</h3>${ov.manuals.length ? ov.manuals.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
+        <h3>法门</h3>${ov.manuals.filter((t) => CF.techniques[t].kind !== 'shu').length ? ov.manuals.filter((t) => CF.techniques[t].kind !== 'shu').map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted">${esc(techLine(CF.techniques[t]))} · ${esc(CF.techniques[t].desc)}</span></span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}
       </div>
+      ${artsCard}
+      ${gearCard}
       ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
         ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b>${buyBtns(x)}</span></div>`).join('')}
         ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}
@@ -4948,7 +5555,7 @@ label { display: inline-flex; gap: .4em; align-items: center; }
       const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech);
       const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
       const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true);
-      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}</span></span><span class="row">${right}</span></div>`;
+      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}</span></span><span class="row">${right}</span></div>`;
     }).join('');
     const store = v.store.map((e) => {
       const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
@@ -5035,6 +5642,8 @@ label { display: inline-flex; gap: .4em; align-items: center; }
         <div class="stat"><span>境界</span><b>${esc(v.realmTitle)}</b></div>
         <div class="stat"><span>战力</span><b>${v.power}</b></div>
         ${P.rootNames(p).length ? `<div class="stat"><span>根基</span><b>${esc(P.rootNames(p).join(' · '))}</b></div>` : ''}
+        ${(p.gear || []).length ? `<div class="stat"><span>法器</span><b>${p.gear.map((g) => esc(FX.Ars.title(g))).join('、')}</b></div>` : ''}
+        ${Object.keys(p.arts || {}).some((k) => FX.Ars.level(p, k) > 0) ? `<div class="stat"><span>道术神通</span><b>${Object.keys(p.arts).filter((k) => FX.Ars.level(p, k) > 0).map((k) => esc(FX.Ars.artLabel(p, k))).join('、')}</b></div>` : ''}
         ${p.bio ? `<p class="muted">《仙业》人物 · ${esc(p.bio)}</p>` : ''}
         ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>

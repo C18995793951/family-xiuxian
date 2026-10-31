@@ -34,6 +34,7 @@
     else parts.push({ label: '对方不如你', value: Math.round(Math.min(20, (1 / ratio - 1) * 10)) });
     if (p.traits.includes('谨慎')) parts.push({ label: '谨慎', value: C().traits.cautiousFlee });
     if (p.health.state !== 'healthy') parts.push({ label: '带伤', value: p.health.state === 'heavy' ? -25 : -10 });
+    for (const x of FX.Ars.fleeParts(s, p)) parts.push(x);
     const chance = Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 95));
     return { chance, parts };
   };
@@ -41,10 +42,11 @@
   // 落败受伤；对手远强于自己且伤重时可能身死。返回描述与是否身死
   Combat.hurt = (s, p, foePower, foeName, causeIds) => {
     const E = C().encounter;
-    const heavy = R.chance(s.rng, E.lossHeavyShare);
+    const cut = FX.Ars.hurtCut(s, p); // 护身法器、护身道术挡下几成
+    const heavy = R.chance(s.rng, E.lossHeavyShare * (1 - cut));
     const my = P().power(s, p); // 强弱按交手时算，不按受伤之后算
     P().injure(s, p, heavy ? 'heavy' : 'light');
-    if (heavy && foePower >= 2 * my && R.chance(s.rng, E.deathWhenOutmatched)) {
+    if (heavy && foePower >= 2 * my && R.chance(s.rng, E.deathWhenOutmatched * (1 - cut))) {
       P().kill(s, p, '败于' + foeName + '之手', causeIds, { key: 'fight' });
       return { text: '伤重不治', died: true };
     }
@@ -123,7 +125,8 @@
         s2.player.stone += got;
         P().injure(s2, p, 'light');
         P().adjustRelation(s2, s2.player.id, p.id, -60, '交手');
-        return `缴获符钱 ${got}，与${p.name}结仇`;
+        const g = FX.Ars.loot(s2, p);
+        return `缴获符钱 ${got}${g ? '，夺下' + g : ''}，与${p.name}结仇`;
       },
       onLose(s2) { const lost = Math.floor(s2.player.stone * R.range(s2.rng, 0.3, 0.6)); s2.player.stone -= lost; P().adjustRelation(s2, s2.player.id, p.id, -30, '交手'); },
     };
@@ -171,7 +174,14 @@
           if (roll < 0.35) return { text: '深处早被人搬空，只剩几只空玉瓶', days: 10 };
           if (roll < 0.65) { const q = R.int(s.rng, 2, 4); giveItem(s, 'qiju', q); return { text: `寻得${C().items.qiju.name}×${q}`, gain: true, days: 10 }; }
           if (roll < 0.82) { const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得符钱 ${st}`, gain: true, days: 10 }; }
-          if (roll < 0.9) { giveItem(s, 'fuqi1', 1); return { text: `寻得一件${C().items.fuqi1.name}`, gain: true, days: 10 }; }
+          if (roll < 0.86) { const k = R.pick(s.rng, ['fuqi1', 'fayi1', 'suo1']); giveItem(s, k, 1); return { text: `寻得一件${C().items[k].name}`, gain: true, days: 10 }; }
+          if (roll < 0.93) {
+            // 前人留下的道术玉简：多是中下乘，偶尔是上乘
+            const arts = ['gengjin', 'xuejia', 'jinren', 'jiexing', 'sanjing', 'dari', 'xiaoyuanci'];
+            const t = R.weighted(s.rng, arts, (k) => ({ gengjin: 3, xuejia: 3, jinren: 3, jiexing: 2, sanjing: 2, dari: 0.4, xiaoyuanci: 0.2 }[k]));
+            if (!s.player.manuals.includes(t)) { s.player.manuals.push(t); return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 }; }
+            const st = R.int(s.rng, 80, 200); s.player.stone += st; return { text: `寻得一卷你已会的道术玉简，另有符钱 ${st}`, gain: true, days: 10 };
+          }
           const t = R.weighted(s.rng, ['guiyuan', 'chiyang', 'xuanshui', 'handou', 'kaifu_low'], (k) => ({ guiyuan: 3, chiyang: 3, xuanshui: 3, handou: 1, kaifu_low: 1 }[k]));
           if (!s.player.manuals.includes(t)) s.player.manuals.push(t);
           return { text: `寻得${FX.World.itemName('tech:' + t)}的玉简`, gain: true, days: 10 };

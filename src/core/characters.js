@@ -44,7 +44,7 @@
   P.xiangName = (p) => (p.xiang ? C().realms.xiangNames[p.xiang] : '');
   // 一路下来的根底成色：道基、紫府异象、先天金汞、金丹品第、元神法相
   P.rootNames = (p) => [p.daoji ? C().daojiNames[p.daoji] : '', p.yixiang ? C().yixiangNames[p.yixiang] : '', P.jinhongName(p), P.danPinName(p), P.xiangName(p)].filter(Boolean);
-  // 名位：羽士、高功、链师、真人
+  // 名位：羽士、高功、炼师、真人
   P.title = (p) => C().realms.titles[p.realm.major] || '';
   // 境界序号：凡人 0，胎息 1，练炁一至九层 2–10，筑基 11–13，紫府 14–16，洞玄 17–19，金丹 20–22，元神 23，返虚 24
   const offsets = () => {
@@ -99,10 +99,8 @@
     if (p.daoji) F.push({ label: C().daojiNames[p.daoji], value: C().breakthrough.daojiPower[p.daoji] });
     if (p.realm.major >= 6 && p.danPin) F.push({ label: P.danPinName(p), value: U.round1((1 + (5 - p.danPin) * C().realms.danPinPower) * 100) / 100 });
     if (p.realm.major >= 7 && p.xiang) F.push({ label: P.xiangName(p), value: U.round1((1 + (p.xiang - 2) * C().realms.xiangPower) * 100) / 100 });
-    if (P.isPlayer(s, p)) {
-      const best = Object.keys(C().items).filter((k) => C().items[k].power && s.player.inv[k] > 0).sort((a, b) => C().items[b].power - C().items[a].power)[0];
-      if (best) F.push({ label: C().items[best].name, value: C().items[best].power });
-    }
+    // 随身法器与道术、神通（见 arsenal.js；主角与 NPC 同一套算法）
+    for (const f of FX.Ars.powerFactors(s, p)) F.push(f);
     if (p.health.state !== 'healthy') F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: P.healthCoef(p) });
     let total = 1;
     for (const f of F) total *= f.value;
@@ -196,6 +194,8 @@
       notable: o.notable || null,         // 原著人物的键
       bio: o.bio || '',                   // 原著人物的小传
       daoId: o.daoId || null,             // 金丹以后修的道书（NPC）
+      gear: [],                           // 随身法器（见 arsenal.js）
+      arts: {},                           // 道术、神通：键 → 已参习的天数
       nearDeathT: null,                   // 上一次在生死之间走过（重伤）的时刻
       locationId: o.locationId,
       factionId: o.factionId || null,

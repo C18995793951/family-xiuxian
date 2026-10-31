@@ -85,6 +85,25 @@
       st.schemaVersion = 7;
       return st;
     },
+    // v7 → v8：法器（炼形、禁制、器灵）与道术、神通。旧的符器收进法器一栏，NPC 配上随身法器和道术
+    7: (st) => {
+      const CF = FX.CONFIG;
+      st.player.gearSeq = st.player.gearSeq || 0;
+      for (const p of Object.values(st.people)) {
+        if (!p.gear) p.gear = [];
+        if (!p.arts) p.arts = {};
+        if (p.id === st.player.id || !FX.P.alive(p)) continue;
+        const d = p.notable && CF.notables.find((x) => x.key === p.notable);
+        if (d && d.gear) p.gear = d.gear.map((g, i) => Object.assign({ id: 'n' + i, cap: g.grade, ling: 100 }, g));
+        else FX.Ars.npcKit(st, p);
+        if (d && d.arts) for (const k in d.arts) p.arts[k] = CF.arts.xp[CF.techniques[k].rank][d.arts[k] - 1];
+      }
+      FX.Ars.sync(st);
+      // 货架补上新货
+      for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
+      st.schemaVersion = 8;
+      return st;
+    },
   };
 
   const REQUIRED = {

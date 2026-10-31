@@ -174,6 +174,9 @@
       if (d.aptitude) q.aptitude = d.aptitude;
       for (const k of ['daoji', 'yixiang', 'jinhong', 'danPin', 'xiang']) if (d[k] !== undefined) q[k] = d[k];
       if (d.traits) q.traits = d.traits.slice();
+      // 原著里写明的随身法器、道术
+      if (d.gear) { q.gear = d.gear.map((g, i) => Object.assign({ id: 'n' + i, cap: g.grade, ling: 100 }, g)); }
+      if (d.arts) { q.arts = {}; for (const k in d.arts) q.arts[k] = C().arts.xp[C().techniques[k].rank][d.arts[k] - 1]; }
       s.usedNames[d.name] = 1;
       if (d.role === 'leader' && f) {
         const old = s.people[f.leaderId];
@@ -289,6 +292,7 @@
     if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2));
     if (realm.major >= 7) p.xiang = CU().xiangFor(p, R.int(r, 0, 3));
     if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
+    FX.Ars.npcKit(s, p);
     return p;
   };
   const CU = () => FX.CU;
@@ -360,7 +364,7 @@
   W.itemName = (key) => {
     if (!key.startsWith('tech:')) return C().items[key] ? C().items[key].name : key;
     const t = C().techniques[key.slice(5)];
-    return (t.kind === 'kaifu' ? '开府真法' : t.kind === 'dao' ? '道书' : '练炁术') + '《' + t.name + '》';
+    return (t.kind === 'kaifu' ? '开府真法' : t.kind === 'dao' ? '道书' : t.kind === 'shu' ? C().shuRankNames[t.rank] : '练炁术') + '《' + t.name + '》';
   };
   W.sellPrice = (s, key) => Math.max(1, Math.floor(C().items[key].price * C().market.sellRatio));
 

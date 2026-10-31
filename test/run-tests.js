@@ -737,6 +737,135 @@ check('16', '按原著：东弥州方位、原著人物、金丹三重、先天�
   return `宵明大泽（东域）、鹿台山（北域）、怙照宗（西域）、鹤鸣山均照原著；怀悟洞主、苗南老祖、君尧、颜熙入世；先天金汞、金丹三重、元神法相、正阳丹砂、捐输、劫修分寸、丹元大会（打了 ${rounds} 场）、流火宏化洞天、拜谒颜熙均正常；返虚→纯阳三灾→合道一路走通；v6 迁移正常`;
 });
 
+check('17', '法器与道术、神通：炼形与禁制、器灵炼化、宝材重铸、道术参习进境、神通门槛、遁法赶路、NPC 随身法器、缴获、v7 存档迁移', () => {
+  const CF = FX.CONFIG, A = FX.Ars;
+  const heal = (p) => { p.restUntil = 0; p.health = { state: 'healthy', days: 0 }; };
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  const settle = (s) => { while (s.pending.length && !s.ended) choose(s); heal(FX.P.player(s)); };
+  const act = (s, a) => { settle(s); const r = FX.Game.act(s, a); assert(r.ok, '行动被拒：' + JSON.stringify(a) + ' ' + r.error); settle(s); return r; };
+  const find = (s, pred) => { settle(s); return FX.Game.actions(s).find(pred); };
+  // 长时间的行动可能被路遇打断：处置完再接着做，直到条件满足
+  const until = (s, pred, done, msg) => { for (let i = 0; i < 8 && !done(); i++) { const a = find(s, pred); assert(a && a.ok, msg + '：' + (a ? a.reason : '没有这项行动')); act(s, a); } assert(done(), msg); };
+  // 1. 每门道术、每件法器都有稳定来路：下乘、中乘道术坊市常备，上乘以上在宗门长老房；法器在坊市常备或库藏
+  const staples = new Set(); for (const k in CF.market) if (CF.market[k].staples) for (const x of CF.market[k].staples) staples.add(x.item);
+  const libs = new Set(); for (const d of CF.factionDefs.concat(Object.values(CF.factionTypes))) for (const e of d.library || []) libs.add(e.tech);
+  const store = new Set(CF.house.store.map((e) => e.item));
+  const arts = Object.keys(CF.techniques).filter((k) => CF.techniques[k].kind === 'shu');
+  for (const k of arts) assert(staples.has('tech:' + k) || libs.has(k), '道术没有稳定来路：' + CF.techniques[k].name);
+  for (const k of Object.keys(CF.items).filter((x) => CF.items[x].gear)) assert(staples.has(k) || store.has(k), '法器没有稳定来路：' + CF.items[k].name);
+  for (const k of ['miluo', 'ganyin', 'lingtian']) assert(staples.has(k) || store.has(k), '宝材没有稳定来路：' + k);
+
+  // 2. 符器到手收进法器一栏；炼形、祭炼、宝材重铸，一路祭成法器
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'fabao' });
+  const p = FX.P.player(s);
+  s.player.inv.fuqi1 = 1; s.player.stone = 3000000;
+  act(s, find(s, (a) => a.type === 'cultivate' && a.days === 30));
+  assert(!s.player.inv.fuqi1 && p.gear.length === 1 && p.gear[0].grade === 1 && p.gear[0].jin === 10, '符器没收进法器一栏');
+  const g = p.gear[0];
+  const pow0 = FX.P.powerBreakdown(s, p).factors.find((f) => /飞剑/.test(f.label));
+  assert(pow0 && pow0.value === 1.25, '下品飞剑战力倍数不对');
+  const lx = () => find(s, (a) => a.type === 'lianxing' && a.gid === g.id);
+  assert(!lx().ok && /筑基/.test(lx().reason), '练炁也能炼形中品');
+  p.realm = { major: 3, stage: 1 }; heal(p);
+  until(s, (a) => a.type === 'lianxing' && a.gid === g.id, () => g.grade === 2, '炼形为中品不对');
+  until(s, (a) => a.type === 'jilian' && a.gid === g.id && a.n === 10 * g.grade - g.jin, () => g.jin === 20, '祭炼禁制不对');
+  p.realm = { major: 4, stage: 1 }; heal(p);
+  assert(!lx().ok && /材质/.test(lx().reason), '材质到头还能炼形');
+  s.player.inv.miluo = 1; act(s, find(s, (a) => a.type === 'chongzhu' && a.gid === g.id && a.item === 'miluo'));
+  assert(g.cap === 3 && !s.player.inv.miluo, '熔弥罗铁没抬高材质');
+  until(s, (a) => a.type === 'lianxing' && a.gid === g.id, () => g.grade === 3, '没炼形为上品');
+  until(s, (a) => a.type === 'jilian' && a.gid === g.id && a.n === 10 * g.grade - g.jin, () => g.jin === 30, '没祭成上品符器');
+  s.player.inv.miluo = 1; act(s, find(s, (a) => a.type === 'chongzhu' && a.gid === g.id));
+  assert(!lx().ok && /金丹/.test(lx().reason), '紫府也能祭成法器');
+  p.realm = { major: 6, stage: 1 }; heal(p);
+  until(s, (a) => a.type === 'lianxing' && a.gid === g.id, () => g.grade === 4, '金丹以本命精血没祭成法器');
+  assert(g.ling === 100, '自家祭成的法器器灵不认主');
+  const atk4 = A.gearVal(g, 'atk');
+  // 3. 外来法器器灵不认主，要炼化
+  s.player.inv.yujing = 1; act(s, find(s, (a) => a.type === 'cultivate' && a.days === 30));
+  const yj = p.gear.find((x) => x.name === '玉景飞宫');
+  assert(yj && yj.grade === 4 && yj.ling === 10, '玉景飞宫没到手');
+  const fl0 = A.gearVal(yj, 'dunFlee');
+  act(s, find(s, (a) => a.type === 'lianhua' && a.gid === yj.id && a.days === 360));
+  assert(yj.ling > 10 && A.gearVal(yj, 'dunFlee') > fl0, '炼化器灵没长进');
+  // 4. 遁行法器让赶路省时日、逃遁更容易
+  const s2 = FX.Game.newGame({ origin: 'loose', seed: 'dun' });
+  const p2 = FX.P.player(s2);
+  const tr = (st) => FX.Game.actions(st).filter((a) => a.type === 'travel').reduce((x, a) => x + a.days, 0);
+  const d0 = tr(s2), f0 = FX.Combat.fleeChance(s2, p2, 100).chance;
+  p2.gear.push(A.make(s2, CF.items.suo3.gear));
+  assert(tr(s2) < d0 && FX.Combat.fleeChance(s2, p2, 100).chance > f0, '飞梭没省赶路时日或没加逃遁');
+  // 金丹以下驱策法器费力不讨好，纯阳以下掌控不了道器
+  const fq = A.make(s2, { name: '飞剑', slot: 'atk', grade: 4, jin: 40, cap: 4 }), dq = A.make(s2, { name: '飞剑', slot: 'atk', grade: 7, jin: 70, cap: 7 });
+  assert(A.useF(p2, fq) < 1 && A.useF(Object.assign({}, p2, { realm: { major: 6, stage: 1 } }), fq) === 1 && A.useF(Object.assign({}, p2, { realm: { major: 8, stage: 1 } }), dq) < 1, '境界不够也使得顺法器、道器');
+  // 5. 护身：落败时重伤少些
+  p2.gear.push(A.make(s2, CF.items.fayi3.gear));
+  assert(A.hurtCut(s2, p2) > 0.2, '法衣没减伤');
+  // 6. 道术参习：入门 → 小成 → 大成，进境越高威能越大
+  s2.player.manuals.push('gengjin');
+  const pa = () => find(s2, (a) => a.type === 'practice' && a.tech === 'gengjin' && a.days === 90);
+  const powA = FX.P.power(s2, p2);
+  act(s2, pa()); heal(p2);
+  const lv1 = A.level(p2, 'gengjin');
+  assert(lv1 >= 1 && FX.P.power(s2, p2) > powA, '参习下乘道术没长进');
+  for (let i = 0; i < 6 && A.level(p2, 'gengjin') < 4; i++) { heal(p2); const a = pa(); if (a && a.ok) act(s2, a); }
+  assert(A.level(p2, 'gengjin') > lv1, '参习不见进境');
+  // 7. 上乘道术要引子；辅修道术加修炼、冲关
+  s2.player.manuals.push('jiguang'); p2.realm = { major: 2, stage: 1 };
+  const jg = find(s2, (a) => a.type === 'practice' && a.tech === 'jiguang');
+  assert(jg && !jg.ok && /干银星矿/.test(jg.reason), '极光大遁不要引子');
+  p2.arts.sishan = CF.arts.xp[3][3];
+  p2.realm = { major: 3, stage: 3 }; p2.progress = FX.P.need(p2);
+  const ch = FX.CU.chance(s2, p2);
+  assert(ch.parts.some((x) => /四山斗决/.test(x.label) && x.value === 12), '四山斗决没加冲紫府的把握');
+  // 8. 神通要金丹法力：洞玄使不出；大派神通看金丹品第、要先修上卷
+  p2.arts.beidou = CF.arts.xp[4][3]; p2.realm = { major: 5, stage: 1 };
+  assert(A.artVal(p2, 'beidou', 'atk') === 0, '洞玄也使得出神通');
+  p2.realm = { major: 6, stage: 1 };
+  assert(A.artVal(p2, 'beidou', 'atk') > 0.8, '金丹使不出神通');
+  const s3 = FX.Game.newGame({ origin: 'sect', seed: 'yuchen-lib' });
+  const p3 = FX.P.player(s3);
+  const yc = Object.values(s3.factions).find((f) => f.key === 'yuchen');
+  p3.realm = { major: 6, stage: 1 }; p3.danPin = 6; p3.daoji = 3; p3.factionId = yc.id; p3.locationId = yc.seatId; s3.player.merit = 100000;
+  const lib = (k) => find(s3, (a) => a.type === 'sect_learn' && a.tech === k);
+  assert(lib('beidou') && !lib('beidou').ok && /品/.test(lib('beidou').reason), '六品金丹也能换北斗罡雷');
+  p3.danPin = 3;
+  assert(lib('zqsl') && !lib('zqsl').ok && /上卷/.test(lib('zqsl').reason), '没修上卷也能换紫清神雷');
+  act(s3, lib('zqsl_up'));
+  p3.arts.zqsl_up = CF.arts.xp[3][2]; // 上卷修到中成
+  act(s3, lib('zqsl'));
+  assert(A.level(p3, 'zqsl') === 3 && A.artVal(p3, 'zqsl', 'atk') > A.artVal(p3, 'zqsl_up', 'atk'), '紫清神雷两卷合一没接上上卷的进境');
+  assert(lib('taiyi') && !lib('taiyi').ok, '金丹也能换太乙神雷');
+  // 9. NPC 也有随身法器、道术；原著人物照原著
+  const nb = (k) => Object.values(s3.people).find((q) => q.notable === k);
+  assert(nb('junyao').gear.some((x) => x.name === '元都斩魔剑' && x.grade === 6) && A.level(nb('junyao'), 'zqsl') === 4, '君尧没有元都斩魔剑、紫清神雷');
+  assert(nb('miaonan').gear.some((x) => x.name === '五方升阳旗' && x.grade === 5), '苗南老祖没有五方升阳旗');
+  const jd = FX.P.living(s3).filter((q) => q.realm.major === 6 && q.id !== p3.id);
+  assert(jd.length && jd.filter((q) => (A.best(q, 'atk') || {}).grade >= 3).length / jd.length >= 0.6, '金丹 NPC 多半没有上品符器以上的法器');
+  // 10. 打退劫修，有机会夺下其法器（外来法器器灵不认主）
+  const robber = FX.World.spawnNpc(s3, { realm: { major: 6, stage: 1 }, locationId: p3.locationId });
+  robber.gear = [{ id: 'n0', name: '飞剑', slot: 'atk', grade: 4, jin: 35, cap: 4, ling: 100 }];
+  const keep = CF.gear.lootChance; CF.gear.lootChance = 1;
+  const got = A.loot(s3, robber); CF.gear.lootChance = keep;
+  const lg = p3.gear[p3.gear.length - 1];
+  assert(got && !robber.gear.length && lg.grade === 4 && lg.ling === 0, '没夺下劫修的法器');
+  // 11. v7 存档迁移：旧符器收进法器一栏，NPC 配上法器、道术
+  const g7 = FX.Game.newGame({ origin: 'sect', seed: 'mig8' });
+  const t7 = JSON.parse(FX.Save.serialize(g7));
+  for (const q of Object.values(t7.state.people)) { delete q.gear; delete q.arts; }
+  delete t7.state.player.gearSeq;
+  t7.state.player.inv.fuqi3 = 1;
+  t7.state.schemaVersion = 7; t7.schemaVersion = 7; delete t7.checksum;
+  const mg = FX.Save.deserialize(t7);
+  assert(mg.ok, 'v7 存档迁移失败：' + mg.error);
+  const ms = mg.state, mp = FX.P.player(ms);
+  assert(mp.gear.length === 1 && mp.gear[0].grade === 3 && !ms.player.inv.fuqi3, '迁移后旧符器没收进法器一栏');
+  assert(Object.values(ms.people).find((q) => q.notable === 'junyao').gear.some((x) => x.name === '元都斩魔剑'), '迁移后君尧没有元都斩魔剑');
+  assert(FX.P.living(ms).filter((q) => q.realm.major >= 4).every((q) => Array.isArray(q.gear) && q.arts), '迁移后 NPC 没配法器、道术');
+  for (let y = 0; y < 5 && !ms.ended; y++) FX.Sim.passDays(ms, CF.daysPerYear, 'rest');
+  return `${arts.length} 门道术神通、${Object.keys(CF.items).filter((x) => CF.items[x].gear).length} 种符器法器都有稳定来路；飞剑从下品符器一路炼形、祭炼、熔弥罗铁重铸到下品法器（战力 ×${Math.round(atk4 * 100) / 100}）；玉景飞宫炼化器灵；飞梭省赶路、法衣减伤；庚金剑气术参习到${A.levelName(A.level(p2, 'gengjin'))}；极光大遁要引子；四山斗决助冲紫府；神通要金丹、看品第、两卷合一；君尧、苗南老祖的法器照原著；夺下劫修法器；v7 迁移正常`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

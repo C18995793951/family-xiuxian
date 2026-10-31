@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 7,
-    gameVersion: '0.5.0-xianye5',
+    schemaVersion: 8,
+    gameVersion: '0.6.0-xianye6',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -31,8 +31,8 @@
     realms: {
       // major: 0 凡人 1 胎息 2 练炁 3 筑基 4 紫府 5 洞玄 6 金丹 7 元神 8 返虚 9 纯阳 10 合道
       names: ['凡人', '胎息', '练炁', '筑基', '紫府', '洞玄', '金丹', '元神', '返虚', '纯阳', '合道'],
-      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称链师，金丹、元神称真人，返虚、纯阳称真君，合道称道君
-      titles: { 2: '羽士', 4: '高功', 5: '链师', 6: '真人', 7: '真人', 8: '真君', 9: '真君', 10: '道君' },
+      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称炼师，金丹、元神称真人，返虚、纯阳称真君，合道称道君
+      titles: { 2: '羽士', 4: '高功', 5: '炼师', 6: '真人', 7: '真人', 8: '真君', 9: '真君', 10: '道君' },
       stageNames: {
         0: [''],
         1: [''],
@@ -144,9 +144,39 @@
       dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.2, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备；比下乘开府真法强，不如上乘的' },
       dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九还、炼神还虚的中乘道书，中域坊市常备，大派长老房可用道功换' },
       dao_high: { kind: 'dao', name: '太上元神真解', grade: 3, mult: 1.6, price: 250000, desc: '直指元神、返虚的根本道典，只在八派六宗的真传之间流转' },
+
+      /* 道术与神通（kind: 'shu'）：照原著，正统仙道里道术分下、中、上三乘，道术之上才是神通；
+       * 金丹真人的法力才撑得起神通的损耗，洞玄以下斗法只能用道术。玉宸派的八功九书是神通里的无上大神通。
+       * rank：1 下乘、2 中乘、3 上乘、4 神通、5 无上大神通。type：atk 攻伐、def 护身、dun 遁法、xiu 辅助修行（可以兼几类）。
+       * 得了玉简还要参习：入门、小成、中成、大成，越往上越见威能。
+       * 下乘、中乘里「庚金剑气术」是游戏拟的名目，其余名目都出自原著。 */
+      qijia: { kind: 'shu', rank: 1, type: ['def'], minMajor: 1, name: '气甲术', price: 15, desc: '以胎息、真炁结一层气甲护身。下乘道术里最常见的一门，坊市里十几枚符钱就能买到' },
+      xuejia: { kind: 'shu', rank: 1, type: ['def'], minMajor: 1, name: '血甲术', price: 25, desc: '以自身血气凝甲，比气甲术凶些，伤身也多些' },
+      gengjin: { kind: 'shu', rank: 1, type: ['atk'], minMajor: 1, name: '庚金剑气术', price: 30, desc: '把真炁炼作一缕金锐之气伤人，下乘道术里的寻常杀伐手段' },
+      hufeng: { kind: 'shu', rank: 1, type: ['dun'], minMajor: 1, name: '小呼风唤雾术', price: 20, desc: '呼风唤雾，遮人耳目，逃遁时好用' },
+      jinren: { kind: 'shu', rank: 1, type: ['dun', 'def'], minMajor: 1, name: '金人代形', price: 40, desc: '临危时化出一具金人替身挡灾，本体趁机脱身' },
+      jiexing: { kind: 'shu', rank: 2, type: ['atk'], minMajor: 2, name: '解形遁变之术', price: 900, desc: '附在所驱之物上，可出幽入冥、形随影变、分化无穷，叫人防不胜防' },
+      sanjing: { kind: 'shu', rank: 2, type: ['dun'], minMajor: 2, name: '散景敛形术', price: 700, desc: '敛去自家形迹气机，还能拿一缕雾气仿出别人的气机来蒙骗对手' },
+      dongjing: { kind: 'shu', rank: 2, type: ['xiu'], minMajor: 2, name: '动静雷音导引术', price: 1200, desc: '五光宗辅助练炁的导引法门。练炁时修炼速度 +12%（大成时）', xiu: { cult: { majors: [2], mult: 0.12 } } },
+      dari: { kind: 'shu', rank: 3, type: ['atk', 'def'], minMajor: 2, name: '先天大日神光', price: 26000, desc: '能攻能守的上乘道术：放出去如一轮天日巡空，荡灭一切；收回来以神光裹住身躯，辟邪护命。无需外物引子，只是极难修持' },
+      sishan: { kind: 'shu', rank: 3, type: ['xiu', 'atk'], minMajor: 3, name: '四山斗决', price: 20000, desc: '玉宸派长赢院弟子筑基三重时多选它来破紫府壁障：修到中成，神意可勘破虚空迷障。冲紫府成功率 +12（大成时），也是一门护道杀伐之术', xiu: { brk: { zifu: 12 } } },
+      pili: { kind: 'shu', rank: 3, type: ['dun'], minMajor: 2, name: '霹雳飞雷遁法', price: 24000, desc: '玉宸上真所创的上乘遁法，化作雷光遁走，真炁足够时一日千里' },
+      jiguang: { kind: 'shu', rank: 3, type: ['dun'], minMajor: 2, name: '极光大遁', price: 24000, need: 'ganyin', desc: '怙照宗的上乘遁法，遁速冠绝同侪。入门要一块干银星矿作引子' },
+      xiaoyuanci: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 5, name: '小元磁神光', price: 30000, desc: '从先天魔宗大神通「上极元磁仙光」拆分简化而来，正合洞玄修为使用，极克剑修' },
+      zqsl_up: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 2, name: '紫清神雷·上卷', price: 30000, desc: '玉宸四大神通雷法之首「紫清神雷」被前辈拆成上下两卷，只修上卷时是一门上乘道术，正合金丹以下斗法。成丹后得了下卷，两卷合一才是神通' },
+      shenlie: { kind: 'shu', rank: 3, type: ['atk'], minMajor: 2, name: '神烈剑经', price: 26000, desc: '一部上乘剑经，赤明派剑修多从它入门' },
+      zqsl: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '紫清神雷', price: 0, merge: 'zqsl_up', desc: '上下两卷合一的紫清神雷，长于破煞炼魔，叱咤之音震荡百里。要先修过上卷，进境从上卷接着算' },
+      beidou: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '北斗罡雷', price: 0, desc: '玉宸除太乙神雷之外杀力最盛的四大神通雷法之一。非有缘法、根性的弟子不授' },
+      wuyin: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '五阴擒拿大手印', price: 0, desc: '怙照宗的神通。南域万宝楼当年错收了这门神通放在楼里卖，一夜之间满楼覆灭' },
+      jianqi: { kind: 'shu', rank: 4, type: ['atk'], minMajor: 6, name: '剑气雷音', price: 0, merge: 'shenlie', desc: '赤明派剑修的神通境界：剑气破空时隐有雷音。要先修过神烈剑经，进境接着算' },
+      taiyi: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '太乙神雷', price: 0, desc: '玉宸八功九书之首，九州四海从来排第一的杀伐神通，中乙剑派的剑术、先天魔宗的魔功都不及它' },
+      xukong: { kind: 'shu', rank: 5, type: ['def', 'dun'], minMajor: 6, name: '虚空大罗法', price: 0, desc: '玉宸八功之一。施展时身形化入虚空，神光打来也只是穿身而过' },
+      meihua: { kind: 'shu', rank: 5, type: ['xiu'], minMajor: 6, name: '梅花易数', price: 0, desc: '玉宸八功里的占验法：明天理、得凶吉、预未来。冲元神及以上各关成功率 +8（大成时）', xiu: { brk: { yuanshen: 8, fanxu: 8, chunyang: 8, sanzai: 8, hedao: 8 } } },
+      lianjian: { kind: 'shu', rank: 5, type: ['atk'], minMajor: 7, name: '炼剑成丝', price: 0, merge: 'jianqi', desc: '赤明派剑道的极境之一，剑炼成丝，无物不断。要先修过剑气雷音' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
     gradeNames: ['', '下乘', '中乘', '上乘'],
+    shuRankNames: ['', '下乘道术', '中乘道术', '上乘道术', '神通', '无上大神通'],
     daojiNames: ['', '下品道基', '中品道基', '上品道基'],
     yixiangNames: ['', '下等紫府异象', '中等紫府异象', '上等紫府异象'],
     daojiTiers: [4, 7], // 真炁阶数 ≥4 中品、≥7 上品
@@ -317,18 +347,18 @@
       // library：长老房能请授的功法（merit 为所需道功，0 即白给；minMajor 为最低大境界）
       // join：拜入条件。base 基础成功率；maxAge 年龄上限；closed 表示眼下不收人
       {
-        key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄链师，传闻是玉宸派下辖的数百道脉之一',
-        library: [{ tech: 'dingjin' }, { tech: 'sanqi_kaifu', minMajor: 3 }, { tech: 'chiyang', merit: 150, note: '派中收着的外派抄本' }],
+        key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄炼师，传闻是玉宸派下辖的数百道脉之一',
+        library: [{ tech: 'dingjin' }, { tech: 'sanqi_kaifu', minMajor: 3 }, { tech: 'chiyang', merit: 150, note: '派中收着的外派抄本' }, { tech: 'qijia' }, { tech: 'gengjin', merit: 5 }, { tech: 'jiexing', merit: 60, minMajor: 2 }],
         join: { minMajor: 1, base: 55, maxAge: 60 },
       },
       {
         key: 'wuguang', name: '五光宗', type: 'sect', tier: 2, seat: '五光宗', tech: 'chiyang', blurb: '南域勉强算得上玄门正统的二流宗门，宗中有元神真君驻世，不问俗务',
-        library: [{ tech: 'chiyang' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        library: [{ tech: 'chiyang' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'gengjin' }, { tech: 'dongjing', merit: 80, minMajor: 2 }],
         join: { minMajor: 2, base: 15, maxAge: 40 },
       },
       {
         key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人',
-        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }, { tech: 'hufeng' }, { tech: 'sanjing', merit: 60, minMajor: 2 }],
         join: { closed: '花神府只在「撷芳宴」上收人，眼下没有开宴' },
       },
       { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易', leader: 'huaiwu' },
@@ -337,19 +367,26 @@
         key: 'yuchen', name: '玉宸派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
         blurb: '玄门八派之一。本宗占着东域宵明大泽这口灵窟，设九殿；另有青阳、长赢、白商、玄英四大下院教导弟子。玄真派这样的小宗只是它下辖的数百道脉之一，道脉出身的金丹真人可凭道脉符书改投',
         transferNote: '落籍白商院（四大下院里最不看出身的一院）',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
+          { tech: 'sishan', merit: 800 }, { tech: 'pili', merit: 1500 }, { tech: 'zqsl_up', merit: 2000, minDaoji: 2 },
+          { tech: 'zqsl', merit: 6000, minMajor: 6, minPin: 4, needTech: 'zqsl_up' }, { tech: 'beidou', merit: 9000, minMajor: 6, minPin: 3 },
+          { tech: 'xukong', merit: 30000, minMajor: 6, minPin: 2 }, { tech: 'meihua', merit: 25000, minMajor: 6, minPin: 3 },
+          { tech: 'taiyi', merit: 40000, minMajor: 7, minXiang: 3 }],
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
         key: 'chiming', name: '赤明派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
         blurb: '玄门八派之一，据北域鹿台山，北域诸国都在它治下。真传多出自玄门世族，收外人只看金丹品第',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 },
+          { tech: 'shenlie', merit: 1500 }, { tech: 'dari', merit: 2500 }, { tech: 'jianqi', merit: 7000, minMajor: 6, needTech: 'shenlie' },
+          { tech: 'lianjian', merit: 35000, minMajor: 7, needTech: 'jianqi' }],
         join: { minMajor: 6, base: 15, pin: 8 },
       },
       {
         key: 'huzhao', name: '怙照宗', type: 'sect', tier: 3, outer: true, tech: 'handou',
         blurb: '魔道六宗之一，山门在西域极西处，与玉宸、赤明「二玄」在东弥州维持着玄魔平衡。行事酷烈，当年南域的万宝楼错卖了它一门神通，一夜之间满楼覆灭。收人不问出身，只是正直之人入不了它的门',
-        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 }],
+        library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 },
+          { tech: 'jiguang', merit: 1500 }, { tech: 'xiaoyuanci', merit: 2500, minMajor: 5 }, { tech: 'wuyin', merit: 7000, minMajor: 6 }],
         join: { minMajor: 6, base: 40, refuseTrait: '正直' },
       },
       { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱', leader: 'miaonan' },
@@ -360,18 +397,22 @@
      * realm 为 [大境界, 重数]；faction 为势力键；role 为 leader 时接任该势力之主。 */
     notables: [
       { key: 'huaiwu', name: '怀悟洞主', sex: 'M', realm: [5, 3], age: 330, faction: 'jingu', role: 'leader', daoji: 2, yixiang: 2, jinhong: 2,
-        bio: '南域有名的散修链师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
+        gear: [{ name: '怀悟洞', slot: 'def', grade: 4, jin: 33 }, { name: '飞剑', slot: 'atk', grade: 3, jin: 28 }], arts: { jiexing: 4, sanjing: 3 },
+        bio: '南域有名的散修炼师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
       { key: 'miaonan', name: '苗南老祖', sex: 'M', realm: [3, 3], age: 170, faction: 'miaonan', role: 'leader', traits: ['贪婪'],
+        gear: [{ name: '五方升阳旗', slot: 'atk', grade: 5, jin: 42, ling: 40 }], arts: { xuejia: 4, hufeng: 4 },
         bio: '苗南峰的魔道流寇，筑基三重，手执一面「五方升阳旗」，带着苗南七子在路上收买路符钱。几回被紫府高功出手追杀都逃得性命，丹粟国几家小门派都要看他脸色。' },
       { key: 'junyao', name: '君尧', sex: 'M', realm: [7, 1], age: 520, faction: 'yuchen', role: 'elder', tech: 'ziqing', aptitude: 95, daoji: 3, yixiang: 3, jinhong: 4, danPin: 1, xiang: 4,
+        gear: [{ name: '元都斩魔剑', slot: 'atk', grade: 6, jin: 58 }, { name: '紫弥宝衣', slot: 'def', grade: 3, jin: 30 }, { name: '玉景飞宫', slot: 'dun', grade: 5, jin: 46 }], arts: { zqsl: 4, beidou: 4, xukong: 3 },
         bio: '玉宸派道子，上届丹元大会的魁首，玉宸派里上一个得了「斗法胜」名号的人。成道前曾在天外觅得一篇上乘开府真法，如今被称作宇内元神第一。' },
       { key: 'yanxi', name: '颜熙', sex: 'M', realm: [8, 1], age: 2600, placeKey: 'donghai', tech: 'linghe', aptitude: 40, daoji: 1, yixiang: 1, jinhong: 1, danPin: 9, xiang: 2,
+        gear: [{ name: '飞剑', slot: 'atk', grade: 5, jin: 50 }, { name: '宝衣', slot: 'def', grade: 5, jin: 45 }, { name: '云舟', slot: 'dun', grade: 5, jin: 50 }], arts: { dari: 4, pili: 4 },
         bio: '南域散修出身的真君。道书里记着他是低阶真炁、下等道基、下等紫府异象、末等先天金汞，却逆反根果，一路证得元神、返虚，在东海开辟了「舜烈碧云源固」洞天，与东海龙族牵连甚深。九州四海的散修里只出了这一个颜熙。' },
     ],
 
     factionTypes: {
       sect: { name: '宗门' },
-      clan: { name: '修道家族', library: [{ tech: 'guiyuan' }, { tech: 'kaifu_low', merit: 120, minMajor: 3 }] },
+      clan: { name: '修道家族', library: [{ tech: 'guiyuan' }, { tech: 'kaifu_low', merit: 120, minMajor: 3 }, { tech: 'qijia' }, { tech: 'xuejia', merit: 5 }] },
       league: { name: '墟市' },
       evil: { name: '魔道' },
     },
@@ -396,14 +437,26 @@
         { item: 'qiju', merit: 3, clan: true },
         { item: 'heal', merit: 2, clan: true },
         { item: 'fuqi1', merit: 30 },
+        { item: 'fayi1', merit: 25 },
+        { item: 'suo1', merit: 25 },
         { item: 'zhuji', merit: 40, minMajor: 2, clan: true },
         { item: 'danmusha', merit: 90, minMajor: 3, clan: true },
         { item: 'yanshou', merit: 120, minMajor: 3 },
         { item: 'fuqi2', merit: 150, minMajor: 3 },
+        { item: 'fayi2', merit: 140, minMajor: 3 },
+        { item: 'suo2', merit: 140, minMajor: 3 },
         { item: 'yusui', merit: 220, minMajor: 4 },
         { item: 'wujing', merit: 160, minMajor: 4 },
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
         { item: 'fuqi3', merit: 1500, minMajor: 6, minTier: 3 },
+        { item: 'fayi3', merit: 1400, minMajor: 6, minTier: 3 },
+        { item: 'suo3', merit: 1400, minMajor: 6, minTier: 3 },
+        { item: 'miluo', merit: 400, minMajor: 6, minTier: 3 },
+        { item: 'lingtian', merit: 30000, minMajor: 8, minTier: 3 },
+        { item: 'chenshan', merit: 1200, minMajor: 6, only: 'yuchen' },
+        { item: 'ziyi', merit: 1200, minMajor: 6, only: 'yuchen' },
+        { item: 'yujing', merit: 6000, minMajor: 6, only: 'yuchen' },
+        { item: 'ganyin', merit: 600, minMajor: 2, only: 'huzhao' },
         { item: 'dingshen', merit: 2000, minMajor: 6, minTier: 3 },
         { item: 'zhengyang', merit: 500, minMajor: 6, minTier: 3 },
       ],
@@ -447,7 +500,7 @@
         rounds: 4, foeBase: 2600, foeMult: [1.4, 1.9, 2.5, 3.2],
         foes: ['斗枢派', '太符宫', '中乙剑派', '北极苑', '阴景派', '九真教', '神御宗', '血河宗', '先天魔宗', '瘟癀宗', '玄酆洞', '玉宸派', '赤明派', '怙照宗'],
         // 按胜场：0 落选，1–2 有名次，3 前列，4 魁首
-        reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2 }, { merit: 600, zhengyang: 3, dingshen: 1 }, { merit: 1200, xudu: 1, zhengyang: 3 }] },
+        reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2, miluo: 1 }, { merit: 600, zhengyang: 3, dingshen: 1, huanghua: 1 }, { merit: 1200, xudu: 1, zhengyang: 3, huanghua: 1 }] },
       // 流火宏化洞天：旁门纯阳火霞老祖开辟的下等洞天，漂泊万载后落回胥都天，悬在鹤鸣山上空。
       // 玉宸派与赤明派赌斗三场赢下了它，每隔些年门户显世，玉宸门人可入内寻造化（原著里是四院弟子去，这里金丹以上的门人才放进去）
       liuhuo: { name: '流火宏化洞天显世', every: [20, 35], first: [8, 20], years: 3, place: '鹤鸣山', faction: 'yuchen', minMajor: 6, days: 120,
@@ -498,9 +551,24 @@
       wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货，没货时可在浮玉泊托人代寻' },
       ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '在浮玉泊托金谷墟市代寻，约三年一定送到；五光宗、花神府弟子可用道功换；货架上偶尔也有' },
       yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
-      fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
-      fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
-      fuqi3: { name: '上品符器', price: 40000, desc: '大派真传才配得起的符器，斗法战力 ×2.2（只算最好的一件）', power: 2.2 },
+      // 符器、法器：到手就收进「法器」一栏（gear 是它的底子）。攻伐、护身、遁行三类各用最好的一件
+      fuqi1: { name: '飞剑（下品符器）', price: 350, desc: '一炼形、十道禁制的下品飞剑，材质还经得起再炼形一次', gear: { name: '飞剑', slot: 'atk', grade: 1, jin: 10, cap: 2 } },
+      fuqi2: { name: '飞剑（中品符器）', price: 1500, desc: '二炼形、二十道禁制的中品飞剑', gear: { name: '飞剑', slot: 'atk', grade: 2, jin: 20, cap: 3 } },
+      fuqi3: { name: '飞剑（上品符器）', price: 40000, desc: '三炼形、三十道禁制，大派真传才配得起；材质还够金丹真人以本命精血祭成法器', gear: { name: '飞剑', slot: 'atk', grade: 3, jin: 30, cap: 4 } },
+      fayi1: { name: '法衣（下品符器）', price: 300, desc: '织进十道禁制的法衣，落败时少受重伤', gear: { name: '法衣', slot: 'def', grade: 1, jin: 10, cap: 2 } },
+      fayi2: { name: '法衣（中品符器）', price: 1400, desc: '二十道禁制的中品法衣', gear: { name: '法衣', slot: 'def', grade: 2, jin: 20, cap: 3 } },
+      fayi3: { name: '法衣（上品符器）', price: 36000, desc: '三十道禁制的上品法衣', gear: { name: '法衣', slot: 'def', grade: 3, jin: 30, cap: 4 } },
+      suo1: { name: '飞梭（下品符器）', price: 300, desc: '代步的飞梭，赶路快些，逃起来也容易些', gear: { name: '飞梭', slot: 'dun', grade: 1, jin: 10, cap: 2 } },
+      suo2: { name: '飞梭（中品符器）', price: 1400, desc: '二十道禁制的中品飞梭', gear: { name: '飞梭', slot: 'dun', grade: 2, jin: 20, cap: 3 } },
+      suo3: { name: '飞梭（上品符器）', price: 36000, desc: '三十道禁制的上品飞梭', gear: { name: '飞梭', slot: 'dun', grade: 3, jin: 30, cap: 4 } },
+      chenshan: { name: '沉山印', price: 30000, desc: '玉宸上宗下赐门人的上品符器，一印压下如山岳倾倒', gear: { name: '沉山印', slot: 'atk', grade: 3, jin: 30, cap: 4 } },
+      ziyi: { name: '紫弥宝衣', price: 30000, desc: '玉宸派的独门手笔，上品符器。下院里得了它的，无一例外都是被上宗看重的人', gear: { name: '紫弥宝衣', slot: 'def', grade: 3, jin: 30, cap: 4 } },
+      yujing: { name: '玉景飞宫', price: 400000, desc: '玉宸派灵宝殿炼给门人的飞宫，下品法器，生有器灵。遁速极快，守御也强。到手要先炼化器灵', gear: { name: '玉景飞宫', slot: 'dun', grade: 4, jin: 40, cap: 5, ling: 10 } },
+      // 宝材：粗胚的材质决定能打入多少禁制；把宝材熔进去重铸，才能再往上炼形
+      miluo: { name: '弥罗铁', price: 20000, desc: '世间修士梦寐以求的粗胚材器。熔进一件符器、法器里重铸，材质上限高一品', where: '中域坊市常备；八派六宗弟子可用道功换' },
+      huanghua: { name: '黄华秘髓', price: 90000, desc: '有价无市的宝材，熔进去材质上限高两品', where: '中域坊市偶尔有；丹元大会前列、流火宏化洞天深处' },
+      lingtian: { name: '灵天素景精金', price: 0, desc: '传说中的宝材，熔进去材质便够祭成道器', where: '八派六宗库藏，返虚真君才换得到' },
+      ganyin: { name: '干银星矿', price: 30000, desc: '旷世奇珍，修极光大遁入门的引子', where: '怙照宗库藏；中域坊市偶尔有' },
       dingshen: { name: '定神玄香', price: 60000, desc: '冲击元神时点上，安定心神，成功率 +12（冲关时耗掉）', where: '中域坊市常备；八派六宗弟子可用道功换' },
       zhengyang: { name: '正阳丹砂', price: 20000, desc: '推升丹力的真砂，没有隐患。金丹真人服下一枚，修为 +2500（只对金丹有用）', where: '中域坊市常备；八派六宗弟子可用道功换' },
       dongtianji: { name: '洞天残基', price: 0, desc: '从流火宏化洞天深处剥下的一块洞天根基。开辟洞天时用上，省一半符钱、一年工夫（用时耗掉）', where: '流火宏化洞天深处' },
@@ -511,6 +579,53 @@
       beastHide: { name: '妖物皮骨', price: 8, desc: '斗杀妖物所得，可卖钱' },
     },
     usable: ['qiju', 'heal', 'yanshou', 'zhengyang', 'xudu'],
+
+    /* ---------- 法器 ----------
+     * 照原著的祭器法：一方粗胚先「炼形」洗去杂芜，才能铭刻禁制。炼形一次，至多十道禁制，便是下品符器；
+     * 再炼形一次又能打入十道，便是中品，以此类推。上品符器之上是法器（生出真识、有器灵），再往上是道器。
+     * 粗胚的材质决定能炼形几次（cap），熔进宝材重铸可以抬高。
+     * 别人的法器器灵不认你，要先炼化（ling 0–100），没炼化完只发挥得出一部分威能。
+     * 原著称「三器三宝」：仙人之下是符器、法器、道器；仙人之上是纯均灵宝、上玄真宝、先天至宝（游戏只做到道器）。 */
+    gear: {
+      gradeNames: ['', '下品符器', '中品符器', '上品符器', '下品法器', '中品法器', '上品法器', '道器'],
+      slotNames: { atk: '攻伐', def: '护身', dun: '遁行' },
+      maxGrade: 7,
+      atk: [1, 1.25, 1.6, 2.2, 2.9, 3.7, 4.6, 6.0],        // 攻伐：斗法战力倍数（满禁制时）
+      def: [1, 1.08, 1.16, 1.28, 1.42, 1.58, 1.76, 2.1],   // 护身：斗法战力倍数
+      defHurt: [0, 0.1, 0.18, 0.26, 0.36, 0.46, 0.56, 0.7], // 护身：落败时重伤、身死的机会减去几成
+      dunFlee: [0, 6, 10, 15, 22, 28, 34, 42],             // 遁行：逃遁成功率加成
+      dunTravel: [0, 0.06, 0.12, 0.18, 0.26, 0.33, 0.4, 0.5], // 遁行：赶路省下几成时日
+      jinCost: [0, 20, 80, 400, 3000, 8000, 20000, 60000], // 祭炼一道禁制的符钱
+      jinDays: [0, 4, 8, 15, 40, 60, 90, 150],             // 祭炼一道禁制的天数
+      lianCost: [0, 0, 300, 3000, 60000, 150000, 400000, 1500000], // 炼形到这一品的符钱
+      lianDays: [0, 0, 60, 180, 720, 1080, 1800, 3600],
+      minMajor: [0, 2, 3, 4, 6, 6, 7, 9],  // 祭炼这一品的禁制、炼形到这一品要的境界（法器要金丹法力和本命精血；道器只有纯阳、道君掌控得了）
+      // 境界不够的人驱策高品法器费力不讨好：金丹以下用法器、纯阳以下用道器，只发挥得出这几成
+      underUse: 0.4,
+      lingDays: [0, 0, 0, 0, 720, 1080, 1440, 2880], // 金丹真人把一件外来法器的器灵炼化到底要的天数；境界越高越快
+      capMax: 6,       // 寻常宝材至多把材质抬到上品法器
+      matCap: { miluo: 1, huanghua: 2, lingtian: 7 },
+      value: [0, 300, 1500, 40000, 300000, 800000, 2000000, 8000000],
+      sellRatio: 0.5,
+      lootChance: 0.35, // 打退劫修时缴获其随身一件法器的机会
+      // NPC 随身法器的称呼（游戏拟的通称）
+      names: { atk: ['飞剑', '雷珠', '法印', '金锤', '飞刀'], def: ['法衣', '宝衣', '法罩', '宝圈'], dun: ['飞梭', '云舟', '遁界符'] },
+    },
+    /* ---------- 道术与神通的进境 ---------- */
+    arts: {
+      levelNames: ['未入门', '入门', '小成', '中成', '大成'],
+      levelFrac: [0, 0.25, 0.5, 0.75, 1],
+      // 各进境累计要参习的天数（按资质、境界折算），按 rank
+      // 原著里大派真传多是在元神第七重障关前后才把一门神通修到大成，无上大神通入门还要更慢
+      xp: { 1: [20, 60, 150, 300], 2: [45, 135, 320, 640], 3: [180, 720, 1800, 3600], 4: [720, 3600, 14400, 36000], 5: [7200, 21600, 54000, 108000] },
+      rankBase: [0, 1, 2, 3, 6, 7], // 境界高出这一档，参习就快些（每高一个大境界 +25%）
+      practiceDays: [90, 360, 1800, 3600],
+      atk: [0, 0.1, 0.22, 0.45, 0.9, 1.6],      // 大成时斗法战力 +几成（只算最好的一门）
+      def: [0, 0.05, 0.1, 0.2, 0.35, 0.6],
+      defHurt: [0, 0.1, 0.18, 0.3, 0.45, 0.6],
+      dunFlee: [0, 6, 12, 20, 28, 38],
+      dunTravel: [0, 0.05, 0.1, 0.2, 0.3, 0.4],
+    },
     zhengyangGain: 2500,
     xuduGain: 30000,
     loot: ['herb', 'rareHerb', 'beastCore', 'beastHide'],
@@ -521,7 +636,7 @@
     market: {
       city: {
         staples: [{ item: 'heal', qty: [1, 3] }],
-        rare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }],
+        rare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }, { item: 'tech:qijia', w: 1 }, { item: 'tech:hufeng', w: 1 }],
         slots: 1, chance: 0.6,
       },
       town: {
@@ -531,6 +646,13 @@
           { item: 'zhuji', qty: [1, 2] },
           { item: 'danmusha', qty: [1, 1] },
           { item: 'fuqi1', qty: [1, 1] },
+          { item: 'fayi1', qty: [1, 1] },
+          { item: 'suo1', qty: [1, 1] },
+          { item: 'tech:qijia', qty: [1, 1] },
+          { item: 'tech:xuejia', qty: [1, 1] },
+          { item: 'tech:gengjin', qty: [1, 1] },
+          { item: 'tech:hufeng', qty: [1, 1] },
+          { item: 'tech:jinren', qty: [1, 1] },
           { item: 'tech:linghe', qty: [1, 1] },
           { item: 'tech:guiyuan', qty: [1, 1] },
           { item: 'tech:kaifu_low', qty: [1, 1] },
@@ -540,6 +662,11 @@
           { item: 'wujing', w: 2, qty: [1, 3] },
           { item: 'yanshou', w: 1 },
           { item: 'fuqi2', w: 1 },
+          { item: 'fayi2', w: 0.8 },
+          { item: 'suo2', w: 0.8 },
+          { item: 'tech:jiexing', w: 0.6 },
+          { item: 'tech:sanjing', w: 0.6 },
+          { item: 'tech:dari', w: 0.15 },
           { item: 'tech:chiyang', w: 1 },
           { item: 'tech:xuanshui', w: 1 },
           { item: 'ningdan', w: 0.4 },
@@ -572,6 +699,12 @@
           { item: 'qiju', qty: [10, 20] },
           { item: 'heal', qty: [5, 10] },
           { item: 'fuqi2', qty: [1, 2] },
+          { item: 'fayi2', qty: [1, 2] },
+          { item: 'suo2', qty: [1, 2] },
+          { item: 'miluo', qty: [1, 2] },
+          { item: 'tech:jiexing', qty: [1, 1] },
+          { item: 'tech:sanjing', qty: [1, 1] },
+          { item: 'tech:dongjing', qty: [1, 1] },
           { item: 'ningdan', qty: [1, 2] },
           { item: 'wujing', qty: [3, 6] },
           { item: 'yusui', qty: [1, 3] },
@@ -581,8 +714,9 @@
           { item: 'tech:dao_mid', qty: [1, 1] },
           { item: 'tech:kaifu_high', qty: [1, 1] },
         ],
-        rare: [{ item: 'fuqi3', w: 2 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 }],
-        slots: 2, chance: 0.6,
+        rare: [{ item: 'fuqi3', w: 2 }, { item: 'fayi3', w: 1.5 }, { item: 'suo3', w: 1.5 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 },
+          { item: 'huanghua', w: 0.8 }, { item: 'ganyin', w: 0.6 }, { item: 'tech:dari', w: 0.8 }, { item: 'tech:xiaoyuanci', w: 0.6 }, { item: 'tech:sishan', w: 0.5 }],
+        slots: 3, chance: 0.7,
       },
       priceSwing: 0.2,
       sellRatio: 0.7,

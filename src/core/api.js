@@ -26,6 +26,7 @@
       if (s.ended) return { ok: false, error: '这一生已经结束' };
       const r = FX.Ev.resolve(s, instId, optId);
       if (r.ok && r.days && FX.P.alive(FX.P.player(s))) FX.Sim.passDays(s, r.days, 'other');
+      FX.Ars.sync(s);
       FX.Sim.checkEnd(s);
       return r;
     },
@@ -99,7 +100,8 @@
           return {
             member: true, faction: f, seat: s.places[f.seatId], atSeat: Sect.atSeat(s, f), merit: s.player.merit,
             stipend: Sect.stipend(s, f), taskMerit: Sect.taskMerit(p), missionMerit: Sect.missionMerit(p),
-            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech })),
+            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech,
+              req: [e.minPin ? cf.realms.danPinNames[e.minPin] + '以上' : '', e.minXiang ? cf.realms.xiangNames[e.minXiang] + '以上' : '', e.minDaoji ? cf.daojiNames[e.minDaoji] + '以上' : '', e.needTech ? '先修过《' + cf.techniques[e.needTech].name + '》' : ''].filter(Boolean).join('、') })),
             store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
             submit: cf.house.submit,
             post: Sect.post(s, f, p), postName: Sect.postName(s, f, p),

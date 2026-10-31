@@ -373,7 +373,7 @@
     const p = me(s), dy = SG().danyuan, rw = dy.reward[wins];
     const names = ['没能进前列', '得了个名次', '得了个靠前的名次', '名列前茅', '夺得魁首'];
     const got = [];
-    for (const k of ['xudu', 'zhengyang', 'dingshen']) if (rw[k]) { give(s, k, rw[k]); got.push(C().items[k].name + (rw[k] > 1 ? '×' + rw[k] : '')); }
+    for (const k of ['xudu', 'zhengyang', 'dingshen', 'miluo', 'huanghua']) if (rw[k]) { give(s, k, rw[k]); got.push(C().items[k].name + (rw[k] > 1 ? '×' + rw[k] : '')); }
     let merit = '';
     if (Sect().mine(s)) { s.player.merit += rw.merit; merit = '，本门记' + C().house.meritName + ' ' + rw.merit; }
     const what = '胜 ' + wins + ' 场，' + names[wins] + (got.length ? '，得' + got.join('、') : '') + merit;
@@ -426,7 +426,7 @@
     onWin(s2) {
       const p = pl(s2), lh = SG().liuhuo;
       const got = [lhGain(s2, lhVal(layer === 'deep' ? lh.deepGain : lh.midGain, p))];
-      if (layer === 'deep') { give(s2, 'dongtianji', 1); got.push(C().items.dongtianji.name); } else { const it = p.realm.major === 6 ? 'zhengyang' : 'dingshen'; give(s2, it, p.realm.major === 6 ? 2 : 1); got.push(C().items[it].name + (p.realm.major === 6 ? '×2' : '')); }
+      if (layer === 'deep') { give(s2, 'dongtianji', 1); got.push(C().items.dongtianji.name); if (R.chance(s2.rng, 0.5)) { give(s2, 'huanghua', 1); got.push(C().items.huanghua.name); } } else { const it = p.realm.major === 6 ? 'zhengyang' : 'dingshen'; give(s2, it, p.realm.major === 6 ? 2 : 1); got.push(C().items[it].name + (p.realm.major === 6 ? '×2' : '')); }
       return got.join('，得');
     },
   })), {

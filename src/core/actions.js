@@ -67,7 +67,8 @@
     // 赶路
     for (const l of place.links) {
       const open = W().linkOpen(p, l);
-      add({ type: 'travel', to: l.to, days: l.days, label: '前往' + s.places[l.to].name + '（' + l.days + ' 天）', group: '赶路', ok: open, reason: open ? '' : C().world.outer.gate.why });
+      const days = FX.Ars.travelDays(s, p, l.days);
+      add({ type: 'travel', to: l.to, days, label: '前往' + s.places[l.to].name + '（' + days + ' 天）', group: '赶路', ok: open, reason: open ? '' : C().world.outer.gate.why });
     }
     // 差事
     const job = cf.actions.work[place.type];
@@ -81,6 +82,8 @@
     FX.Sect.list(s, add);
     // 天下大事与洞府（见 saga.js）
     FX.Saga.list(s, add);
+    // 道术参习、法器祭炼（见 arsenal.js）
+    FX.Ars.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -102,13 +105,13 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
     if (s.ended) return { ok: false, error: '这一生已经结束' };
     if (s.pending.length) return { ok: false, error: '眼前还有事要先决断' };
-    if (a && (a.type === 'buy' || a.type === 'sell')) return Act[a.type](s, a.item, a.qty);
+    if (a && (a.type === 'buy' || a.type === 'sell')) { const r = Act[a.type](s, a.item, a.qty); FX.Ars.sync(s); return r; }
     const item = a && Act.find(s, a);
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
@@ -123,7 +126,8 @@
       req.qty = Math.floor(a.qty);
       if (item.cost * req.qty > s.player.stone) return { ok: false, error: '符钱不够（需 ' + item.cost * req.qty + '）' };
     }
-    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type])(s, req);
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type] || FX.Ars.DO[item.type])(s, req);
+    FX.Ars.sync(s);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
   };
