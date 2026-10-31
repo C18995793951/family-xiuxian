@@ -287,7 +287,7 @@
     let what;
     if (gr.g === 3) {
       const gift = jk.upperGift[p.realm.major];
-      const giftName = gift && !(gift.startsWith('tech:') && s.player.manuals.includes(gift.slice(5))) ? giveAny(s, gift) : null;
+      const giftName = gift && !(gift.startsWith('tech:') && s.player.manuals.includes(gift.slice(5))) && !(C().items[gift] && C().items[gift].book && s.player.inv[gift] > 0) ? giveAny(s, gift) : null;
       s.player.merit += tm * jk.upperMerit;
       // 荐入玉宸派听讲三年
       Sim().passDays(s, jk.tingjiangDays, 'other');

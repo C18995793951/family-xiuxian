@@ -150,6 +150,8 @@
   S.monthly = (s, mode, opts) => {
     const p = P().player(s);
     const cf = C();
+    // 洞玄三重温养，凝丹内药渐次凝成
+    FX.Yao.grow(s, cf.daysPerMonth);
     if (p.health.state === 'heavy') {
       // 重伤时行囊里有小白阳丹就自动服一颗（跟随“自动续服”开关）
       if (s.player.autoPill !== false && (s.player.inv.heal || 0) > 0) {

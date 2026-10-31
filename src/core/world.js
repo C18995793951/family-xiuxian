@@ -290,7 +290,7 @@
       locationId: o.locationId, factionId: o.factionId || null, role: o.role || (o.factionId ? 'member' : 'loose'),
     });
     if (realm.major > 5 || (realm.major === 5 && realm.stage === 3)) p.jinhong = CU().jinhongFor(p, R.int(r, 0, 1));
-    if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2));
+    if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2), FX.Yao.npcCount(r, f));
     if (realm.major >= 7) p.xiang = CU().xiangFor(p, R.int(r, 0, 3));
     if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
     FX.Ars.npcKit(s, p);

@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 9,
-    gameVersion: '0.7.0-xianye7',
+    schemaVersion: 10,
+    gameVersion: '0.8.0-xianye8',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -486,6 +486,13 @@
         { item: 'yusui', merit: 220, minMajor: 4 },
         { item: 'wujing', merit: 160, minMajor: 4 },
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
+        { item: 'yunhua', merit: 450, minMajor: 5, minTier: 2 },
+        { item: 'tianyou', merit: 300, minMajor: 5, minTier: 2 },
+        { item: 'minghe', merit: 350, minMajor: 5, minTier: 2 },
+        { item: 'xuanshi', merit: 350, minMajor: 5, minTier: 2 },
+        { item: 'qiming', merit: 300, minMajor: 5, minTier: 2 },
+        { item: 'laoxian', merit: 250, minMajor: 5, minTier: 2 },
+        { item: 'zhanranfa', merit: 1500, minMajor: 5, minTier: 2 },
         { item: 'fuqi3', merit: 1500, minMajor: 6, minTier: 3 },
         { item: 'fayi3', merit: 1400, minMajor: 6, minTier: 3 },
         { item: 'suo3', merit: 1400, minMajor: 6, minTier: 3 },
@@ -529,7 +536,7 @@
         tingjiangDays: 1080, tingjiangGain: 0.25, upperMerit: 20, midMerit: 10, midQiju: 4,
         // 上考的下赐按境界：练炁得可筑上品道基的练炁术，筑基得上乘开府真法，紫府得玉髓，洞玄得先天五行之精。
         // 凝丹大药不白给：玄真派弟子要托金谷墟市代寻，或下地渊深处去取
-        upperGift: { 1: 'tech:handou', 2: 'tech:handou', 3: 'tech:kaifu_high', 4: 'yusui', 5: 'wujing', 6: 'wujing' } },
+        upperGift: { 1: 'tech:handou', 2: 'tech:handou', 3: 'tech:kaifu_high', 4: 'yusui', 5: 'zhanranfa', 6: 'wujing' } },
       // 打退过的劫修记了仇，修为跟得上时每年有这个概率找上门
       revenge: { chance: 0.04, rankGap: 4 },
       // 天魔潮：天魔从地渊、九危山一带涌出，玉宸派发敕令召各家修士镇守；紫府以上可赴
@@ -614,10 +621,18 @@
       zhengyang: { name: '正阳丹砂', price: 20000, desc: '推升丹力的真砂，没有隐患。金丹真人服下一枚，修为 +2500（只对金丹有用）', where: '中域坊市常备；八派六宗弟子可用道功换' },
       dongtianji: { name: '洞天残基', price: 0, desc: '从流火宏化洞天深处剥下的一块洞天根基。开辟洞天时用上，省一半符钱、一年工夫（用时耗掉）', where: '流火宏化洞天深处' },
       xudu: { name: '胥都大丹', price: 0, desc: '胥都天气运所凝的大丹，只赐丹元大会魁首。冲击元神时服下成功率 +20；已成元神的，服下修为 +30000', where: '只有丹元大会的魁首才有' },
+      // 金丹十三味大药里的六门外药（见 dayao）：结丹时耗掉
+      yunhua: { name: '云华龙膏', price: 9000, desc: '凝丹六门外药之一，多出在海外龙族出没之处', where: '海外寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      tianyou: { name: '天游泥', price: 6000, desc: '凝丹六门外药之一，荒山险地的深处偶尔采得', where: '荒山、险地寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      minghe: { name: '明合砂', price: 7000, desc: '凝丹六门外药之一，生在灵机浓郁的险地', where: '险地寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      xuanshi: { name: '玄室水', price: 7000, desc: '凝丹六门外药之一，出在幽深的地窟、海眼', where: '险地、海外寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      qiming: { name: '七明九光芝', price: 6000, desc: '凝丹六门外药之一，长在深山向阳处的灵芝', where: '荒山寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      laoxian: { name: '老仙须', price: 5000, desc: '凝丹六门外药之一，老藤古木上垂下的须', where: '荒山寻药；金谷墟市可托人代寻；二流以上宗门库藏可用道功换' },
+      zhanranfa: { name: '湛然虚精炁修法', price: 0, book: true, desc: '凝丹七门内药里最后一味「湛然虚精炁」的修法。各门各派都不记在书简上，只由师长口传（书不会耗掉）', where: '玄真弟子道脉校考评上考时由玉宸派传下；二流以上宗门的长老口传，要重道功' },
       // 元神至药：前古聿升帝所创的丹宝，助人更快感悟元神之妙，且无后患。正虚道廷手里最多，八派六宗也存着些
       dadong: { name: '大洞精玉', price: 250000, desc: '元神第一外药。元神真人服下一枚，感悟大进：修为 +本重所需的三成（不越过本重圆满），没有后患', where: '八派六宗库藏，元神真人以道功换；丹元大会前列；中域坊市难得一见' },
       // 返虚三途里的「玄中三限」要先吃透它的经义
-      xuanzhong: { name: '玄中三限经义', price: 0, desc: '讲返虚天考之法的玄书。有它，又有上等以上的元神法相，冲返虚时才能选「玄中三限」一途（书不会耗掉）', where: '八派六宗库藏，元神真人以重道功换' },
+      xuanzhong: { name: '玄中三限经义', price: 0, book: true, desc: '讲返虚天考之法的玄书。有它，又有上等以上的元神法相，冲返虚时才能选「玄中三限」一途（书不会耗掉）', where: '八派六宗库藏，元神真人以重道功换' },
       // 宵明大泽灵窟的中枢正位，又名先天奇府、太乙含真：宇宙间最适宜突破返虚道劫的场地
       tiangu: { name: '天谷符诏', price: 0, desc: '玉宸派准你进宵明大泽灵窟「天谷」破一回返虚迷障的符诏：天谷护住法躯，失道之祸大减（在宵明大泽破障时自动用掉）', where: '玉宸派库藏，返虚真君以道功换' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
@@ -627,6 +642,32 @@
     },
     usable: ['qiju', 'heal', 'yanshou', 'zhengyang', 'xudu', 'dadong'],
     dadongFrac: 0.3,
+
+    /* ---------- 金丹十三味大药（见 dayao.js）---------- */
+    dayao: {
+      total: 13,
+      wai: ['yunhua', 'tianyou', 'minghe', 'xuanshi', 'qiming', 'laoxian'],
+      // 七门内药：在洞玄三重温养 years 年自然凝成（× (1.3 − 资质/100)）
+      nei: {
+        shenfu: { name: '神符火', years: 10, fast: 'def', desc: '融形炼质之火，唯肉身血气鼎沸者凝得出，至极能有九尺九寸高（有护身道术练到小成，快一倍）' },
+        sanqi: { name: '三奇焰', years: 3, desc: '精、炁、神三者混合，起复依元根、存照躯壳' },
+        wugong: { name: '五宫雷', years: 4, need: 'wujing', desc: '身内五行气息所化，专能荡秽化污；摄取五精时用了先天五行之精的，自然显化' },
+        yuding: { name: '玉鼎风', years: 5, desc: '真阳、真性混合，归于气穴，可以开窍点灵' },
+        shengren: { name: '圣人土', years: 8, desc: '厚德载物的一味内药，要沉住性子温养' },
+        zhengnian: { name: '正念锋', years: 9, desc: '念头凝成的一点锋芒，心志不坚的凝不出' },
+        zhanran: { name: '湛然虚精炁', years: 6, need: 'zhanranfa', desc: '七门内药的最后一味，是不传之秘；得了修法再温养才凝得出' },
+      },
+      aptYears: [1.3],
+      seekMajor: 5, seekDays: 90,
+      seekChance: { wild: 0.4, danger: 0.5, sea: 0.5 },
+      where: { wild: ['qiming', 'laoxian', 'tianyou'], danger: ['minghe', 'xuanshi', 'tianyou'], sea: ['yunhua', 'xuanshi'] },
+      hurt: { danger: 0.2, sea: 0.25 },
+      pinBonus: [[13, 3], [9, 2], [5, 1]], // 采得几味以上，金丹品第高几档
+      capWithout: 4,  // 十三味不齐，至多丹成四品
+      breakPer: 0.8,  // 冲金丹：每味 +0.8
+      // NPC 结丹时采得几味（按出身：散修、小宗、二流、大派）
+      npc: { 0: [0, 5], 1: [2, 8], 2: [4, 11], 3: [8, 13] },
+    },
 
     /* ---------- 法器 ----------
      * 照原著的祭器法：一方粗胚先「炼形」洗去杂芜，才能铭刻禁制。炼形一次，至多十道禁制，便是下品符器；
@@ -720,6 +761,8 @@
           { item: 'ningdan', w: 0.4 },
           { item: 'tech:handou', w: 0.3 },
           { item: 'tech:kaifu_mid', w: 0.3 },
+          { item: 'yunhua', w: 0.3 }, { item: 'tianyou', w: 0.4 }, { item: 'minghe', w: 0.4 },
+          { item: 'xuanshi', w: 0.4 }, { item: 'qiming', w: 0.4 }, { item: 'laoxian', w: 0.4 },
         ],
         slots: 3, chance: 0.8,
       },

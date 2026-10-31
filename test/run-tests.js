@@ -1025,6 +1025,89 @@ check('18', '按全本细分后期：元神十二重障关、大洞精玉、返�
   return `成就元神可连破两重；障关 ${fails} 回没破开都无祸患；大洞精玉推修为三成；返虚三途：十二迷障 ${S.gates} 关、九等轮转 ${J.gates} 关、玄中三限 ${T.gates} 关（称御极子），纯阳风灾成功率 ${zS.chance}/${zJ.chance}/${zT.chance}%；无灵脉破不了障，天谷护身；九难过尽成大冶仙人；v8 迁移正常`;
 });
 
+check('19', '金丹十三味大药：外出寻药、代寻与库藏、内药温养凝成、湛然虚精炁要修法、十三味定品第上限、结丹耗外药、v9 存档迁移', () => {
+  const CF = FX.CONFIG, CU = FX.CU, P = FX.P, Y = FX.Yao, D = CF.dayao;
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  const s = FX.Game.newGame({ origin: 'loose', seed: 'dayao' });
+  const p = P.player(s);
+  p.realm = { major: 5, stage: 3 }; p.progress = 0; p.aptitude = 70; p.daoji = 3; p.yixiang = 3; p.jinhong = 4;
+  p.lifespanMax = 5000;
+  // 1. 外出寻药：荒山、险地都能寻，有空手而回的时候
+  const wild = Object.values(s.places).find((x) => x.type === 'wild' && !x.outer);
+  p.locationId = wild.id;
+  let found = 0, tries = 0;
+  for (let i = 0; i < 40 && !s.ended; i++) {
+    p.health = { state: 'healthy', days: 0 };
+    const a = FX.Game.actions(s).find((x) => x.type === 'xunyao');
+    assert(a && a.ok, '洞玄在荒山不能寻药');
+    const tot = () => D.wai.reduce((n, k) => n + (s.player.inv[k] || 0), 0);
+    const before = tot();
+    FX.Game.act(s, a); tries++;
+    while (s.pending.length && !s.ended) choose(s);
+    if (tot() > before) found++;
+  }
+  assert(found > 0 && found < tries, '寻药不是有得有失：' + found + '/' + tries);
+  assert(D.wai.every((k) => D.where.wild.includes(k) || D.where.danger.includes(k) || D.where.sea.includes(k)), '有外药哪儿都寻不到');
+  // 2. 稳定来路：金谷墟市可托人代寻，二流以上宗门库藏可换
+  const town = Object.values(s.places).find((x) => x.type === 'town');
+  p.locationId = town.id;
+  const orderable = FX.Act.orderable(s).map((o) => o.item);
+  const inStock = (k) => s.markets[town.id] && s.markets[town.id].stock.some((x) => x.item === k && x.qty > 0);
+  assert(D.wai.every((k) => orderable.includes(k) || inStock(k)), '金谷墟市托不到外药');
+  assert(D.wai.concat(['zhanranfa']).every((k) => CF.house.store.some((x) => x.item === k && x.minTier === 2)), '二流以上宗门库藏换不到外药或湛然虚精炁修法');
+  assert(CF.saga.jiaokao.upperGift[5] === 'zhanranfa', '校考上考不传湛然虚精炁修法');
+  // 3. 内药：在洞玄三重温养，年数到了自然凝成；湛然虚精炁要先得修法
+  const g = FX.Game.newGame({ origin: 'loose', seed: 'neiyao' });
+  const q = P.player(g);
+  q.realm = { major: 5, stage: 3 }; q.progress = 0; q.aptitude = 60; q.lifespanMax = 5000; q.flags.push('wujing');
+  q.locationId = Object.values(g.places).find((x) => x.type === 'city').id;
+  FX.Sim.passDays(g, CF.daysPerMonth, 'rest');
+  assert((q.neiyao || []).includes('wugong'), '用过先天五行之精，五宫雷没自显');
+  for (let y = 0; y < 16 && !g.ended; y++) { q.health = { state: 'healthy', days: 0 }; FX.Sim.passDays(g, CF.daysPerYear, 'rest'); while (g.pending.length && !g.ended) choose(g); }
+  assert(['sanqi', 'yuding', 'shengren', 'zhengnian', 'shenfu'].every((k) => q.neiyao.includes(k)) && !q.neiyao.includes('zhanran'), '温养十六年内药没凝齐六味，或没修法也凝出了湛然虚精炁：' + q.neiyao.join(','));
+  g.player.inv.zhanranfa = 1;
+  for (let y = 0; y < 7 && !g.ended; y++) { q.health = { state: 'healthy', days: 0 }; FX.Sim.passDays(g, CF.daysPerYear, 'rest'); while (g.pending.length && !g.ended) choose(g); }
+  assert(q.neiyao.includes('zhanran') && g.player.inv.zhanranfa === 1, '得了修法也凝不出湛然虚精炁，或修法被耗掉');
+  assert(g.history.some((e) => e.key === 'neiyao'), '凝成内药没写进纪事');
+  // 4. 品第：十三味不齐丹成不了上三品
+  const top = { daoji: 3, yixiang: 3, jinhong: 4, aptitude: 100 };
+  assert(CU.danPinFor(top, 2, 12) >= D.capWithout && CU.danPinFor(top, 2, 13) === 1, '十三味定品第上限不对');
+  assert(CU.danPinFor(top, 0, 9) < CU.danPinFor(top, 0, 0) || CU.danPinFor(top, 0, 0) === D.capWithout, '大药多的品第没更好');
+  // 5. 结丹：十三味齐了丹成上三品；外药耗掉、内药在身
+  q.realm = { major: 5, stage: 3 }; q.progress = P.need(q); q.daoji = 3; q.yixiang = 3; q.jinhong = 4; q.aptitude = 90;
+  for (const k of D.wai) g.player.inv[k] = 1;
+  assert(Y.count(g, q) === 13, '十三味没算齐：' + Y.count(g, q));
+  g.player.inv.ningdan = 5;
+  q.locationId = Object.values(g.places).find((x) => !x.outer && x.qi >= CF.breakthrough.jindan.minQi && CU.qiFor(g, Object.assign({}, q, { locationId: x.id })) >= CF.breakthrough.jindan.minQi).id;
+  const ch = CU.chance(g, q);
+  assert(ch.parts.some((x) => /十三味大药/.test(x.label) && x.value > 0), '冲金丹没算上大药');
+  const rq = CU.requirements(g, q).find((x) => /十三味/.test(x.label));
+  assert(rq && rq.ok, '结丹清单里没有十三味大药');
+  for (let i = 0; i < 30 && q.realm.major === 5 && !g.ended; i++) {
+    q.restUntil = 0; q.health = { state: 'healthy', days: 0 }; q.progress = P.need(q);
+    if (!g.player.inv.ningdan) g.player.inv.ningdan = 1;
+    const r = CU.attempt(g, q);
+    assert(r.ok, '结丹被拒：' + r.error);
+    assert(Y.waiHave(g).length === 0, '结丹没耗掉外药');
+    if (!r.success && !r.died) for (const k of D.wai) g.player.inv[k] = 1;
+    if (r.died) { q.status = 'alive'; for (const k of D.wai) g.player.inv[k] = 1; }
+  }
+  assert(q.realm.major === 6 && q.danPin <= 3 && q.neiyao.length === 7, '十三味齐全没丹成上三品：' + q.danPin);
+  // 6. v9 存档迁移：主角补内药记录、五宫雷标记
+  const g9 = FX.Game.newGame({ origin: 'sect', seed: 'mig10' });
+  const t9 = JSON.parse(FX.Save.serialize(g9));
+  const sp = t9.state.people[t9.state.player.id];
+  sp.realm = { major: 5, stage: 3 }; sp.fullDays = 1800; delete sp.neiyao; delete sp.dxDays; sp.flags = sp.flags.filter((x) => x !== 'wujing');
+  t9.state.schemaVersion = 9; t9.schemaVersion = 9; delete t9.checksum;
+  const mg = FX.Save.deserialize(t9);
+  assert(mg.ok, 'v9 存档迁移失败：' + mg.error);
+  const mp = P.player(mg.state);
+  assert(Array.isArray(mp.neiyao) && mp.dxDays === 1800 && mp.flags.includes('wujing'), '迁移后内药记录没补上');
+  FX.Sim.passDays(mg.state, CF.daysPerMonth, 'rest');
+  assert(mp.neiyao.includes('wugong') && mp.neiyao.includes('sanqi'), '迁移后温养的日子没算上');
+  return `荒山寻药 ${tries} 回得 ${found} 回；外药都能代寻、库藏换；温养十六年凝成六味内药，得修法后凝出湛然虚精炁；不齐十三味至多四品，齐了丹成${P.danPinName(q)}；结丹耗外药留内药；v9 迁移正常`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

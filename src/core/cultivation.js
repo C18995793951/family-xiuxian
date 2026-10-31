@@ -47,7 +47,8 @@
   // 先天金汞（洞玄三重）：按道基、紫府异象定，另有一点机缘（luck 0–1）。1 末 2 下 3 中 4 上
   CU.jinhongFor = (p, luck) => U.clamp(Math.floor(((p.daoji || 1) + (p.yixiang || 1)) / 2) + luck, 1, 4);
   // 金丹品第：成丹时按道基、紫府异象、先天金汞、资质定，另有一点机缘（luck 0–2）。一品最高
-  CU.danPinFor = (p, luck) => U.clamp(14 - ((p.daoji || 1) + (p.yixiang || 1) + (p.jinhong || 1) + Math.floor(p.aptitude / 25) + luck), 1, 9);
+  // 十三味大药（n 味）：采得越多品第越高，不齐十三味丹成不了上三品
+  CU.danPinFor = (p, luck, n) => U.clamp(14 - ((p.daoji || 1) + (p.yixiang || 1) + (p.jinhong || 1) + Math.floor(p.aptitude / 25) + luck + FX.Yao.pinBonus(n || 0)), FX.Yao.pinCap(n || 0), 9);
   // 元神法相：按金丹品第定，另有一点机缘（luck 0–3）。1 下 2 中 3 上 4 至
   CU.xiangFor = (p, luck) => { const v = (10 - (p.danPin || 9)) + luck; return v >= 11 ? 4 : v >= 8 ? 3 : v >= 5 ? 2 : 1; };
 
@@ -284,6 +285,7 @@
     if (k === 'jindan') {
       out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.ningdan.name, ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
+      if (P().isPlayer(s, p)) out.push(FX.Yao.requirement(s, p));
     }
     if (k === 'yuanshen') {
       out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
@@ -344,6 +346,7 @@
     }
     if ((k === 'dongxuan' || k === 'jindan') && p.yixiang) parts.push({ label: C().yixiangNames[p.yixiang], value: B.yixiangMod[p.yixiang] });
     if (k === 'jindan' && p.jinhong) parts.push({ label: P().jinhongName(p), value: C().realms.jinhongBreak[p.jinhong] });
+    if (k === 'jindan' && isPlayer) { const yp = FX.Yao.breakPart(s, p); if (yp) parts.push(yp); }
     let hasShen = false, hasXudu = false;
     if (k === 'yuanshen') {
       if (p.danPin) parts.push({ label: P().danPinName(p), value: (5 - p.danPin) * C().realms.danPinBreak });
@@ -390,10 +393,12 @@
     const r = s.rng;
     const isPlayer = P().isPlayer(s, p);
     const need = CU.minorNeed(p);
+    // 结丹时采得几味大药（主角按实有，外药随后耗掉；NPC 按出身掷）
+    const dayaoN = ch.kind === 'jindan' ? (isPlayer ? FX.Yao.count(s, p) : FX.Yao.npcCount(r, p.factionId ? s.factions[p.factionId] : null)) : 0;
     if (isPlayer) {
       if (ch.usesPill) s.player.inv.zhuji--;
       if (need) s.player.inv[need.item] -= need.qty;
-      if (ch.kind === 'jindan') s.player.inv.ningdan--;
+      if (ch.kind === 'jindan') { s.player.inv.ningdan--; FX.Yao.consume(s); }
       if (ch.usesShen) s.player.inv.dingshen--;
       if (ch.usesXudu) s.player.inv.xudu--;
       if (ch.usesTiangu) s.player.inv.tiangu--;
@@ -408,7 +413,9 @@
       if (ch.kind === 'zhuji') { const t = P().lianqiOf(p); p.daoji = P().daojiOf(t ? t.tier : 1); }
       if (ch.kind === 'zifu') { p.kaifuId = ch.kaifu; p.yixiang = C().techniques[ch.kaifu].grade; }
       if (ch.kind === 'minor' && p.realm.major === 5 && p.realm.stage === 2) p.jinhong = CU.jinhongFor(p, R.int(r, 0, 1));
-      if (ch.kind === 'jindan') p.danPin = CU.danPinFor(p, R.int(r, 0, 2));
+      // 摄取五精时用了先天五行之精：日后凝丹，五宫雷自显
+      if (ch.kind === 'minor' && p.realm.major === 5 && p.realm.stage === 1 && need && need.item === 'wujing' && !p.flags.includes('wujing')) p.flags.push('wujing');
+      if (ch.kind === 'jindan') p.danPin = CU.danPinFor(p, R.int(r, 0, 2), dayaoN);
       if (ch.kind === 'yuanshen') p.xiang = CU.xiangFor(p, R.int(r, 0, 3));
       if (ch.kind === 'fanxu') p.fanxuPath = ch.path || 'shier';
       // 小境界里的关：圆满多出来的那点修为接着用（元神障关、返虚破障、合道九难）

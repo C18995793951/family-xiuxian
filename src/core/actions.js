@@ -88,6 +88,7 @@
     FX.Saga.list(s, add);
     // 道术参习、法器祭炼（见 arsenal.js）
     FX.Ars.list(s, add);
+    FX.Yao.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -130,7 +131,7 @@
       req.qty = Math.floor(a.qty);
       if (item.cost * req.qty > s.player.stone) return { ok: false, error: '符钱不够（需 ' + item.cost * req.qty + '）' };
     }
-    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type] || FX.Ars.DO[item.type])(s, req);
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type] || FX.Ars.DO[item.type] || FX.Yao.DO[item.type])(s, req);
     FX.Ars.sync(s);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);

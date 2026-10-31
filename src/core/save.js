@@ -47,7 +47,7 @@
         if (p.daoId === undefined) p.daoId = null;
         // 已结丹的人补定金丹品第（不掷骰，机缘按中等算）；先补上先天金汞，品第才算得准
         if (p.realm.major >= 6 && !p.jinhong) p.jinhong = FX.CU.jinhongFor(p, 0);
-        if (p.realm.major >= 6 && !p.danPin) p.danPin = FX.CU.danPinFor(p, 1);
+        if (p.realm.major >= 6 && !p.danPin) p.danPin = FX.CU.danPinFor(p, 1, 13); // 那时还没有十三味大药，不设上限
         if (p.realm.major >= 6 && !p.daoId && st.player.id !== p.id) p.daoId = 'dao_low';
         if (p.realm.major === 6 && p.realm.stage > 1) p.realm.stage = 1;
       }
@@ -143,6 +143,17 @@
       // 坊市补上大洞精玉
       for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
       st.schemaVersion = 9;
+      return st;
+    },
+    // v9 → v10：金丹十三味大药。主角补上内药记录；已在洞玄三重的，圆满后坐过的日子算作温养；
+    // 已过摄取五精的，当年必定用过先天五行之精（那一重要它），五宫雷可自显
+    9: (st) => {
+      const p = st.people[st.player.id];
+      p.neiyao = p.neiyao || [];
+      p.dxDays = p.realm.major === 5 && p.realm.stage === 3 ? p.fullDays || 0 : 0;
+      if ((p.realm.major === 5 && p.realm.stage >= 2) || p.realm.major > 5) { if (!p.flags.includes('wujing')) p.flags.push('wujing'); }
+      for (const pl of Object.values(st.places)) if (FX.World.hasMarket(st, pl.id)) FX.World.refreshMarket(st, pl.id);
+      st.schemaVersion = 10;
       return st;
     },
   };
