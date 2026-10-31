@@ -1243,6 +1243,31 @@ check('21', '真炁九阶三十六品：品秩定名、筑基与斗法看真炁�
   return `${lq.length} 门练炁术定了真炁品秩（锭金三阶中品、紫清九阶上品、皇素玉真九阶至品）；${sum}；大无相常融真炁诸气皆采（${attrs.size} 种属相）；散景敛形术要它作根基；颜熙道藏一生一回；${n} 名大派门人真炁都在七阶以上；v11 迁移正常`;
 });
 
+check('22', '闭关到圆满：按眼下修炼速度估出时日，一口气修到圆满；中途被打扰就停下；圆满了不再列出', () => {
+  const P = FX.P;
+  let full = 0, cut = 0, n = 0;
+  for (const seed of ['until1', 'until2', 'until3', 'until4', 'until5', 'until6']) {
+    const s = FX.Game.newGame({ origin: 'sect', seed });
+    const p = P.player(s);
+    const a = FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.until);
+    assert(a && a.ok && /到圆满/.test(a.label) && a.days >= 30, '没有“闭关到圆满”');
+    FX.Game.act(s, a); n++;
+    while (s.pending.length && !s.ended) { const v = FX.Game.pendingEvents(s)[0]; FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); }
+    if (P.isFull(p) || p.realm.major > 2 || p.realm.stage > 1) full++; else cut++;
+  }
+  assert(full >= 4, '闭关到圆满多半没修满：' + full + '/' + n);
+  // 圆满了就不再列出
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'until-full' });
+  const p = P.player(s);
+  p.realm = { major: 6, stage: 3 }; p.progress = P.need(p);
+  assert(!FX.Game.actions(s).some((x) => x.type === 'cultivate' && x.until), '已圆满还列出闭关到圆满');
+  // 一次至多一百年
+  p.progress = 0; p.realm = { major: 7, stage: 12 }; p.lifespanMax = 100000;
+  const b = FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.until);
+  assert(!b || b.days <= FX.CONFIG.actions.untilFullMax, '闭关到圆满超过一百年');
+  return `${n} 回里 ${full} 回修满或过了关、${cut} 回中途被打扰停下；圆满后不再列出；一次至多 ${FX.CONFIG.actions.untilFullMax / 360} 年`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

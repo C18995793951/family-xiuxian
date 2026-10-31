@@ -158,3 +158,30 @@ svg.map .region { fill: var(--muted); font-size: 22px; text-anchor: middle; opac
 .mtop { display: none; }
 @media (max-width: 720px) { .mtop { display: block; color: var(--muted); font-size: .9em; margin-bottom: .6em; } }
 label { display: inline-flex; gap: .4em; align-items: center; }
+
+/* 界面整理：折叠、子页签、紧凑数值、长说明收两行 */
+.small { font-size: .86em; }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .15em 1em; margin-top: .4em; }
+.kv > div { border-bottom: 1px dashed var(--line-soft); padding: .15em 0; display: flex; justify-content: space-between; gap: .4em; }
+.fold { font-size: .9em; }
+.desc { color: var(--muted); font-size: .86em; cursor: pointer; }
+.desc.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tabs.sub { position: sticky; top: 0; z-index: 30; background: var(--bg); padding: .4em 0; margin-bottom: .6em; }
+.tabs.sub button { flex: 1 1 auto; }
+.recent .log, .recent p { margin: .15em 0; font-size: .9em; }
+.narrow-only { display: none; }
+@media (max-width: 1100px) { .narrow-only { display: block; } }
+.map-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+svg.map { min-width: 100%; max-width: none; }
+svg.map .pname { font-size: 24px; }
+svg.map .days { font-size: 17px; }
+svg.map .region { font-size: 46px; }
+svg.map .road { stroke-width: 3; }
+.map-wrap { max-height: 62vh; overflow: auto; }
+.stat > span:first-child { min-width: 0; flex: 1 1 0; }
+.stat > .row { flex: 0 0 auto; }
+@media (max-width: 720px) {
+  .stat > .row { max-width: 46%; }
+  .stat > .row button { min-height: 38px; padding: .3em .6em; }
+  .kv { grid-template-columns: 1fr 1fr; }
+}

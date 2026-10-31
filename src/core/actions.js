@@ -38,6 +38,17 @@
     // 修炼 / 闭关
     const verb = p.realm.major === 0 ? '静坐参悟 ' : p.realm.major === 1 ? '温养胎息 ' : null;
     for (const d of cf.actions.cultivateDays) add({ type: 'cultivate', days: d, label: (verb || (d >= 360 ? '闭关 ' : '修炼 ')) + T().dur(d), group: '修炼' });
+    // 一口气修到圆满：按眼下的修炼速度估出要几个月（中途被打扰就停下）
+    const left = P().need(p) - p.progress;
+    if (left > 0 && isFinite(left)) {
+      const pill = s.player.qijuUntil > s.t || (p.realm.major >= 2 && s.player.autoPill !== false && (s.player.inv.qiju || 0) > 0);
+      const sp = CU().breakdown(s, p, { pill }).total;
+      if (sp > 0) {
+        const m = cf.daysPerMonth, cap = Math.max(m, Math.floor(P().lifespanLeft(s, p)) * cf.daysPerYear);
+        const d = Math.max(m, Math.min(Math.ceil((left / sp) * cf.daysPerYear / m) * m, cf.actions.untilFullMax, cap));
+        add({ type: 'cultivate', until: true, days: d, label: (verb ? verb.trim() : '闭关') + '到圆满（约 ' + T().dur(d) + '）', group: '修炼' });
+      }
+    }
     // 以符钱修行（练炁以上）
     const cpy = CU().coinPerYear(p);
     if (cpy) for (const d of cf.actions.coinDays) {
