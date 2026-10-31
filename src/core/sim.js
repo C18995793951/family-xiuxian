@@ -75,6 +75,10 @@
       qijuUntil: 0,
       visited: [place.id],
       lastFortuneT: -1e9,
+      merit: 0,        // 道功：本门本族功德房记下的功劳
+      joinTried: {},   // 各宗门今年是否已求过
+      submitted: [],   // 献过抄本的功法
+      orders: [],      // 托墟市代寻、尚未送到的货
       stats: { cultivateDays: 0, explores: 0, exploreNothing: 0, fights: 0, wins: 0, seek: 0, seekNoGain: 0, fortunes: 0, actions: 0 },
     };
     if (faction) {
@@ -136,6 +140,7 @@
       P().kill(s, p, '重伤不治', [], { key: 'injury' });
       return true;
     }
+    FX.Act.deliverOrders(s);
     FX.Ev.processQueue(s);
     if (s.pending.length) return true;
     if (mode === 'cultivate' && opts.interruptible) {
@@ -152,14 +157,9 @@
   S.yearly = (s) => {
     const cf = C();
     const pl = P().player(s);
-    // 主角：寿元、份例
+    // 主角：寿元、俸禄
     if (P().alive(pl) && P().lifespanLeft(s, pl) <= 0) P().kill(s, pl, '寿元耗尽', [], { key: 'lifespan' });
-    if (P().alive(pl) && pl.factionId && s.factions[pl.factionId]) {
-      const f = s.factions[pl.factionId];
-      const arr = cf.factionTypes[f.type].stipend;
-      const st = arr[Math.min(arr.length - 1, f.type === 'sect' ? f.tier : 0)];
-      if (st > 0) { s.player.stone += st; H().add(s, { type: 'stipend', tags: ['份例'], actors: [pl.id], factions: [f.id], key: 'stipend', pov: true, params: { faction: f.name, stone: st }, severity: 1 }); }
-    }
+    FX.Sect.payStipend(s);
     // NPC：寿元、意外、伤愈、修炼、走动（按 id 顺序，保证可复现）
     const npcs = P().living(s).filter((p) => p.id !== pl.id).sort((a, b) => (Number(a.id.slice(1)) - Number(b.id.slice(1))));
     for (const p of npcs) {
@@ -220,6 +220,7 @@
     for (const f of Object.values(s.factions)) if (!s.places[f.seatId]) fail(f.name + ' 驻地不存在');
     for (const pl of Object.values(s.places)) for (const l of pl.links) if (!s.places[l.to]) fail(pl.name + ' 的道路通向不存在的地点');
     if (!(s.player.stone >= 0) || !Number.isInteger(s.player.stone)) fail('符钱数量异常：' + s.player.stone);
+    if (!(s.player.merit >= 0) || !Number.isInteger(s.player.merit)) fail('道功数量异常：' + s.player.merit);
     for (const k in s.player.inv) if (!(s.player.inv[k] >= 0) || !Number.isInteger(s.player.inv[k])) fail('物品数量异常：' + k);
     for (const e of s.pending) if (!FX.Ev.valid(s, e.bound)) fail('待决事件引用失效');
     return true;

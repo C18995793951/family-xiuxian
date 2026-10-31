@@ -270,6 +270,105 @@ check('11', '性能（每模拟一年 < 20ms）', () => {
   return `平均每年 ${per.toFixed(2)} ms（含策略），单局历史条目最多 ${agg.histMax}`;
 });
 
+check('12', '宗门渠道：拜入、请授、道功兑换、上交、符诏、俸禄、旧存档迁移', () => {
+  const CF = FX.CONFIG;
+  // 玄真派弟子：差事记道功，筑基后白领紫府篇，道功换丹母砂
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'house' });
+  const p = FX.P.player(s);
+  let r = FX.Game.act(s, { type: 'work', days: 30 });
+  assert(r.ok && s.player.merit === CF.house.taskMerit[2], '差事没有记道功');
+  p.realm = { major: 3, stage: 2 };
+  const acts = FX.Game.actions(s);
+  const kf = acts.find((a) => a.type === 'sect_learn' && a.tech === 'sanqi_kaifu');
+  assert(kf && kf.ok && kf.cost === 0, '筑基弟子领不到紫府篇');
+  assert(FX.Game.act(s, kf).ok && s.player.manuals.includes('sanqi_kaifu') && FX.CU.bestKaifu(s) === 'sanqi_kaifu', '请授后没有开府真法');
+  s.player.merit = 100;
+  r = FX.Game.act(s, { type: 'redeem', item: 'danmusha' });
+  assert(r.ok && s.player.inv.danmusha === 1 && s.player.merit === 10, '道功换丹母砂失败');
+  assert(!FX.Game.act(s, { type: 'redeem', item: 'yusui' }).ok, '筑基弟子不该换到玉髓');
+  s.player.inv.beastCore = 2;
+  r = FX.Game.act(s, { type: 'submit', item: 'beastCore' });
+  assert(r.ok && s.player.inv.beastCore === 0 && s.player.merit === 10 + 2 * CF.house.submit.beastCore, '上交妖物内丹没有记道功');
+  // 离开山门就办不了
+  const away = s.places[p.locationId].links[0].to;
+  p.locationId = away;
+  const far = FX.Game.actions(s).find((a) => a.type === 'redeem' && a.item === 'qiju');
+  assert(far && !far.ok && /要回到/.test(far.reason), '不在山门也能兑换');
+  // 俸禄按境界发
+  const st0 = s.player.stone;
+  FX.Sect.payStipend(s);
+  assert(s.player.stone - st0 === CF.house.stipend.sect.stone[3], '俸禄没有按境界发放');
+  // 符诏：生成一件除妖事件，打赢记道功
+  const s3 = FX.Game.newGame({ origin: 'sect', seed: 'mission' });
+  r = FX.Game.act(s3, { type: 'mission', days: CF.house.mission.days });
+  assert(r.ok && s3.pending.length && s3.pending[0].bound._merit > 0, '符诏没有生成除妖事件');
+  // 散修拜入玄真派：只能在山门求，一年一回，屡求不成成功率上升
+  let joined = 0, tries = 0, rise = true;
+  for (let i = 0; i < 30; i++) {
+    const s2 = FX.Game.newGame({ origin: 'loose', seed: 'join' + i });
+    const me = FX.P.player(s2);
+    const xz = Object.values(s2.factions).find((f) => f.key === 'xuanzhen');
+    assert(!FX.Game.actions(s2).some((a) => a.type === 'join' && a.ok), '不在山门也能求入');
+    me.locationId = xz.seatId;
+    const c0 = FX.Sect.joinChance(s2, xz).chance;
+    const j = FX.Game.actions(s2).find((a) => a.type === 'join');
+    assert(j && j.ok, '在山门却不能求入');
+    FX.Game.act(s2, j); tries++;
+    if (me.factionId === xz.id) { joined++; const lr = FX.Game.actions(s2).find((a) => a.type === 'sect_learn' && a.tech === 'dingjin'); assert(lr && lr.ok, '拜入后领不到根本法门'); }
+    else {
+      assert(!FX.Game.actions(s2).some((a) => a.type === 'join' && a.ok), '同一年能求两回');
+      if (FX.Sect.joinChance(s2, xz).chance <= c0 && c0 < 90) rise = false;
+    }
+  }
+  assert(joined > 0 && joined < tries, '拜入没有成败之分');
+  assert(rise, '求过一回后成功率没有上升');
+  // v3 存档迁移到 v4
+  const t = JSON.parse(FX.Save.serialize(FX.Game.newGame({ origin: 'clan', seed: 'mig' })));
+  t.schemaVersion = 3; t.state.schemaVersion = 3;
+  for (const k of ['merit', 'joinTried', 'submitted', 'orders']) delete t.state.player[k];
+  delete t.checksum;
+  const m = FX.Save.deserialize(t);
+  assert(m.ok && m.state.player.merit === 0 && Array.isArray(m.state.player.orders), 'v3 存档迁移失败：' + m.error);
+  return `差事、请授、兑换、上交、离山限制、俸禄、符诏均正常；散修求入玄真派 ${tries} 次成 ${joined} 次；v3 存档可迁移`;
+});
+
+check('13', '推进不只靠运气：每道关卡要的东西都有稳定来路', () => {
+  const CF = FX.CONFIG, M = CF.market;
+  const staple = (k) => M.town.staples.some((x) => x.item === k);
+  const order = (k) => M.town.rare.some((x) => x.item === k);
+  const store = (k, tier) => CF.house.store.some((x) => x.item === k && (!x.minTier || tier >= x.minTier));
+  const needs = ['zhuji'].concat(Object.values(CF.breakthrough.minorNeeds).map((x) => x.item), ['ningdan']);
+  const miss = [];
+  for (const k of needs) {
+    if (!staple(k) && !order(k)) miss.push(k + ' 墟市既不常备也不能代寻');
+    if (k !== 'ningdan' && !store(k, 1)) miss.push(k + ' 小宗库藏没有');
+    if (!store(k, 2)) miss.push(k + ' 二流宗门库藏没有');
+  }
+  if (!M.town.staples.some((x) => x.item.startsWith('tech:') && CF.techniques[x.item.slice(5)].kind === 'lianqi')) miss.push('墟市不常备练炁术');
+  if (!M.town.staples.some((x) => x.item.startsWith('tech:') && CF.techniques[x.item.slice(5)].kind === 'kaifu')) miss.push('墟市不常备开府真法');
+  for (const d of CF.factionDefs.filter((x) => x.type === 'sect')) {
+    if (!d.library.some((e) => !e.merit && CF.techniques[e.tech].kind === 'lianqi')) miss.push(d.name + ' 不白传练炁术');
+    if (!d.library.some((e) => CF.techniques[e.tech].kind === 'kaifu')) miss.push(d.name + ' 不传开府真法');
+  }
+  assert(!miss.length, miss.join('；'));
+  // 实测：一年年过去，金谷墟市的常备货始终都在
+  const s = FX.Game.newGame({ origin: 'loose', seed: 'stock' });
+  const town = Object.values(s.places).find((x) => x.type === 'town');
+  for (let y = 0; y < 30; y++) {
+    FX.World.refreshMarket(s, town.id);
+    for (const x of M.town.staples) assert(s.markets[town.id].stock.some((y2) => y2.item === x.item && y2.qty >= x.qty[0]), x.item + ' 某年断货');
+  }
+  // 代寻一定送到
+  FX.P.player(s).locationId = town.id;
+  s.player.stone = 20000;
+  s.markets[town.id].stock = s.markets[town.id].stock.filter((x) => x.item !== 'ningdan');
+  const o = FX.Game.actions(s).find((a) => a.type === 'order' && a.item === 'ningdan');
+  assert(o && o.ok && FX.Game.act(s, o).ok, '托人代寻失败');
+  FX.Sim.passDays(s, CF.market.order.slowDays.ningdan + 30, 'rest');
+  assert(s.pending.length || s.player.inv.ningdan === 1, '代寻的凝丹大药没有送到');
+  return `${needs.length} 种冲关外药、练炁术、开府真法都有稳定来路（墟市常备或代寻、宗门库藏）；墟市常备货 30 年不断；代寻按期送到`;
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 项通过`);
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

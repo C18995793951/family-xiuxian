@@ -39,7 +39,7 @@
           coinPerYear: FX.CU.coinPerYear(p),
           reqs: FX.CU.requirements(s, p),
           faction: p.factionId ? s.factions[p.factionId] : null,
-          place, stone: s.player.stone, inv: s.player.inv, manuals: s.player.manuals,
+          place, stone: s.player.stone, merit: s.player.merit, inv: s.player.inv, manuals: s.player.manuals,
           pillUntil: s.player.qijuUntil > s.t ? s.player.qijuUntil : null,
           breakthrough: bt ? Object.assign({ can: FX.CU.canAttempt(s, p) }, bt) : null,
           pending: s.pending.length, ended: s.ended, stats: s.player.stats,
@@ -80,6 +80,28 @@
           relations: isMe ? P.relationsOf(s, p.id).map((r) => ({ other: r.a === p.id ? r.b : r.a, name: P.name(s, r.a === p.id ? r.b : r.a), type: r.type, strength: r.strength, tags: r.tags })) : [],
           life: FX.H.lifeSummary(s, p),
           history: s.history.filter((e) => e.actors.includes(p.id) && (e.pov || isMe)).slice(-30).map((e) => ({ id: e.id, t: e.t, text: FX.H.text(e) })),
+        };
+      },
+      // 宗门页：本门本族的传功、库藏、俸禄；没有门派时列出各宗门的拜入条件
+      house(s) {
+        const p = P.player(s), Sect = FX.Sect, cf = C();
+        const f = Sect.mine(s);
+        if (f) {
+          return {
+            member: true, faction: f, seat: s.places[f.seatId], atSeat: Sect.atSeat(s, f), merit: s.player.merit,
+            stipend: Sect.stipend(s, f), taskMerit: Sect.taskMerit(p), missionMerit: Sect.missionMerit(p),
+            library: Sect.library(f).map((e) => ({ tech: e.tech, t: cf.techniques[e.tech], merit: e.merit || 0, minMajor: e.minMajor || 0, note: e.note || '', owned: s.player.manuals.includes(e.tech), using: p.techniqueId === e.tech || p.kaifuId === e.tech })),
+            store: Sect.store(f).map((e) => ({ item: e.item, it: cf.items[e.item], merit: e.merit, minMajor: e.minMajor || 0, have: s.player.inv[e.item] || 0 })),
+            submit: cf.house.submit,
+          };
+        }
+        return {
+          member: false,
+          other: p.factionId ? s.factions[p.factionId] : null,
+          sects: Object.values(s.factions).filter((g) => g.type === 'sect').map((g) => {
+            const can = Sect.canJoin(s, g);
+            return { f: g, seat: s.places[g.seatId], join: Sect.def(g).join || null, can, chance: Sect.joinChance(s, g), route: FX.World.route(s, p.locationId, g.seatId) };
+          }),
         };
       },
       feed: (s, n) => FX.H.feed(s, n),

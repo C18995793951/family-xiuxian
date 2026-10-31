@@ -42,8 +42,9 @@
   Combat.hurt = (s, p, foePower, foeName, causeIds) => {
     const E = C().encounter;
     const heavy = R.chance(s.rng, E.lossHeavyShare);
+    const my = P().power(s, p); // 强弱按交手时算，不按受伤之后算
     P().injure(s, p, heavy ? 'heavy' : 'light');
-    if (heavy && foePower >= 2 * P().power(s, p) && R.chance(s.rng, E.deathWhenOutmatched)) {
+    if (heavy && foePower >= 2 * my && R.chance(s.rng, E.deathWhenOutmatched)) {
       P().kill(s, p, '败于' + foeName + '之手', causeIds, { key: 'fight' });
       return { text: '伤重不治', died: true };
     }
@@ -102,9 +103,16 @@
     },
   });
 
+  // _merit：奉事房符诏要除的妖物，打赢了记道功、领赏钱
   const beastFoe = (s, b) => ({
-    name: b._beast, power: b._power, winText: '斗杀妖物，可得妖物材料',
-    onWin: (s2, b2) => lootBeast(s2, b2._danger),
+    name: b._beast, power: b._power, winText: b._merit ? `斗杀妖物，符诏办成：记${C().house.meritName} ${b._merit}、赏符钱 ${b._stone}，另得妖物材料` : '斗杀妖物，可得妖物材料',
+    onWin(s2, b2) {
+      const loot = lootBeast(s2, b2._danger);
+      if (!b2._merit) return loot;
+      s2.player.merit += b2._merit;
+      s2.player.stone += b2._stone;
+      return `符诏办成，记${C().house.meritName} ${b2._merit}、赏符钱 ${b2._stone}，${loot}`;
+    },
   });
   const npcFoe = (s, b) => {
     const p = s.people[b.foe];

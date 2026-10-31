@@ -20,6 +20,7 @@
   const T = () => FX.T;
 
   const Act = {};
+  Act.seek = (s, gain) => seek(s, gain);
   const me = (s) => P().player(s);
   const here = (s) => s.places[me(s).locationId];
   const giveItem = (s, key, n) => { s.player.inv[key] = (s.player.inv[key] || 0) + n; };
@@ -70,6 +71,10 @@
       const member = p.factionId && s.factions[p.factionId].seatId === place.id;
       add({ type: 'work', days: job.days, label: job.name + ' ' + T().dur(job.days), group: '营生', ok: !job.memberOnly || member, reason: job.memberOnly && !member ? '只有本门/本族中人可做' : '' });
     }
+    // 托墟市代寻
+    for (const o of Act.orderable(s)) add({ type: 'order', item: o.item, days: 0, cost: o.cost, label: '托人代寻' + W().itemName(o.item) + '（' + o.cost + ' 符钱，约 ' + T().dur(o.days) + '后送到）', group: '坊市', ok: s.player.stone >= o.cost, reason: s.player.stone >= o.cost ? '' : '符钱不够（需 ' + o.cost + '）' });
+    // 宗门、家族：拜入、符诏、请授、兑换、上交（见 sect.js）
+    FX.Sect.list(s, add);
     // 静养
     if (p.health.state !== 'healthy') for (const d of cf.actions.restDays) add({ type: 'rest', days: d, label: '静养 ' + T().dur(d), group: '修炼' });
     // 拜访在场的人
@@ -91,7 +96,7 @@
   };
 
   // 校验一项行动是否在清单里（防止界面或 AI 传入清单外的东西）
-  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech'].every((k) => a[k] === undefined || x[k] === a[k]));
+  Act.find = (s, a) => Act.list(s).find((x) => x.type === a.type && !!x.coin === !!a.coin && ['days', 'to', 'npc', 'item', 'tech', 'fid'].every((k) => a[k] === undefined || x[k] === a[k]));
   Act.coinCost = (p, days) => Math.ceil((CU().coinPerYear(p) * days) / C().daysPerYear);
 
   Act.run = (s, a) => {
@@ -102,7 +107,7 @@
     if (!item) return { ok: false, error: '此刻不能这样做' };
     if (!item.ok) return { ok: false, error: item.reason };
     s.player.stats.actions++;
-    const r = Act.DO[item.type](s, item);
+    const r = (Act.DO[item.type] || FX.Sect.DO[item.type])(s, item);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
   };
@@ -178,13 +183,50 @@
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     if (r.interrupted) return { text: '差事没做完就出了事', interrupted: true };
-    const stone = R.int(s.rng, job.stone[0], job.stone[1]) + Math.round(P().realmRank(p) * job.perRank);
+    const stone = Math.round(R.int(s.rng, job.stone[0], job.stone[1]) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
     s.player.stone += stone;
-    H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone } });
-    return { text: `得符钱 ${stone}` };
+    // 本门、本族的差事另由功德房记道功
+    const merit = job.merit ? FX.Sect.taskMerit(p) : 0;
+    s.player.merit += merit;
+    const mtxt = merit ? '，记' + C().house.meritName + ' ' + merit : '';
+    H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone, merit: mtxt } });
+    return { text: `得符钱 ${stone}${mtxt}` };
   };
 
   Act.marketOf = (s) => (W().hasMarket(s, here(s).id) ? s.markets[here(s).id] : null);
+
+  // 可托墟市代寻的稀罕货（只在墟市办，价钱照原价加成，不随年景浮动）
+  Act.orderable = (s) => {
+    const O = C().market.order;
+    const place = here(s);
+    if (place.type !== O.placeType) return [];
+    return C().market[place.type].rare.map((x) => {
+      const base = x.item.startsWith('tech:') ? C().techniques[x.item.slice(5)].price : C().items[x.item].price;
+      return { item: x.item, cost: Math.round(base * (1 + O.fee)), days: O.slowDays[x.item] || O.days };
+    }).filter((o) => !(s.markets[place.id] && s.markets[place.id].stock.some((x) => x.item === o.item && x.qty > 0))
+      && !(o.item.startsWith('tech:') && (s.player.manuals.includes(o.item.slice(5)) || s.player.orders.some((y) => y.item === o.item))));
+  };
+
+  Act.DO.order = (s, a) => {
+    const p = me(s), o = Act.orderable(s).find((x) => x.item === a.item);
+    s.player.stone -= a.cost;
+    s.player.orders.push({ item: a.item, due: s.t + o.days, placeId: p.locationId });
+    H().add(s, { type: 'trade', tags: ['坊市'], actors: [p.id], places: [p.locationId], key: 'order', pov: true, severity: 1, params: { name: p.name, place: here(s).name, item: W().itemName(a.item), cost: a.cost, dur: T().dur(o.days) } });
+    return { text: '托人代寻' + W().itemName(a.item) + '，约 ' + T().dur(o.days) + '后送到' };
+  };
+
+  // 月末：到期的代寻货送到手上
+  Act.deliverOrders = (s) => {
+    const p = me(s);
+    const due = s.player.orders.filter((o) => o.due <= s.t);
+    if (!due.length || !P().alive(p)) return;
+    s.player.orders = s.player.orders.filter((o) => o.due > s.t);
+    for (const o of due) {
+      if (o.item.startsWith('tech:')) { const t = o.item.slice(5); if (!s.player.manuals.includes(t)) s.player.manuals.push(t); }
+      else giveItem(s, o.item, 1);
+      H().add(s, { type: 'trade', tags: ['坊市'], actors: [p.id], key: 'order_arrive', pov: true, severity: 2, params: { name: p.name, place: s.places[o.placeId].name, item: W().itemName(o.item) } });
+    }
+  };
 
   Act.buy = (s, item, qty) => {
     const m = Act.marketOf(s);

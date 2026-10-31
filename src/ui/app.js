@@ -80,6 +80,7 @@
     { id: 'map', name: '地图' },
     { id: 'people', name: '人物' },
     { id: 'bag', name: '行囊' },
+    { id: 'sect', name: '宗门' },
     { id: 'chron', name: '纪事' },
     { id: 'sys', name: '存档与设置', short: '设置' },
   ];
@@ -169,6 +170,7 @@
           <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
           ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
           <div class="stat"><span>符钱</span><b>${n0(ov.stone)}</b></div>
+          ${ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan') ? `<div class="stat"><span>${esc(CF.house.meritName)}</span><b>${n0(ov.merit)} <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中库藏' : '长老房'}</button></b></div>` : ''}
           ${ov.pillUntil ? `<div class="stat"><span>${esc(CF.items.qiju.name)}药力</span><b>至 ${T.fmt(ov.pillUntil)}</b></div>` : ''}
           <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         </div>
@@ -188,7 +190,7 @@
         ${reqList(ov.reqs)}
         ${bt.can.ok ? '' : `<p class="bad">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}</div>` : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : ''}
       <div class="card"><h3>做什么</h3>${disabled ? '<p class="warn">眼前的事要先处理。</p>' : ''}
-        ${['修炼', '外出', '营生', '物品'].map((g) => grp(g).length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${grp(g).map(btn).join('')}</div></div>` : '').join('')}
+        ${['修炼', '外出', '营生', '宗门', '物品'].map((g) => { const list = grp(g).filter((a) => g !== '宗门' || a.ok || !/^要回到/.test(a.reason)); return list.length ? `<div class="act-group"><span class="muted">${g}</span><div class="row">${list.map(btn).join('')}</div></div>` : ''; }).join('')}
         <p class="muted" style="margin-bottom:0">闭关一年以上可能被打扰；游历多半一无所获，偶有遭遇。练炁以后可以把符钱炼进去修行，奢费但不挑地方。时间一过就回不来。</p>
       </div>`;
   };
@@ -246,6 +248,12 @@
     const m = s.markets[ov.place.id];
     const sellable = inv.filter(([k]) => CF.items[k]);
     const learn = A.filter((a) => a.type === 'learn');
+    const orders = A.filter((a) => a.type === 'order');
+    const coming = s.player.orders;
+    const orderCard = orders.length || coming.length ? `<div class="card"><h3>托人代寻 <span class="muted">（今年没上架的稀罕货，加五成价托墟市去别处寻，到期一定送到）</span></h3>
+        ${coming.length ? `<p>在途：${coming.map((o) => esc(FX.World.itemName(o.item)) + '（约 ' + T.fmt(o.due) + ' 到）').join('、')}</p>` : ''}
+        ${orders.map((a) => `<div class="stat"><span>${esc(FX.World.itemName(a.item))}</span><span class="row"><b>${a.cost} 符钱</b><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">托人代寻</button></span></div>`).join('')}
+        ${orders.length ? '' : '<p class="muted">要托人代寻，得去金谷墟市（浮玉泊）。</p>'}</div>` : '';
     return `<h2>行囊</h2>
       <div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
         ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n} <span class="muted">${esc(CF.items[k].desc)}</span></span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
@@ -253,7 +261,53 @@
       </div>
       ${m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted">（${m.year} 年的货，每年换一次）</span></h3>
         ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted">存 ${x.qty} · ${esc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) : CF.items[x.item].desc)}</span></span><span class="row"><b>${x.price} 符钱</b><button data-act="buy" data-k="${esc(x.item)}" ${x.qty > 0 && ov.stone >= x.price ? '' : 'disabled'}>买 1</button></span></div>`).join('')}
-        ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}`;
+        ${sellable.length ? '' : '<p class="muted">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`}
+      ${orderCard}`;
+  };
+
+  /* ---------- 宗门 ---------- */
+  PAGE.sect = (ov) => {
+    const s = UI.s, v = Game.view.house(s), M = CF.house.meritName;
+    const A = Game.actions(s);
+    const btn = (a, text, quiet) => (a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || '')}">${esc(text || a.label)}</button>${a.ok || !a.reason || quiet ? '' : ' <span class="muted">' + esc(a.reason) + '</span>'}` : '');
+    const parts = (ps) => ps.map((x) => x.label + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；');
+    if (!v.member) {
+      const cond = (j) => (!j ? '不收外人' : j.closed ? j.closed : `至少${CF.realms.names[j.minMajor]}${j.maxAge ? '，年不过 ' + j.maxAge : ''}；每年可求一回`);
+      return `<h2>宗门</h2>
+        <div class="card"><p class="muted" style="margin:0">散修来去自由，可功法、外药都得自己去墟市买。拜入宗门后，根本法门向长老房请授便是，每年领俸禄；做差事、领符诏除妖、上交妖物内丹和道书抄本都能记${esc(M)}，再拿${esc(M)}去长老房换冲关外药和更好的功法。</p></div>
+        ${v.sects.map((x) => { const a = A.find((y) => y.type === 'join' && y.fid === x.f.id); return `<div class="card"><div class="row between"><h3 style="margin:0">${esc(x.f.name)}</h3><span class="muted">${placeLink(x.seat.id)}${x.route && x.route.days ? ' · 约 ' + x.route.days + ' 天路程' : x.route ? ' · 就在此地' : ''}</span></div>
+          <p class="muted">${esc(x.f.blurb)}</p>
+          <div class="stat"><span>拜入条件</span><b>${esc(cond(x.join))}</b></div>
+          ${x.join && !x.join.closed ? `<div class="stat"><span>${trace('成功率', parts(x.chance.parts))}</span><b>${x.chance.chance}%</b></div>` : ''}
+          <div class="row">${a ? btn(a) : x.can === true ? '' : '<span class="muted">' + esc(x.can) + '</span>'}</div></div>`; }).join('')}`;
+    }
+    const f = v.faction, clan = f.type === 'clan';
+    const lib = v.library.map((e) => {
+      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech);
+      const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
+      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, e.merit ? `${e.merit} ${M}` : '请授', true);
+      return `<div class="stat"><span>《${esc(e.t.name)}》 <span class="muted">${esc(techLine(e.t))} · ${esc(e.t.desc)}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}</span></span><span class="row">${right}</span></div>`;
+    }).join('');
+    const store = v.store.map((e) => {
+      const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
+      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted">（已有 ' + e.have + '）</span>' : ''} <span class="muted">${esc(e.it.desc)}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才换' : ''}</span></span><span class="row">${btn(a, e.merit + ' ' + M, true)}</span></div>`;
+    }).join('');
+    const subs = A.filter((x) => x.type === 'submit');
+    const work = A.find((x) => x.type === 'work');
+    const mission = A.find((x) => x.type === 'mission');
+    return `<h2>${clan ? '家族' : '宗门'} <span class="muted">${esc(f.name)}</span></h2>
+      <div class="card hl">
+        <div class="stat"><span>${esc(M)}</span><b class="big">${n0(v.merit)}</b></div>
+        <div class="stat"><span>每年俸禄（按你如今的境界）</span><b>符钱 ${v.stipend.stone}${v.stipend.qiju ? '、' + esc(CF.items.qiju.name) + '×' + v.stipend.qiju : ''}</b></div>
+        <div class="stat"><span>${clan ? '族中' : '山门'}</span><b>${placeLink(v.seat.id)}${v.atSeat ? ' <span class="good">（你在这里）</span>' : ' <span class="muted">（请授、兑换、上交、领差事都要回来办）</span>'}</b></div>
+        <p class="muted" style="margin-bottom:0">${clan ? '族里' : '奉事房'}的差事每月记 ${v.taskMerit} ${esc(M)}，另给符钱；${clan ? '替家族除妖' : '领符诏除妖'}打赢了记 ${v.missionMerit} ${esc(M)}，逃了就算没办成。</p>
+        <div class="row" style="margin-top:.5em">${work ? btn(work) : ''}${mission ? btn(mission) : ''}</div>
+      </div>
+      <div class="card"><h3>${clan ? '家传功法' : '长老房 · 传功'}</h3>${lib || '<p class="muted">没有可传的功法。</p>'}</div>
+      <div class="card"><h3>${clan ? '族中库藏' : '长老房 · 库藏'} <span class="muted">（常备，随时可换）</span></h3>${store}</div>
+      <div class="card"><h3>${clan ? '上交族中' : '功德房 · 上交'}</h3>
+        ${subs.length ? `<div class="col">${subs.map((a) => `<div>${btn(a)}</div>`).join('')}</div>` : `<p class="muted">行囊里没有可上交的东西。${Object.entries(v.submit).map(([k, n]) => esc(CF.items[k].name) + '每件记 ' + n).join('、')}；本门没有的道书抄本按价值记，每部只记一次。</p>`}
+      </div>`;
   };
 
   /* ---------- 纪事 ---------- */
@@ -270,7 +324,7 @@
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼与遭遇都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定换成了《仙业》的东弥州南域。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */

@@ -169,7 +169,7 @@
     if (k === 'zifu' && !isPlayer && !(opts && opts.kaifu)) return { ok: false, reason: '缺开府真法' };
     if (k === 'jindan') {
       if (CU.qiFor(s, p) < B.jindan.minQi) return { ok: false, reason: '需在灵机 ' + B.jindan.minQi + ' 级以上之地结丹' };
-      if (isPlayer && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺凝丹大药（结丹必需，宗门、墟市偶有出售）' };
+      if (isPlayer && !(inv(s, p).ningdan > 0)) return { ok: false, reason: '缺凝丹大药（' + C().items.ningdan.where + '）' };
       if (!isPlayer && !(opts && opts.items)) return { ok: false, reason: '缺凝丹大药' };
     }
     return { ok: true, kind: k };
@@ -185,7 +185,7 @@
       const t = P().lianqiOf(p);
       return [
         { label: '胎息壮大到头', ok: P().isFull(p), note: Math.floor(p.progress) + ' / ' + P().need(p) },
-        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '凡人国集市、墟市偶有劣等练炁术出售；宗门弟子可向长老房请授' },
+        { label: '一门练炁术', ok: !!t, note: t ? '《' + t.name + '》' : '金谷墟市常备劣等练炁术，凡人国集市偶有；拜入玄真派可向长老房请授' },
       ];
     }
     if (!k) return [];
@@ -194,16 +194,16 @@
       const near = p.nearDeathT !== null && s.t - p.nearDeathT <= B.taixi.lifeDeathYears * C().daysPerYear;
       out.push({ label: '近 ' + B.taixi.lifeDeathYears + ' 年在生死之间走过一遭（可选：+' + B.taixi.lifeDeath + '%）', ok: near, optional: true, note: '死生畏怖，神明自得；身受重伤后活下来的人更容易悟得胎息' });
     }
-    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', ok: has('zhuji'), optional: true, note: '墟市、宗门的稀有货，约 ' + I.zhuji.price + ' 符钱' });
+    if (k === 'zhuji') out.push({ label: I.zhuji.name + '（可选：+' + B.zhuji.pill + '%）', ok: has('zhuji'), optional: true, note: I.zhuji.where + '，约 ' + I.zhuji.price + ' 符钱' });
     const need = CU.minorNeed(p);
-    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), ok: has(need.item, need.qty), note: need.why + '，约 ' + I[need.item].price + ' 符钱一份' });
+    if (need) out.push({ label: I[need.item].name + (need.qty > 1 ? ' ×' + need.qty : ''), ok: has(need.item, need.qty), note: need.why + '。' + I[need.item].where + '，约 ' + I[need.item].price + ' 符钱一份' });
     if (k === 'zifu') {
       const kf = P().isPlayer(s, p) ? CU.bestKaifu(s) : null;
-      out.push({ label: '一篇开府真法', ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '墟市偶有下乘开府真法；上乘的只在大派世族流转' });
+      out.push({ label: '一篇开府真法', ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '金谷墟市常备下乘开府真法；宗门弟子筑基后可向长老房请授；上乘的只在大派世族流转' });
     }
     if (k === 'jindan') {
       out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
-      out.push({ label: I.ningdan.name, ok: has('ningdan'), note: '宗门、墟市偶有出售，约 ' + I.ningdan.price + ' 符钱' });
+      out.push({ label: I.ningdan.name, ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
     }
     out.push({ label: '没有重伤', ok: p.health.state !== 'heavy' });
     if (p.restUntil > s.t) out.push({ label: '失败后休养期已过', ok: false, note: '至 ' + FX.T.fmt(p.restUntil) });
@@ -245,7 +245,8 @@
     }
     const accYears = Math.floor(p.fullDays / C().daysPerYear);
     if (accYears > 0) parts.push({ label: '圆满后积累 ' + accYears + ' 年', value: Math.min(B.accumMax, accYears * B.accumPerYear) });
-    if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
+    if (p.failCount > 0 && cfg.failBonus) parts.push({ label: '此前参悟 ' + p.failCount + ' 次，渐有心得', value: Math.min(cfg.failBonusCap, p.failCount * cfg.failBonus) });
+    else if (p.failCount > 0) parts.push({ label: '此前失败 ' + p.failCount + ' 次', value: -Math.min(cfg.failCap || Infinity, p.failCount * (cfg.failPenalty || B.failPenalty)) });
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);

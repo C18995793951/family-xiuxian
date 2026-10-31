@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 3,
-    gameVersion: '0.3.0-xianye1',
+    schemaVersion: 4,
+    gameVersion: '0.3.1-xianye2',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -95,12 +95,13 @@
       guiyuan: { kind: 'lianqi', name: '归元子练炁要诀', tier: 3, attrs: ['清', '阳'], opp: ['阴', '浊'], mult: 1.0, price: 150, desc: '品秩不高，胜在中正平和' },
       chiyang: { kind: 'lianqi', name: '赤阳炼炁诀', tier: 4, attrs: ['阳', '烈'], opp: ['寒', '阴'], mult: 1.05, price: 450, desc: '采阳烈之气' },
       xuanshui: { kind: 'lianqi', name: '玄水真炁法', tier: 5, attrs: ['寒', '柔'], opp: ['烈', '阳'], mult: 1.05, price: 700, desc: '采寒柔之气' },
-      dingjin: { kind: 'lianqi', name: '锭金真炁', tier: 5, attrs: ['刚', '烈'], opp: ['寒', '浊'], mult: 1.1, price: 900, desc: '玄真派传承，采金锐之气' },
+      dingjin: { kind: 'lianqi', name: '三炁照神术', tier: 3, attrs: ['刚', '烈'], opp: ['寒', '浊'], mult: 1.0, price: 300, desc: '玄真派根本法门，可从练炁一直修到紫府；所生锭金真炁是三阶中品，采金锐之气' },
       handou: { kind: 'lianqi', name: '寒斗真炁', tier: 7, attrs: ['寒', '阴'], opp: ['阳', '烈'], mult: 1.15, price: 2600, desc: '酷烈的高阶真炁，可筑上品道基' },
       ziqing: { kind: 'lianqi', name: '紫清真炁', tier: 9, attrs: ['清', '阳'], opp: ['浊'], mult: 1.25, price: 8000, desc: '九阶上品真炁，玄门世族秘传，南域罕见' },
       kaifu_low: { kind: 'kaifu', name: '玄关开府篇', grade: 1, mult: 1.0, price: 1600, desc: '下乘开府真法，开出的紫府异象下等' },
       kaifu_mid: { kind: 'kaifu', name: '三元开府真法', grade: 2, mult: 1.1, price: 4500, desc: '中乘开府真法，可开中等紫府异象' },
       kaifu_high: { kind: 'kaifu', name: '太清开府真经', grade: 3, mult: 1.25, price: 12000, desc: '上乘开府真法，可开上等紫府异象，向来只在大派世族间流转' },
+      sanqi_kaifu: { kind: 'kaifu', name: '三炁照神术·紫府篇', grade: 1, mult: 1.0, price: 1200, desc: '三炁照神术的后半部，讲开辟紫府；玄真派弟子筑基后向长老房请授' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
     gradeNames: ['', '下乘', '中乘', '上乘'],
@@ -134,8 +135,8 @@
      * jindan：洞玄三重圆满，凭凝丹大药结丹。紫府以上每破大境，都有天罚降下。 */
     breakthrough: {
       minor: { base: 70, failLoss: 0.1, days: 30 },
-      // 悟胎息屡试不成也不至于越试越难：每次失败只扣 2%，最多扣 10%
-      taixi: { base: 20, aptFactor: 0.5, lifeDeath: 20, lifeDeathYears: 3, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0, restYears: 1, days: 30, mild: true, failPenalty: 2, failCap: 10 },
+      // 悟胎息不是越试越难，而是屡次参悟渐有心得：每失败一次 +4%，最多 +24%
+      taixi: { base: 20, aptFactor: 0.5, lifeDeath: 20, lifeDeathYears: 3, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0, restYears: 1, days: 30, mild: true, failBonus: 4, failBonusCap: 24 },
       zhuji: { base: 35, pillItem: 'zhuji', pill: 25, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.05, days: 90 },
       zifu: { base: 30, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.06, days: 180, tianfa: true },
       dongxuan: { base: 25, failLossMin: 0.3, failLossMax: 0.5, deathChance: 0.08, days: 180, tianfa: true },
@@ -228,18 +229,67 @@
     // 宗门按“品级”给人：tier 1 小宗（掌门洞玄），tier 2 二流宗门（掌门金丹，宗中另有元神真君闭关不出）
     // seat：宗门写山门名；town 为墟市；hide 为荒僻或凶险之地（改名为势力名）
     factionDefs: [
-      { key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄链师，传闻是玉宸派下辖的数百道脉之一' },
-      { key: 'wuguang', name: '五光宗', type: 'sect', tier: 2, seat: '五光宗', tech: 'chiyang', blurb: '南域勉强算得上玄门正统的二流宗门，宗中有元神真君驻世，不问俗务' },
-      { key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人' },
+      // library：长老房能请授的功法（merit 为所需道功，0 即白给；minMajor 为最低大境界）
+      // join：拜入条件。base 基础成功率；maxAge 年龄上限；closed 表示眼下不收人
+      {
+        key: 'xuanzhen', name: '玄真派', type: 'sect', tier: 1, seat: '小甘山', tech: 'dingjin', blurb: '小甘山上的小宗，派中最高不过洞玄链师，传闻是玉宸派下辖的数百道脉之一',
+        library: [{ tech: 'dingjin' }, { tech: 'sanqi_kaifu', minMajor: 3 }, { tech: 'chiyang', merit: 150, note: '派中收着的外派抄本' }],
+        join: { minMajor: 1, base: 55, maxAge: 60 },
+      },
+      {
+        key: 'wuguang', name: '五光宗', type: 'sect', tier: 2, seat: '五光宗', tech: 'chiyang', blurb: '南域勉强算得上玄门正统的二流宗门，宗中有元神真君驻世，不问俗务',
+        library: [{ tech: 'chiyang' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        join: { minMajor: 2, base: 15, maxAge: 40 },
+      },
+      {
+        key: 'huashen', name: '花神府', type: 'sect', tier: 2, seat: '花神府', tech: 'xuanshui', blurb: '南域二流大宗，不定期开「撷芳宴」招收散修，只取最后活下来的几人',
+        library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
+        join: { closed: '花神府只在「撷芳宴」上收人，眼下没有开宴' },
+      },
       { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易' },
       { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱' },
     ],
 
     factionTypes: {
-      sect: { name: '宗门', stipend: [0, 24, 40] }, // 按宗门品级
-      clan: { name: '修道家族', stipend: [12] },
-      league: { name: '墟市', stipend: [0] },
-      evil: { name: '魔道', stipend: [0] },
+      sect: { name: '宗门' },
+      clan: { name: '修道家族', library: [{ tech: 'guiyuan' }, { tech: 'kaifu_low', merit: 120, minMajor: 3 }] },
+      league: { name: '墟市' },
+      evil: { name: '魔道' },
+    },
+
+    /* ---------- 宗门、家族的底蕴 ----------
+     * 玄真派设刑房、功德房、奉事房、饲灵房、长老房五房：根本法门向长老房请授即可；
+     * 道术、外药要靠给宗门立功，由功德房记下道功，再去长老房换取。差事和符诏由奉事房派发。
+     * 家族照此办理，只是库藏薄些。 */
+    house: {
+      meritName: '道功',
+      // 奉事房差事每月记的道功，按大境界
+      taskMerit: { 1: 1, 2: 2, 3: 4, 4: 8, 5: 12, 6: 20 },
+      // 领符诏除妖：对手按你的战力定，打赢了才记道功（差事道功 × meritMult）
+      mission: { days: 60, meritMult: 4, stone: [10, 30], powerSwing: [0.4, 1.0] },
+      // 功德房收的东西，每件记多少道功
+      submit: { beastCore: 3, rareHerb: 5 },
+      manualRate: 15, // 献上本门没有的道书抄本：每 15 符钱的价值记 1 道功，每部只记一次
+      learnDays: 10,
+      joinDays: 15,
+      // 长老房库藏：merit 道功；minMajor 最低大境界；minTier 只有二流宗门才有；clan 家族库藏也有
+      store: [
+        { item: 'qiju', merit: 3, clan: true },
+        { item: 'heal', merit: 2, clan: true },
+        { item: 'fuqi1', merit: 30 },
+        { item: 'zhuji', merit: 40, minMajor: 2, clan: true },
+        { item: 'danmusha', merit: 90, minMajor: 3, clan: true },
+        { item: 'yanshou', merit: 120, minMajor: 3 },
+        { item: 'fuqi2', merit: 150, minMajor: 3 },
+        { item: 'yusui', merit: 220, minMajor: 4 },
+        { item: 'wujing', merit: 160, minMajor: 4 },
+        { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
+      ],
+      // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁以上另发中孚丹
+      stipend: {
+        sect: { stone: [0, 6, 24, 60, 200, 500, 1200], tierMult: [0, 1, 1.5], qiju: 2 },
+        clan: { stone: [0, 6, 18, 45, 150, 400, 1000], qiju: 1 },
+      },
     },
 
     /* ---------- 出身 ---------- */
@@ -260,7 +310,7 @@
         inv: { qiju: 2, heal: 1 },
       },
       sect: {
-        name: '玄真派弟子', blurb: '小甘山玄真派门下，可借山门灵机，按例领份例，修的是本派锭金真炁',
+        name: '玄真派弟子', blurb: '小甘山玄真派门下，可借山门灵机，每年领俸禄，修本派根本法门三炁照神术；立了功可去长老房换外药',
         realm: { major: 2, stage: 1 }, stone: 15, technique: 'dingjin', place: 'sect', faction: 'sect', factionKey: 'xuanzhen',
         inv: { heal: 1 },
       },
@@ -270,11 +320,11 @@
     items: {
       qiju: { name: '中孚丹', price: 30, desc: '练炁士常用的修行丹丸，服后三个月修炼速度 +30%' },
       heal: { name: '小白阳丹', price: 20, desc: '护住内腑、调理伤势，加快伤势恢复' },
-      zhuji: { name: '大造元珠', price: 420, desc: '补益元炁的外药，冲击筑基时服下，成功率 +25%' },
-      danmusha: { name: '丹母砂', price: 900, desc: '全真外药。筑基二重修到三重「龟蛇相抱」时必须用上一枚' },
-      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份' },
-      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎' },
-      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份。只在宗门、墟市的货架上偶尔出现' },
+      zhuji: { name: '大造元珠', price: 420, desc: '补益元炁的外药，冲击筑基时服下，成功率 +25%', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
+      danmusha: { name: '丹母砂', price: 900, desc: '全真外药。筑基二重修到三重「龟蛇相抱」时必须用上一枚', where: '金谷墟市常备；宗门、家族弟子可用道功换' },
+      yusui: { name: '玉髓', price: 2000, desc: '紫府二重修到三重「换魂消魄」时必须用上一份', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
+      wujing: { name: '先天五行之精', price: 3000, desc: '洞玄一重修到二重「摄取五精」须集齐五份，填入龙虎炉鼎', where: '宗门弟子可用道功换；金谷墟市多数年份有货' },
+      ningdan: { name: '凝丹大药', price: 8000, desc: '结金丹的必需之物，冲关时耗掉一份', where: '五光宗、花神府弟子可用道功换；墟市、山门货架偶尔有' },
       yanshou: { name: '紫明流珠', price: 1200, desc: '天地大药，服下添寿六年（每人至多 3 颗，效果递减）' },
       fuqi1: { name: '下品符器', price: 350, desc: '带在身上斗法战力 ×1.25（只算最好的一件）', power: 1.25 },
       fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
@@ -286,48 +336,76 @@
     usable: ['qiju', 'heal', 'yanshou'],
     loot: ['herb', 'rareHerb', 'beastCore', 'beastHide'],
     yanshouYears: [6, 4, 2],
+    /* 坊市：staples 是常备货，每年补足；rare 是稀罕货，每年有 slots 个格子，各有 chance 的机会上架。
+     * 南域虽穷，练炁、筑基用得上的东西在金谷墟市总能买到；紫府以上的外药才要看年景。
+     * 宗门山门的货架是卖给外人的，门下弟子另有长老房库藏（见 house）。 */
     market: {
-      staples: [
-        { item: 'qiju', qty: [3, 8] },
-        { item: 'heal', qty: [2, 6] },
-      ],
-      rare: [
-        { item: 'zhuji', w: 3 },
-        { item: 'fuqi1', w: 2 },
-        { item: 'danmusha', w: 1 },
-        { item: 'fuqi2', w: 0.6 },
-        { item: 'yanshou', w: 0.5 },
-        { item: 'yusui', w: 0.4 },
-        { item: 'wujing', w: 0.4 },
-        { item: 'ningdan', w: 0.15 },
-        { item: 'tech:linghe', w: 1.5 },
-        { item: 'tech:guiyuan', w: 1.5 },
-        { item: 'tech:chiyang', w: 0.8 },
-        { item: 'tech:xuanshui', w: 0.8 },
-        { item: 'tech:handou', w: 0.2 },
-        { item: 'tech:kaifu_low', w: 0.5 },
-        { item: 'tech:kaifu_mid', w: 0.15 },
-      ],
-      // 凡人国的集市只有凡俗货色，偶尔有一卷劣等练炁术
-      cityStaples: [{ item: 'heal', qty: [1, 3] }],
-      cityRare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }],
-      rareSlots: { city: 1, town: 2, sect: 2 },
-      rareChance: 0.6,
+      city: {
+        staples: [{ item: 'heal', qty: [1, 3] }],
+        rare: [{ item: 'tech:linghe', w: 2 }, { item: 'tech:guiyuan', w: 1 }],
+        slots: 1, chance: 0.6,
+      },
+      town: {
+        staples: [
+          { item: 'qiju', qty: [3, 8] },
+          { item: 'heal', qty: [2, 6] },
+          { item: 'zhuji', qty: [1, 2] },
+          { item: 'danmusha', qty: [1, 1] },
+          { item: 'fuqi1', qty: [1, 1] },
+          { item: 'tech:linghe', qty: [1, 1] },
+          { item: 'tech:guiyuan', qty: [1, 1] },
+          { item: 'tech:kaifu_low', qty: [1, 1] },
+        ],
+        rare: [
+          { item: 'yusui', w: 2 },
+          { item: 'wujing', w: 2, qty: [1, 3] },
+          { item: 'yanshou', w: 1 },
+          { item: 'fuqi2', w: 1 },
+          { item: 'tech:chiyang', w: 1 },
+          { item: 'tech:xuanshui', w: 1 },
+          { item: 'ningdan', w: 0.4 },
+          { item: 'tech:handou', w: 0.3 },
+          { item: 'tech:kaifu_mid', w: 0.3 },
+        ],
+        slots: 3, chance: 0.8,
+      },
+      sect: {
+        staples: [
+          { item: 'qiju', qty: [2, 5] },
+          { item: 'heal', qty: [2, 4] },
+          { item: 'zhuji', qty: [0, 1] },
+        ],
+        rare: [
+          { item: 'danmusha', w: 2 },
+          { item: 'fuqi1', w: 2 },
+          { item: 'yusui', w: 1 },
+          { item: 'wujing', w: 1 },
+          { item: 'yanshou', w: 0.5 },
+          { item: 'fuqi2', w: 0.5 },
+          { item: 'tech:kaifu_low', w: 0.5 },
+          { item: 'ningdan', w: 0.2 },
+        ],
+        slots: 2, chance: 0.6,
+      },
       priceSwing: 0.2,
       sellRatio: 0.7,
+      // 托金谷墟市代寻：稀罕货今年没上架，也可以加价托人去别处寻，过些时日一定送到
+      order: { placeType: 'town', fee: 0.5, days: 360, slowDays: { ningdan: 1080, wujing: 540 } },
     },
 
     /* ---------- 行动 ---------- */
     actions: {
       cultivateDays: [30, 90, 180, 360, 1800, 3600],
+      // 营生的酬劳按大境界翻倍：筑基修士当供奉，身价远非练炁可比
+      workPayMult: [0.6, 0.8, 1, 3, 8, 20, 50],
       coinDays: [90, 360],
       exploreDays: [10, 30],
       restDays: [30, 90, 180],
       work: {
         city: { name: '给凡人国当供奉', days: 30, stone: [2, 5], perRank: 0.6 },
         town: { name: '墟市帮工', days: 30, stone: [3, 6], perRank: 0.5 },
-        sect: { name: '领宗门差遣', days: 30, stone: [4, 8], perRank: 0.8, memberOnly: true },
-        clan: { name: '家族差事', days: 30, stone: [3, 6], perRank: 0.6, memberOnly: true },
+        sect: { name: '去奉事房领差事', days: 30, stone: [4, 8], perRank: 0.8, memberOnly: true, merit: true },
+        clan: { name: '领家族差事', days: 30, stone: [3, 6], perRank: 0.6, memberOnly: true, merit: true },
       },
       befriendDays: 7,
       consultDays: 15,

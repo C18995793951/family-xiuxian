@@ -237,16 +237,15 @@
       const base = key.startsWith('tech:') ? C().techniques[key.slice(5)].price : C().items[key].price;
       return Math.max(1, Math.round(base * (1 + R.range(r, -M.priceSwing, M.priceSwing))));
     };
-    const city = place.type === 'city';
-    const stock = (city ? M.cityStaples : M.staples).map((x) => ({ item: x.item, qty: R.int(r, x.qty[0], x.qty[1]), price: priceOf(x.item) }));
-    const slots = M.rareSlots[place.type] || 0;
-    const pool = (city ? M.cityRare : M.rare).filter((x) => !stock.some((y) => y.item === x.item));
-    for (let i = 0; i < slots; i++) {
-      if (!R.chance(r, M.rareChance)) continue;
+    const def = M[place.type] || { staples: [], rare: [], slots: 0 };
+    const stock = def.staples.map((x) => ({ item: x.item, qty: R.int(r, x.qty[0], x.qty[1]), price: priceOf(x.item) }));
+    const pool = def.rare.filter((x) => !stock.some((y) => y.item === x.item));
+    for (let i = 0; i < def.slots; i++) {
+      if (!R.chance(r, def.chance)) continue;
       const pick = R.weighted(r, pool, (x) => x.w);
       if (!pick) break;
       pool.splice(pool.indexOf(pick), 1);
-      stock.push({ item: pick.item, qty: 1, price: priceOf(pick.item) });
+      stock.push({ item: pick.item, qty: pick.qty ? R.int(r, pick.qty[0], pick.qty[1]) : 1, price: priceOf(pick.item) });
     }
     s.markets[placeId] = { year: s.year, stock };
   };

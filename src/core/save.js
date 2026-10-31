@@ -35,12 +35,13 @@
 
   // 迁移函数表：从 vN 升到 vN+1
   SV.migrations = {
-    // 2: (state) => { ...; state.schemaVersion = 3; return state; },
+    // v3 → v4：加入宗门道功、拜入记录、献书记录、墟市代寻
+    3: (st) => { Object.assign(st.player, { merit: 0, joinTried: {}, submitted: [], orders: [] }); st.schemaVersion = 4; return st; },
   };
 
   const REQUIRED = {
     state: ['schemaVersion', 'seed', 'origin', 'rng', 't', 'year', 'places', 'factions', 'people', 'relations', 'markets', 'pending', 'eventQueue', 'history', 'records', 'player', 'aiLog'],
-    player: ['id', 'stone', 'inv', 'manuals', 'visited', 'stats'],
+    player: ['id', 'stone', 'inv', 'manuals', 'visited', 'stats', 'merit', 'joinTried', 'submitted', 'orders'],
   };
 
   // 依次：解析 → 版本 → 结构 → 校验和 → 引用完整性。任何一步失败都返回可读错误，不进入半加载状态。
