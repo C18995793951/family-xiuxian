@@ -1,5 +1,5 @@
 /* ============================================================
- * saga —— 天下大事与后期玩法：地渊开启、花神府撷芳宴、玉宸派道脉校考、仇家寻仇、洞府
+ * saga —— 天下大事与后期玩法：地渊开启、花神府撷芳宴、玉宸派道脉校考、天魔潮、丹元大会、仇家寻仇、洞府、洞天
  * 大事的日期开局就由种子排好，提前几年放出风声（写进纪事），玩家可以预先准备。
  * 成败照旧由规则掷骰；但每件大事都给出稳妥的选项，运气只决定得多得少。
  * ============================================================ */
@@ -20,7 +20,7 @@
 
   const Saga = {};
   const SG = () => C().saga;
-  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo'];
+  const KINDS = ['diyuan', 'xiefang', 'jiaokao', 'tianmo', 'danyuan', 'liuhuo'];
   const me = (s) => P().player(s);
   const pl = (s) => P().player(s);
   const give = (s, k, n) => { s.player.inv[k] = (s.player.inv[k] || 0) + n; };
@@ -49,24 +49,41 @@
       if (st.open && s.year > st.open.until) {
         if (k === 'diyuan') Saga.diyuanToll(s);
         if (k === 'tianmo') Saga.tianmoToll(s);
+        if (k === 'liuhuo') Saga.liuhuoToll(s);
         st.open = null;
         st.next = s.year + R.int(s.rng, cfg.every[0], cfg.every[1]);
       }
       if (st.open) continue;
-      if (s.year === st.next - n) H().add(s, { type: 'saga', tags: ['大事', '风声'], key: 'saga_notice', pov: true, severity: 3, params: { what: cfg.name, year: st.next, hint: Saga.hint(s, k) } });
+      // 和你沾不上边的大事（比如元神真人看撷芳宴）只记作传闻，不写进你的经历
+      const rel = Saga.relevant(s, k);
+      if (s.year === st.next - n) H().add(s, { type: 'saga', tags: ['大事', '风声'], key: 'saga_notice', pov: rel, severity: 3, params: { what: cfg.name, year: st.next, hint: Saga.hint(s, k) } });
       if (s.year >= st.next) {
         st.open = { from: s.year, until: s.year + cfg.years - 1 };
         st.count++;
-        H().add(s, { type: 'saga', tags: ['大事'], key: 'saga_open_' + k, pov: true, severity: 4, params: { what: cfg.name, hint: Saga.hint(s, k) } });
+        H().add(s, { type: 'saga', tags: ['大事'], key: 'saga_open_' + k, pov: rel, severity: rel ? 4 : 2, params: { what: cfg.name, hint: Saga.hint(s, k) } });
       }
     }
     Saga.revengeYear(s);
     Sect().tuijuYear(s);
   };
 
+  // 这件大事和主角眼下沾不沾边
+  Saga.relevant = (s, k) => {
+    const p = me(s), m = p.realm.major, f = Sect().mine(s);
+    if (k === 'diyuan') return m >= SG().diyuan.minMajor && m <= 6;
+    if (k === 'xiefang') return !p.factionId && m >= SG().xiefang.minMajor && m <= 5;
+    if (k === 'jiaokao') return !!f && f.key === SG().jiaokao.faction;
+    if (k === 'tianmo') return m >= SG().tianmo.minMajor;
+    if (k === 'danyuan') return m >= 5;
+    if (k === 'liuhuo') return !!f && f.key === SG().liuhuo.faction && m >= SG().liuhuo.minMajor;
+    return true;
+  };
+
   // 每件大事对玩家的提示：去哪、要什么条件
   Saga.hint = (s, k) => {
     const cfg = SG()[k];
+    if (k === 'danyuan') return '胥都天八派六宗的金丹天骄争雄斗法，魁首得胥都大丹；八派六宗的金丹门人回本门山门，由本门遣送赴会';
+    if (k === 'liuhuo') return '玉宸派金丹以上的门人可到' + cfg.place + '，入洞天寻造化：外层稳得火炁，往深处去要斗法';
     if (k === 'diyuan') { const pl2 = placeByName(s, cfg.place); return '到' + (pl2 ? pl2.name : cfg.place) + '去，练炁以上都能进'; }
     if (k === 'xiefang') { const f = factionByKey(s, cfg.faction); return '无门无派、练炁以上的散修可到' + (f ? s.places[f.seatId].name : '花神府') + '赴宴，要交供奉'; }
     if (k === 'tianmo') return '天魔从' + cfg.places.join('、') + '一带涌出，玉宸派发下敕令，召各家' + C().realms.names[cfg.minMajor] + '以上的修士前去镇守';
@@ -79,7 +96,7 @@
     const st = s.saga[k], cfg = SG()[k];
     const open = Saga.openYear(s, k) !== null;
     const known = open || k === 'jiaokao' || st.next - s.year <= SG().notice;
-    return { kind: k, name: cfg.name, open, known, year: open ? st.open.from : st.next, until: open ? st.open.until : null, done: open && st.done === st.open.from, hint: Saga.hint(s, k) };
+    return { kind: k, name: cfg.name, open, known, relevant: Saga.relevant(s, k), year: open ? st.open.from : st.next, until: open ? st.open.until : null, done: open && st.done === st.open.from, hint: Saga.hint(s, k) };
   });
 
   /* ---------- 行动清单（由 Act.list 调用）---------- */
@@ -116,11 +133,36 @@
       const why = done ? '今年已经镇守过一回了' : p.realm.major < tm.minMajor ? C().realms.names[tm.minMajor] + '以上才收' : p.health.state === 'heavy' ? '重伤未愈' : '';
       add({ type: 'tianmo', days: tm.days, label: '应敕令镇守' + place.name + ' ' + T().dur(tm.days), group: '大事', ok: !why, reason: why });
     }
+    // 丹元大会：八派六宗的金丹门人在本门山门由本门遣送
+    const dy2 = SG().danyuan;
+    const mf = Sect().mine(s);
+    if (Saga.openYear(s, 'danyuan') !== null && mf && mf.tier >= dy2.tier && place.id === mf.seatId) {
+      const done = s.saga.danyuan.done === s.saga.danyuan.open.from;
+      const why = done ? '这回丹元大会已经去过了' : p.realm.major !== dy2.major ? '只有金丹真人能赴会' : p.health.state !== 'healthy' ? '带伤赴会是自取其辱' : '';
+      add({ type: 'danyuan', days: dy2.days, label: '随本门赴丹元大会（连斗 ' + dy2.rounds + ' 场，可随时认输）', group: '大事', ok: !why, reason: why });
+    }
+    // 流火宏化洞天
+    const lh = SG().liuhuo;
+    if (Saga.openYear(s, 'liuhuo') !== null && place.name === lh.place) {
+      const done = s.saga.liuhuo.done === s.saga.liuhuo.open.from;
+      const why = done ? '这回洞天显世已经进去过了' : !mf || mf.key !== lh.faction ? '洞天归玉宸派所有，外人进不去' : p.realm.major < lh.minMajor ? C().realms.names[lh.minMajor] + '以上的门人才放进去' : p.health.state === 'heavy' ? '重伤未愈' : '';
+      add({ type: 'liuhuo', days: lh.days, label: '入流火宏化洞天寻造化 ' + T().dur(lh.days), group: '大事', ok: !why, reason: why });
+    }
+    // 拜谒颜熙真君（元神以后，到真君所在之处）
+    const yx = SG().yanxi;
+    const yan = Object.values(s.people).find((q) => q.notable === 'yanxi');
+    if (yan && P().alive(yan) && yan.locationId === place.id && !p.flags.includes('yanxi')) {
+      const again = s.player.yanxiTried && s.year < s.player.yanxiTried + yx.again;
+      const why = p.realm.major < yx.minMajor ? '真君不见元神以下的修士' : again ? '上回没见着，' + (s.player.yanxiTried + yx.again) + ' 年后再来' : '';
+      add({ type: 'yanxi', npc: yan.id, days: 30, label: '拜谒颜熙真君，求问返虚之道（约 ' + yx.chance + '% 肯见）', group: '大事', ok: !why, reason: why });
+    }
     // 洞天（元神以后，在东海）
     const DT = cf.dongtian;
     if (place.type === DT.placeType && s.player.dongtian !== place.id) {
-      const why = p.realm.major < DT.minMajor ? C().realms.names[DT.minMajor] + '以后才开得了洞天' : s.player.stone < DT.cost ? '符钱不够（需 ' + DT.cost + '）' : '';
-      add({ type: 'dongtian', days: DT.days, cost: DT.cost, label: '在' + place.name + '开辟洞天（' + DT.cost + ' 符钱，' + T().dur(DT.days) + '）', group: '修炼', ok: !why, reason: why });
+      const ji = s.player.inv.dongtianji > 0;
+      const cost = ji ? Math.round(DT.cost / 2) : DT.cost, days = ji ? DT.days - 360 : DT.days;
+      const why = p.realm.major < DT.minMajor ? C().realms.names[DT.minMajor] + '以后才开得了洞天' : s.player.stone < cost ? '符钱不够（需 ' + cost + '）' : '';
+      add({ type: 'dongtian', days, cost, label: '在' + place.name + '开辟洞天（' + cost + ' 符钱，' + T().dur(days) + (ji ? '，用上洞天残基' : '') + '）', group: '修炼', ok: !why, reason: why });
     }
     // 洞府
     const D = cf.dongfu;
@@ -197,7 +239,7 @@
   };
   Saga.xiefangRound = (s, round) => {
     const p = me(s), xf = SG().xiefang;
-    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, xf.foeRank[0], xf.foeRank[1]), 2, P().maxRank());
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, xf.foeRank[0], xf.foeRank[1]), 2, P().rankOf(6, 3));
     const foe = W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: p.locationId, kind: 'loose' });
     FX.Ev.spawn(s, 'XIEFANG', { place: p.locationId, foe: foe.id, _round: round }, []);
   };
@@ -271,7 +313,7 @@
     const f = Sect().mine(s);
     if (f && p.locationId === f.seatId) return; // 在山门里，仇家不敢来
     const foes = P().relationsOf(s, p.id).filter((r) => r.strength <= C().relations.feudThreshold && r.tags.includes('交手'))
-      .map((r) => s.people[r.a === p.id ? r.b : r.a]).filter((q) => q && P().alive(q) && P().realmRank(q) >= P().realmRank(p) - rv.rankGap)
+      .map((r) => s.people[r.a === p.id ? r.b : r.a]).filter((q) => q && P().alive(q) && P().realmRank(q) >= P().realmRank(p) - rv.rankGap && FX.Act.robberDares(q.realm, p))
       .sort((a, b) => (a.id < b.id ? -1 : 1));
     for (const q of foes) {
       if (!R.chance(s.rng, rv.chance)) continue;
@@ -308,10 +350,120 @@
   const tmStone = (p) => SG().tianmo.guardStone[Math.min(8, Math.max(4, p.realm.major))] || 0;
   const tmMerit = (s, n) => { if (!Sect().mine(s)) return ''; s.player.merit += n; return '，本门记' + C().house.meritName + ' ' + n; };
 
+  /* ---------- 丹元大会 ---------- */
+  Saga.DO.danyuan = (s, a) => {
+    const p = me(s);
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.danyuan.done = s.saga.danyuan.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没到会场就出了变故', interrupted: true };
+    H().add(s, { type: 'saga', tags: ['大事', '丹元大会'], actors: [p.id], key: 'danyuan_enter', pov: true, severity: 4, params: { name: p.name, faction: Sect().mine(s).name } });
+    Saga.danyuanRound(s, 1);
+    return { text: '丹元大会开场', interrupted: true, used: r.used };
+  };
+  Saga.danyuanRound = (s, round) => {
+    const p = me(s), dy = SG().danyuan, mf = Sect().mine(s);
+    const pool = dy.foes.filter((x) => !mf || x !== mf.name);
+    const power = Math.round(dy.foeBase * dy.foeMult[round - 1] * R.range(s.rng, 0.9, 1.1) * 10) / 10;
+    FX.Ev.spawn(s, 'DANYUAN', { place: p.locationId, _round: round, _foe: R.pick(s.rng, pool) + '的金丹天骄', _power: power }, []);
+  };
+  // 按胜场排名次、发赏
+  Saga.danyuanSettle = (s, wins) => {
+    const p = me(s), dy = SG().danyuan, rw = dy.reward[wins];
+    const names = ['没能进前列', '得了个名次', '得了个靠前的名次', '名列前茅', '夺得魁首'];
+    const got = [];
+    for (const k of ['xudu', 'zhengyang', 'dingshen']) if (rw[k]) { give(s, k, rw[k]); got.push(C().items[k].name + (rw[k] > 1 ? '×' + rw[k] : '')); }
+    let merit = '';
+    if (Sect().mine(s)) { s.player.merit += rw.merit; merit = '，本门记' + C().house.meritName + ' ' + rw.merit; }
+    const what = '胜 ' + wins + ' 场，' + names[wins] + (got.length ? '，得' + got.join('、') : '') + merit;
+    const hid = H().add(s, { type: 'saga', tags: ['大事', '丹元大会'], actors: [p.id], key: 'danyuan', pov: true, severity: wins >= dy.rounds ? 5 : wins >= 3 ? 4 : 3, params: { name: p.name, what } });
+    if (wins >= dy.rounds) H().markFirst(s, 'danyuan_win', hid);
+    return what;
+  };
+  const danyuanFoe = (s, b) => ({
+    name: b._foe, power: b._power, winText: b._round < SG().danyuan.rounds ? '胜了这场，进下一场' : '胜下最后一场，夺魁',
+    onWin(s2, b2) {
+      const dy = SG().danyuan;
+      if (b2._round < dy.rounds) { Saga.danyuanRound(s2, b2._round + 1); return '第 ' + b2._round + ' 场胜了，还有 ' + (dy.rounds - b2._round) + ' 场'; }
+      return Saga.danyuanSettle(s2, dy.rounds);
+    },
+  });
+  const danyuanFight = (() => {
+    const o = Object.assign({}, Cb().fightOpt(danyuanFoe), { label: '出手' });
+    const base = o.apply;
+    // 落败：伤照受，按已胜的场数排名次
+    o.apply = (s, b, ctx) => {
+      const r = base(s, b, ctx);
+      if (!r.gain && P().alive(pl(s))) r.text += '；' + Saga.danyuanSettle(s, b._round - 1);
+      return r;
+    };
+    return o;
+  })();
+
+  /* ---------- 流火宏化洞天 ---------- */
+  const LH_FOES = { mid: ['火霞门禁卫傀儡', '流火精怪'], deep: ['洞天残灵', '火霞老祖遗下的火龙'] };
+  const lhVal = (tbl, p) => tbl[Math.min(8, Math.max(6, p.realm.major))];
+  Saga.DO.liuhuo = (s, a) => {
+    const p = me(s), lh = SG().liuhuo;
+    s.player.stats.sagas = (s.player.stats.sagas || 0) + 1;
+    s.saga.liuhuo.done = s.saga.liuhuo.open.from;
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没进去就出了变故', interrupted: true };
+    const my = P().power(s, p);
+    FX.Ev.spawn(s, 'LIUHUO', {
+      place: p.locationId,
+      _midFoe: R.pick(s.rng, LH_FOES.mid), _midPower: Math.round(my * R.range(s.rng, lh.midSwing[0], lh.midSwing[1]) * 10) / 10,
+      _deepFoe: R.pick(s.rng, LH_FOES.deep), _deepPower: Math.round(my * R.range(s.rng, lh.deepSwing[0], lh.deepSwing[1]) * 10) / 10,
+    }, []);
+    return { text: '进了流火宏化洞天', interrupted: true };
+  };
+  const lhGain = (s, n) => { const g = Math.round(CU().addProgress(s, pl(s), n)); return g ? '修为 +' + g : '修为已圆满，火炁只添了几分积累'; };
+  const lhLayer = (layer) => Object.assign({}, Cb().fightOpt((s, b) => ({
+    name: b[layer === 'deep' ? '_deepFoe' : '_midFoe'], power: b[layer === 'deep' ? '_deepPower' : '_midPower'],
+    winText: layer === 'deep' ? '斩了它，剥下一块洞天残基' : '斩了它，取洞中法材',
+    onWin(s2) {
+      const p = pl(s2), lh = SG().liuhuo;
+      const got = [lhGain(s2, lhVal(layer === 'deep' ? lh.deepGain : lh.midGain, p))];
+      if (layer === 'deep') { give(s2, 'dongtianji', 1); got.push(C().items.dongtianji.name); } else { const it = p.realm.major === 6 ? 'zhengyang' : 'dingshen'; give(s2, it, p.realm.major === 6 ? 2 : 1); got.push(C().items[it].name + (p.realm.major === 6 ? '×2' : '')); }
+      return got.join('，得');
+    },
+  })), {
+    id: layer, label: layer === 'deep' ? '闯洞天深处' : '往中层去',
+    outcome: (s) => { const p = pl(s), lh = SG().liuhuo; return '打赢可得修为 +' + lhVal(layer === 'deep' ? lh.deepGain : lh.midGain, p) + (layer === 'deep' ? '、洞天残基（开洞天省一半符钱）' : p.realm.major === 6 ? '、正阳丹砂×2' : '、定神玄香'); },
+  });
+  Saga.liuhuoToll = (s) => {
+    const lh = SG().liuhuo, f = factionByKey(s, lh.faction);
+    if (!f) return;
+    const pool = P().living(s).filter((q) => !P().isPlayer(s, q) && q.factionId === f.id && q.realm.major >= 6 && q.notable === null).sort((a, b) => (a.id < b.id ? -1 : 1));
+    const n = R.int(s.rng, lh.npcDeaths[0], lh.npcDeaths[1]);
+    for (let i = 0; i < n && pool.length; i++) P().kill(s, pool.splice(R.int(s.rng, 0, pool.length - 1), 1)[0], '殒于流火宏化洞天', [], {});
+  };
+
+  /* ---------- 拜谒颜熙真君 ---------- */
+  Saga.DO.yanxi = (s, a) => {
+    const p = me(s), yx = SG().yanxi, q = s.people[a.npc];
+    const r = Sim().passDays(s, a.days, 'other');
+    if (!P().alive(p)) return { text: '' };
+    if (r.interrupted || s.pending.length) return { text: '还没见着真君就出了变故', interrupted: true };
+    s.player.yanxiTried = s.year;
+    let what;
+    if (P().alive(q) && R.next(s.rng) * 100 < yx.chance) {
+      p.flags.push('yanxi');
+      const g = Math.round(CU().addProgress(s, p, yx.gain));
+      P().adjustRelation(s, p.id, q.id, 30, '指点');
+      what = '真君在洞天外见了一面，讲了些逆反根果、证道返虚的关窍：修为 +' + g + '，日后冲击返虚 +' + yx.fanxu;
+    } else what = '在海上守了一月，真君的洞天始终没开，只得回去（' + yx.again + ' 年后可再来）';
+    H().add(s, { type: 'saga', tags: ['大事', '拜谒'], actors: [p.id, q.id], key: 'yanxi', pov: true, severity: p.flags.includes('yanxi') ? 4 : 2, params: { name: p.name, what } });
+    return { text: what };
+  };
+
   /* ---------- 洞天 ---------- */
   Saga.DO.dongtian = (s, a) => {
     const p = me(s), place = s.places[p.locationId];
     s.player.stone -= a.cost;
+    if (a.cost < C().dongtian.cost && s.player.inv.dongtianji > 0) s.player.inv.dongtianji--;
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     s.player.dongtian = place.id;
@@ -382,6 +534,37 @@
     ],
   };
 
+  EV.LIUHUO = {
+    name: '流火宏化洞天', category: '大事', severity: 3,
+    text: (s, b) => `洞天里火炁蒸腾，到处是火霞门当年的残垣断殿。外层还有些先天火炁可以吞纳；往中层去有${b._midFoe}（战力 ${b._midPower}）把守；深处是洞天根基所在，盘着${b._deepFoe}（战力 ${b._deepPower}）。你如今战力 ${P().power(s, pl(s))}。`,
+    options: [
+      {
+        id: 'outer', label: '只在外层吞纳火炁',
+        cost: () => '无', risk: () => `约 ${Math.round(SG().liuhuo.outerHurt * 100)}% 会被火毒所伤（轻伤）`,
+        outcome: (s) => { const p = pl(s), lh = SG().liuhuo; return '稳得修为 +' + lhVal(lh.outerGain, p) + '、符钱 ' + lhVal(lh.outerStone, p); },
+        apply(s) {
+          const p = pl(s), lh = SG().liuhuo;
+          const st = lhVal(lh.outerStone, p);
+          s.player.stone += st;
+          let t = lhGain(s, lhVal(lh.outerGain, p)) + '，捡得法材折符钱 ' + st;
+          if (R.chance(s.rng, lh.outerHurt)) { P().injure(s, p, 'light'); t += '，被火毒所伤，受了轻伤'; }
+          return { text: t, gain: true };
+        },
+      },
+      lhLayer('mid'),
+      lhLayer('deep'),
+    ],
+  };
+
+  EV.DANYUAN = {
+    name: '丹元大会', category: '大事', severity: 4,
+    text: (s, b) => `丹元大会第 ${b._round} 场（共 ${SG().danyuan.rounds} 场）。对手是${b._foe}（战力 ${b._power}）。你战力 ${P().power(s, pl(s))}。胥都天八派六宗的真传都在台下看着，胜场越多名次越前；四场全胜的魁首得胥都大丹。`,
+    options: [
+      danyuanFight,
+      { id: 'quit', label: '认输离场', cost: () => '无', risk: () => '无', outcome: (s, b) => '按已胜的 ' + (b._round - 1) + ' 场排名次', apply(s, b) { return { text: '认输离场，' + Saga.danyuanSettle(s, b._round - 1) }; } },
+    ],
+  };
+
   EV.XIEFANG = {
     name: '撷芳宴', category: '大事', severity: 3,
     text: (s, b, n) => { const q = s.people[b.foe]; return `撷芳宴第 ${b._round} 场（共 ${SG().xiefang.rounds} 场）。对手是散修${n.foe}（${P().realmName(q)}，战力 ${P().power(s, q)}）。你战力 ${P().power(s, pl(s))}。花神府的人在台上看着，只收最后站着的人。`; },
@@ -391,11 +574,23 @@
     ],
   };
 
+  // 寻仇的人打输了就没有下回：死在你手里，旧怨了结
+  const revengeFoe = (s, b) => Object.assign({}, Cb().npcFoe(s, b), {
+    winText: '斩了仇家，旧怨就此了结',
+    onWin(s2, b2) {
+      const q = s2.people[b2.foe];
+      const got = R.int(s2.rng, 5, 15) * Math.max(1, P().realmRank(q));
+      s2.player.stone += got;
+      P().kill(s2, q, '寻仇不成，死在仇人手里', [], {});
+      return `斩了${q.name}，旧怨了结，缴获符钱 ${got}`;
+    },
+  });
+
   EV.REVENGE = {
     name: '仇家寻仇', category: '遭遇', severity: 3,
     text: (s, b, n) => { const q = s.people[b.foe]; return `${n.place}，当年被你打退的${n.foe}找上门来，如今已是${P().realmName(q)}（战力 ${P().power(s, q)}）。你战力 ${P().power(s, pl(s))}，身上有符钱 ${s.player.stone}。`; },
     options: [
-      Cb().fightOpt(Cb().npcFoe),
+      Cb().fightOpt(revengeFoe),
       {
         id: 'pay', label: '赔礼了结旧怨',
         cost: (s) => `符钱 −${Math.ceil(s.player.stone * 0.3)}`, risk: () => '无', outcome: () => '对方收下赔礼，旧怨就此了结',

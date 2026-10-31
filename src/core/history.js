@@ -64,8 +64,13 @@
     submit: ['{name}向{faction}上交{what}，记 {gain} {merit}。'],
     saga_notice: ['东弥州传开了风声：{year} 年将有「{what}」。{hint}。'],
     saga_open_tianmo: ['「{what}」起：{hint}。'],
+    saga_open_danyuan: ['胥都天气运大势所趋，「{what}」开期已到：{hint}。'],
+    danyuan_enter: ['{name}随{faction}的真传一道，赴胥都天的丹元大会。'],
+    danyuan: ['{name}在丹元大会上{what}。'],
+    saga_open_liuhuo: ['鹤鸣山上空霞光大作，「{what}」：{hint}。'],
+    yanxi: ['{name}到东海拜谒颜熙真君：{what}。'],
     dongtian: ['{name}花了 {cost} 符钱、三年工夫，在{place}开辟出一方洞天。'],
-    transfer: ['{name}持道脉符书离了{from}，改投{faction}门下。'],
+    transfer: ['{name}持道脉符书离了{from}，改投{faction}门下{note}。'],
     leave: ['{name}辞出{faction}，从此是散修。'],
     outer_first: ['{name}驾遁光越过万里荒原，第一次到了东弥州的{region}。'],
     saga_open_diyuan: ['「{what}」：地渊开了，玄真派奉事房发下地渊符诏，各路散修也往那里去。{hint}。'],
@@ -87,6 +92,7 @@
     learn_first: ['{name}得了《{tech}》，往后便依此法采气炼炁。'],
     cultivate_coin: ['{name}在{place}以符钱修行 {dur}，耗去符钱 {cost}，{what} +{gain}{pills}。'],
     injury_heal: ['{name}伤势痊愈。'],
+    heal_auto: ['{name}伤重，服下一颗{item}护住内腑。'],
     disturb: ['{name}闭关时，{what}。'],
     npc_break: ['传闻：{name}（{faction}）成就{target}。'],
     npc_death: ['传闻：{name}（{faction}，{realm}）{cause}，年 {age}。'],
@@ -144,7 +150,7 @@
     const n = parseInt(entry.id.slice(1), 10) || 0;
     const tpl = vs[n % vs.length];
     // 旧存档里的条目可能没有后来加的可选参数，按空串补上
-    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '' }, entry.params));
+    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '', note: '' }, entry.params));
   };
 
   H.markFirst = (s, key, hid) => {

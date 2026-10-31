@@ -552,8 +552,8 @@ check('15', '金丹以后：东弥州腹地、三家大派、道脉改投、金�
   while (s.pending.length) choose(s);
   assert(p.factionId === yc.id && s.player.merit === 500, '改投后不在玉宸派或道功没了');
   assert(xz.leaderId && xz.leaderId !== p.id, '改投后玄真派掌门之位没交出去');
-  // 5. 元神要「地」：玉宸派山门是灵窟，门人在此用得上六级灵机；金丹圆满就能冲
-  p.progress = FX.P.need(p); p.restUntil = 0; p.health = { state: 'healthy', days: 0 };
+  // 5. 元神要「地」：玉宸派山门是灵窟，门人在此用得上六级灵机；金丹三重圆满就能冲
+  p.realm = { major: 6, stage: 3 }; p.progress = FX.P.need(p); p.restUntil = 0; p.health = { state: 'healthy', days: 0 };
   assert(FX.CU.qiFor(s, p) === 6 && FX.CU.canAttempt(s, p).ok, '玉宸派门人在山门冲不了元神');
   const pit = Object.values(s.places).find((x) => x.name === '地渊');
   p.locationId = pit.id;
@@ -613,6 +613,128 @@ check('15', '金丹以后：东弥州腹地、三家大派、道脉改投、金�
   // 迁移后照常推进十年
   for (let y = 0; y < 10 && !ms.ended; y++) { FX.Sim.passDays(ms, CF.daysPerYear, 'rest'); while (ms.pending.length && !ms.ended) choose(ms); }
   return `腹地 ${outer.length} 处、大派 3 家（元神掌门）；关口要金丹；结丹定为${FX.P.danPinName(p) || '某品'}；道脉改投、元神之地（大派灵窟、福地洞府）、东海洞天、天魔潮、v5 迁移均正常`;
+});
+
+check('16', '按原著：东弥州方位、原著人物、金丹三重、先天金汞、元神法相、正阳丹砂、捐输、劫修分寸、丹元大会、流火宏化洞天、颜熙真君、纯阳三灾与合道、v6 存档迁移', () => {
+  const CF = FX.CONFIG;
+  const choose = (s) => { const v = FX.Game.pendingEvents(s)[0]; return FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); };
+  const heal = (p) => { p.restUntil = 0; p.health = { state: 'healthy', days: 0 }; if (!FX.P.alive(p)) { p.status = 'alive'; p.deathYear = null; p.deathCause = null; } };
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'yuanzhu' });
+  const p = FX.P.player(s);
+  const byName = (n) => Object.values(s.places).find((x) => x.name === n);
+  const fac = (k) => Object.values(s.factions).find((f) => f.key === k);
+  // 1. 方位照原著：玉宸派在东域宵明大泽，赤明派在北域鹿台山，怙照宗在西域
+  assert(s.places[fac('yuchen').seatId].name === '宵明大泽' && byName('宵明大泽').region === '东域', '玉宸派不在东域宵明大泽');
+  assert(s.places[fac('chiming').seatId].name === '鹿台山' && byName('鹿台山').region === '北域', '赤明派不在北域鹿台山');
+  assert(s.places[fac('huzhao').seatId].region === '西域' && byName('鹤鸣山').region === '北域', '怙照宗或鹤鸣山方位不对');
+  p.realm = { major: 6, stage: 1 };
+  const gate = Object.values(s.places).find((x) => x.region === '南域' && x.links.some((l) => l.minMajor));
+  for (const pl of Object.values(s.places).filter((x) => x.outer)) assert(FX.World.route(s, gate.id, pl.id, p), '金丹到不了' + pl.name);
+  // 2. 原著人物：怀悟洞主掌金谷墟市（洞玄三重），苗南老祖掌苗南峰（筑基三重），君尧在玉宸派（元神），颜熙在东海（返虚）
+  const nb = (k) => Object.values(s.people).find((q) => q.notable === k);
+  assert(nb('huaiwu') && fac('jingu').leaderId === nb('huaiwu').id && nb('huaiwu').realm.major === 5 && nb('huaiwu').realm.stage === 3, '怀悟洞主不对');
+  assert(nb('miaonan') && fac('miaonan').leaderId === nb('miaonan').id && nb('miaonan').realm.major === 3, '苗南老祖不对');
+  assert(nb('junyao') && nb('junyao').factionId === fac('yuchen').id && nb('junyao').realm.major === 7 && nb('junyao').xiang === 4, '君尧不对');
+  assert(nb('yanxi') && s.places[nb('yanxi').locationId].key === 'donghai' && nb('yanxi').realm.major === 8 && nb('yanxi').bio, '颜熙不对');
+  // 3. 洞玄二重冲三重定下先天金汞
+  p.realm = { major: 5, stage: 2 }; p.daoji = 2; p.yixiang = 3; p.jinhong = 0;
+  for (let i = 0; i < 40 && p.realm.stage === 2; i++) { heal(p); p.progress = FX.P.need(p); FX.CU.attempt(s, p, {}); }
+  assert(p.realm.stage === 3 && p.jinhong >= 1 && FX.P.jinhongName(p), '洞玄三重没定先天金汞');
+  // 4. 金丹三重：身根成象、渐法九还、神中有形；正阳丹砂推丹力
+  p.realm = { major: 6, stage: 1 }; p.progress = 0; p.danPin = 5;
+  s.player.inv.zhengyang = 2;
+  const use = FX.Game.actions(s).find((a) => a.type === 'use' && a.item === 'zhengyang');
+  assert(use && use.ok, '金丹服不了正阳丹砂');
+  FX.Game.act(s, use);
+  assert(p.progress === CF.zhengyangGain, '正阳丹砂没推丹力');
+  for (let i = 0; i < 80 && p.realm.major === 6 && p.realm.stage < 3; i++) { heal(p); p.progress = FX.P.need(p); FX.CU.attempt(s, p, {}); }
+  assert(p.realm.stage === 3 && /神中有形/.test(FX.P.realmTitle(p)) && FX.CU.gateKind(p) === 'yuanshen', '金丹三重不对：' + FX.P.realmTitle(p));
+  // 5. 元神定法相
+  p.locationId = fac('yuchen').seatId; p.factionId = fac('yuchen').id;
+  for (let i = 0; i < 60 && p.realm.major === 6; i++) { heal(p); p.progress = FX.P.need(p); FX.CU.attempt(s, p, {}); }
+  assert(p.realm.major === 7 && p.xiang >= 1 && /法相/.test(FX.P.realmTitle(p)), '元神没定法相');
+  const use2 = FX.Game.actions(s).find((a) => a.type === 'use' && a.item === 'zhengyang');
+  assert(use2 && !use2.ok, '元神也能服正阳丹砂');
+  // 6. 捐输：八派六宗门人拿符钱折道功
+  heal(p); s.player.stone = 300000; s.player.merit = 0;
+  const dn = FX.Game.actions(s).find((a) => a.type === 'donate');
+  assert(dn && dn.ok, '大派门人捐输不了');
+  FX.Game.act(s, Object.assign({}, dn, { qty: 10 }));
+  assert(s.player.merit === CF.house.donate.merit * 10 && s.player.stone === 300000 - CF.house.donate.stone * 10, '捐输折算不对');
+  // 7. 劫修的分寸：元神回到南域，没人敢来劫；寻仇的人打输了就死
+  const south = Object.values(s.places).find((x) => x.region === '南域' && x.type === 'wild');
+  let robbed = 0;
+  for (let i = 0; i < 30; i++) if (FX.Act.pickRobber(s, south)) robbed++;
+  assert(robbed === 0, '有劫修敢劫元神真人：' + robbed);
+  // 8. 丹元大会：金丹门人在山门由本门遣送；打满四场夺魁得胥都大丹
+  const d = FX.Game.newGame({ origin: 'sect', seed: 'danyuan' });
+  const dp = FX.P.player(d);
+  const dyc = Object.values(d.factions).find((f) => f.key === 'yuchen');
+  dp.realm = { major: 6, stage: 2 }; dp.factionId = dyc.id; dp.locationId = dyc.seatId; dp.aptitude = 95; dp.daoji = 3; dp.danPin = 1;
+  d.player.inv.fuqi3 = 1; d.player.manuals.push('dao_high');
+  d.saga.danyuan.open = { from: d.year, until: d.year };
+  const da = FX.Game.actions(d).find((a) => a.type === 'danyuan');
+  assert(da && da.ok, '金丹门人去不了丹元大会');
+  FX.Game.act(d, da);
+  let rounds = 0;
+  while (d.pending.length && !d.ended) { const v = FX.Game.pendingEvents(d)[0]; if (v.defId === 'DANYUAN') { rounds++; dp.health = { state: 'healthy', days: 0 }; } FX.Game.choose(d, v.id, v.defId === 'DANYUAN' ? 'fight' : v.options.find((o) => o.available).id); }
+  assert(rounds >= 1 && d.history.some((e) => e.key === 'danyuan'), '丹元大会没排名次');
+  // 9. 流火宏化洞天：玉宸门人到鹤鸣山入内；外层稳得修为与符钱
+  heal(p); p.locationId = byName('鹤鸣山').id;
+  s.saga.liuhuo.open = { from: s.year, until: s.year };
+  const lh = FX.Game.actions(s).find((a) => a.type === 'liuhuo');
+  assert(lh && lh.ok, '玉宸门人进不了流火宏化洞天');
+  p.progress = 0; const st0 = s.player.stone;
+  FX.Game.act(s, lh);
+  let outerOk = false;
+  while (s.pending.length && !s.ended) { const v = FX.Game.pendingEvents(s)[0]; if (v.defId === 'LIUHUO') { FX.Game.choose(s, v.id, 'outer'); outerOk = p.progress > 0 && s.player.stone > st0; } else choose(s); }
+  assert(outerOk, '流火宏化洞天外层没有收获');
+  // 10. 颜熙真君在东海，元神可去拜谒
+  heal(p); p.locationId = nb('yanxi').locationId;
+  const yx = FX.Game.actions(s).find((a) => a.type === 'yanxi');
+  assert(yx && yx.ok, '元神在东海见不到拜谒颜熙真君的选项');
+  // 11. 返虚以后：在自家洞天里渡风、火、雷三灾，再九难合道成道君
+  s.player.stone = 500000; s.player.inv.dongtianji = 1;
+  const dt = FX.Game.actions(s).find((a) => a.type === 'dongtian');
+  assert(dt && dt.ok && dt.cost === CF.dongtian.cost / 2, '洞天残基没省符钱');
+  FX.Game.act(s, dt);
+  while (s.pending.length && !s.ended) choose(s);
+  heal(p); p.locationId = s.player.dongtian;
+  const path = [];
+  for (let i = 0; i < 400 && p.realm.major < 10; i++) {
+    heal(p); p.locationId = s.player.dongtian; p.progress = FX.P.need(p);
+    const k = FX.CU.gateKind(p);
+    const r = FX.CU.attempt(s, p, {});
+    assert(r.ok, '冲关被拒：' + k + ' ' + r.error);
+    if (r.success) path.push(k);
+  }
+  assert(p.realm.major === 10 && FX.P.title(p) === '道君' && path.join(',') === 'fanxu,chunyang,sanzai,sanzai,hedao', '没能一路走到合道：' + path.join(','));
+  assert(FX.P.lifespanTotal(p) > 100000, '道君寿元不对');
+  p.locationId = south.id;
+  const away = Object.values(s.places).find((x) => x.id !== s.player.dongtian);
+  // 12. v6 存档迁移：腹地换成原著方位，原著人物入世，金丹修为摊到三重
+  const g6 = FX.Game.newGame({ origin: 'sect', seed: 'mig7' });
+  const t6 = JSON.parse(FX.Save.serialize(g6));
+  const st = t6.state;
+  const old = { zhongyu: ['中域坊市', '中域'], yuchen: ['玉宸派', '中域'], chiming: ['赤明派', '东域'], huzhao: ['怙照宗', '北域'], jiuwei: ['九危山', '西域'], fudi: ['东域福地', '东域'], donghai: ['东海', '东海'] };
+  for (const pl of Object.values(st.places)) if (pl.outer) { if (old[pl.key]) { pl.name = old[pl.key][0]; pl.region = old[pl.key][1]; delete pl.key; delete pl.blurb; } }
+  for (const id of Object.keys(st.people)) if (st.people[id].notable) delete st.people[id];
+  st.relations = st.relations.filter((r) => st.people[r.a] && st.people[r.b]);
+  for (const q of Object.values(st.people)) { delete q.jinhong; delete q.xiang; delete q.notable; delete q.bio; }
+  const jd = Object.values(st.people).find((q) => q.realm.major === 6 && q.id !== st.player.id);
+  jd.realm = { major: 6, stage: 1 }; jd.progress = 25000;
+  delete st.saga.danyuan; delete st.saga.liuhuo;
+  st.schemaVersion = 6; t6.schemaVersion = 6; delete t6.checksum;
+  const mg = FX.Save.deserialize(t6);
+  assert(mg.ok, 'v6 存档迁移失败：' + mg.error);
+  const ms = mg.state;
+  assert(Object.values(ms.places).some((x) => x.name === '宵明大泽' && x.region === '东域') && !Object.values(ms.places).some((x) => x.name === '东域福地'), '迁移后方位没换');
+  assert(['huaiwu', 'miaonan', 'junyao', 'yanxi'].every((k) => Object.values(ms.people).some((q) => q.notable === k)), '迁移后原著人物没入世');
+  const jd2 = ms.people[jd.id];
+  assert(jd2.realm.stage === 2 && jd2.jinhong >= 1, '迁移后金丹修为没摊到三重：' + JSON.stringify(jd2.realm));
+  assert(ms.saga.danyuan && ms.saga.liuhuo, '迁移后丹元大会、流火宏化洞天没排期');
+  for (let y = 0; y < 10 && !ms.ended; y++) { FX.Sim.passDays(ms, CF.daysPerYear, 'rest'); while (ms.pending.length && !ms.ended) choose(ms); }
+  return `宵明大泽（东域）、鹿台山（北域）、怙照宗（西域）、鹤鸣山均照原著；怀悟洞主、苗南老祖、君尧、颜熙入世；先天金汞、金丹三重、元神法相、正阳丹砂、捐输、劫修分寸、丹元大会（打了 ${rounds} 场）、流火宏化洞天、拜谒颜熙均正常；返虚→纯阳三灾→合道一路走通；v6 迁移正常`;
 });
 
 const failed = results.filter((r) => !r.ok);

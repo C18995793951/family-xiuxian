@@ -97,19 +97,31 @@
   /* ---------- 东弥州腹地 ----------
    * 南域以北的中域、西域、东域、北域与东海：地点、道路固定，三家八派六宗与门人在此生成。
    * 新开局与旧存档迁移都调用它；与南域只有一条路相连，金丹以后才走得通。 */
+  // 东弥州腹地：按 config.world.outer 补齐地点（以 key 认人，旧存档按旧地名认），刷新方位，重连道路，补齐三家大派
   W.genOuter = (s) => {
     const O = C().world.outer;
-    if (Object.values(s.places).some((x) => x.region && x.region !== '南域')) return;
     for (const pl of Object.values(s.places)) if (!pl.region) pl.region = '南域';
-    let n = Object.keys(s.places).length;
     const byKey = {};
-    for (const d of O.places) {
-      let id = 'l' + ++n;
-      while (s.places[id]) id = 'l' + ++n;
-      const pl = { id, name: d.name, type: d.type, x: d.x, y: d.y, qi: d.qi, attr: d.attr, danger: d.danger, factionId: null, surname: null, links: [], region: d.region, outer: true };
-      s.places[id] = pl;
-      byKey[d.key] = pl;
+    for (const pl of Object.values(s.places)) {
+      if (!pl.outer) continue;
+      if (!pl.key && O.oldNames[pl.name]) pl.key = O.oldNames[pl.name];
+      if (pl.key) byKey[pl.key] = pl;
     }
+    let n = Object.keys(s.places).length;
+    for (const d of O.places) {
+      let pl = byKey[d.key];
+      if (!pl) {
+        let id = 'l' + ++n;
+        while (s.places[id]) id = 'l' + ++n;
+        pl = { id, factionId: null, surname: null, links: [], outer: true };
+        s.places[id] = pl;
+        byKey[d.key] = pl;
+      }
+      Object.assign(pl, { key: d.key, name: d.name, type: d.type, x: d.x, y: d.y, qi: d.qi, attr: d.attr, danger: d.danger, region: d.region, blurb: d.blurb || '' });
+    }
+    // 重连腹地的道路：先拆掉所有通往腹地的旧路，再照配置连上
+    const outerIds = new Set(Object.values(byKey).map((x) => x.id));
+    for (const pl of Object.values(s.places)) pl.links = outerIds.has(pl.id) ? [] : pl.links.filter((l) => !outerIds.has(l.to));
     // 关口：南域最北边、离中域最近的一处凡人国、墟市或荒野
     const south = Object.values(s.places).filter((x) => x.region === '南域' && ['city', 'town', 'wild'].includes(x.type));
     const zy = byKey[O.links[0][1]];
@@ -127,14 +139,48 @@
     let fn = Object.keys(s.factions).length;
     for (const def of C().factionDefs.filter((d) => d.outer)) {
       const seat = byKey[def.key];
-      let id = 'f' + ++fn;
-      while (s.factions[id]) id = 'f' + ++fn;
-      const f = { id, key: def.key, name: def.name, type: def.type, tier: def.tier, tech: def.tech || null, blurb: def.blurb || '', seatId: seat.id, leaderId: null, relToPlayer: 0 };
-      s.factions[id] = f;
+      let f = Object.values(s.factions).find((x) => x.key === def.key);
+      if (!f) {
+        let id = 'f' + ++fn;
+        while (s.factions[id]) id = 'f' + ++fn;
+        f = { id, key: def.key, name: def.name, type: def.type, tier: def.tier, tech: def.tech || null, blurb: '', seatId: seat.id, leaderId: null, relToPlayer: 0 };
+        s.factions[id] = f;
+        seat.factionId = f.id;
+        W.genMembers(s, f);
+      }
+      f.blurb = def.blurb || '';
       seat.factionId = f.id;
-      W.genMembers(s, f);
     }
-    for (const pl of Object.values(byKey)) if (pl.outer && W.hasMarket(s, pl.id)) W.refreshMarket(s, pl.id);
+    for (const pl of Object.values(byKey)) if (pl.outer && W.hasMarket(s, pl.id) && !(s.markets && s.markets[pl.id] && s.markets[pl.id].stock && s.markets[pl.id].stock.length)) W.refreshMarket(s, pl.id);
+  };
+
+  /* ---------- 原著人物 ----------
+   * 只放配角，不放陈珩这样的主角，免得压过玩家。他们和别的 NPC 一样修炼、老去、陨落。 */
+  W.genNotables = (s) => {
+    const placeOf = (d) => {
+      if (d.placeKey) return Object.values(s.places).find((x) => x.key === d.placeKey) || null;
+      if (d.placeName) return Object.values(s.places).find((x) => x.name === d.placeName) || null;
+      return null;
+    };
+    for (const d of C().notables) {
+      if (Object.values(s.people).some((q) => q.notable === d.key)) continue;
+      const f = d.faction ? Object.values(s.factions).find((x) => x.key === d.faction) : null;
+      if (d.faction && !f) continue;
+      const place = placeOf(d) || (f ? s.places[f.seatId] : null);
+      if (!place) continue;
+      const q = W.spawnNpc(s, { realm: { major: d.realm[0], stage: d.realm[1] }, age: d.age, factionId: f ? f.id : null, locationId: place.id, role: d.role || (f ? 'member' : 'loose'), techniqueId: d.tech });
+      q.name = d.name; q.sex = d.sex; q.notable = d.key; q.bio = d.bio;
+      q.progress = 0;
+      if (d.aptitude) q.aptitude = d.aptitude;
+      for (const k of ['daoji', 'yixiang', 'jinhong', 'danPin', 'xiang']) if (d[k] !== undefined) q[k] = d[k];
+      if (d.traits) q.traits = d.traits.slice();
+      s.usedNames[d.name] = 1;
+      if (d.role === 'leader' && f) {
+        const old = s.people[f.leaderId];
+        if (old && old.id !== q.id) old.role = 'elder';
+        f.leaderId = q.id;
+      }
+    }
   };
   // 这条路此人走不走得通（南域通往中域的关口要金丹）
   W.linkOpen = (p, l) => !l.minMajor || p.realm.major >= l.minMajor;
@@ -196,13 +242,13 @@
     sect1_leader: RM(5, 1, 2),
     sect1_elder: (r) => (R.chance(r, 0.4) ? RM(4, 1, 2)(r) : RM(3, 1, 3)(r)),
     sect1_member: (r) => (R.chance(r, 0.15) ? { major: 1, stage: 1 } : R.chance(r, 0.06) ? { major: 3, stage: 1 } : L(R.int(r, 1, 9))),
-    sect2_leader: RM(6, 1, 1),
+    sect2_leader: RM(6, 1, 2),
     sect2_elder: (r) => (R.chance(r, 0.4) ? RM(5, 1, 2)(r) : RM(4, 1, 3)(r)),
     sect2_member: (r) => (R.chance(r, 0.12) ? RM(3, 1, 2)(r) : L(R.int(r, 2, 9))),
     // 八派六宗：掌门元神，长老金丹，门人多是筑基、紫府
     sect3_leader: RM(7, 1, 1),
-    sect3_elder: (r) => (R.chance(r, 0.6) ? RM(6, 1, 1)(r) : RM(5, 2, 3)(r)),
-    sect3_member: (r) => (R.chance(r, 0.1) ? RM(6, 1, 1)(r) : R.chance(r, 0.3) ? RM(4, 1, 3)(r) : R.chance(r, 0.6) ? RM(3, 1, 3)(r) : L(R.int(r, 6, 9))),
+    sect3_elder: (r) => (R.chance(r, 0.6) ? RM(6, 1, 3)(r) : RM(5, 2, 3)(r)),
+    sect3_member: (r) => (R.chance(r, 0.1) ? RM(6, 1, 2)(r) : R.chance(r, 0.3) ? RM(4, 1, 3)(r) : R.chance(r, 0.6) ? RM(3, 1, 3)(r) : L(R.int(r, 6, 9))),
     clan_leader: RM(3, 1, 2),
     clan_elder: (r) => (R.chance(r, 0.4) ? { major: 3, stage: 1 } : L(R.int(r, 8, 9))),
     clan_member: (r) => (R.chance(r, 0.2) ? { major: 1, stage: 1 } : L(R.int(r, 1, 7))),
@@ -239,7 +285,9 @@
       daoId: realm.major >= 6 ? (big ? R.pick(r, ['dao_mid', 'dao_mid', 'dao_high']) : 'dao_low') : null,
       locationId: o.locationId, factionId: o.factionId || null, role: o.role || (o.factionId ? 'member' : 'loose'),
     });
+    if (realm.major > 5 || (realm.major === 5 && realm.stage === 3)) p.jinhong = CU().jinhongFor(p, R.int(r, 0, 1));
     if (realm.major >= 6) p.danPin = CU().danPinFor(p, R.int(r, 0, 2));
+    if (realm.major >= 7) p.xiang = CU().xiangFor(p, R.int(r, 0, 3));
     if (P().isFull(p) && !CU().gateKind(p)) CU().autoAdvance(s, p);
     return p;
   };

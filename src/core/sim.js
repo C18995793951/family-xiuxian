@@ -53,6 +53,7 @@
     W().genFactions(s);
     W().genPeople(s);
     W().genOuter(s);
+    W().genNotables(s);
     FX.Saga.init(s);
 
     // 主角
@@ -149,9 +150,20 @@
   S.monthly = (s, mode, opts) => {
     const p = P().player(s);
     const cf = C();
-    if (p.health.state === 'heavy' && R.chance(s.rng, cf.life.heavyInjuryDeathYear / cf.monthsPerYear)) {
-      P().kill(s, p, '重伤不治', [], { key: 'injury' });
-      return true;
+    if (p.health.state === 'heavy') {
+      // 重伤时行囊里有小白阳丹就自动服一颗（跟随“自动续服”开关）
+      if (s.player.autoPill !== false && (s.player.inv.heal || 0) > 0) {
+        s.player.inv.heal--;
+        P().heal(p, cf.life.healPillDays);
+        H().add(s, { type: 'health', tags: ['服药'], actors: [p.id], key: 'heal_auto', pov: true, params: { name: p.name, item: cf.items.heal.name }, severity: 1 });
+      }
+      // 自家洞天自成天地、洞府有阵法温养，伤势不容易恶化
+      const here = s.places[p.locationId];
+      const safe = s.player.dongtian === p.locationId ? cf.life.heavyDongtianMult : FX.Saga.isDongfu(s, p, here.id) ? cf.life.heavyDongfuMult : 1;
+      if (p.health.state === 'heavy' && R.chance(s.rng, cf.life.heavyInjuryDeathYear * safe / cf.monthsPerYear)) {
+        P().kill(s, p, '重伤不治', [], { key: 'injury' });
+        return true;
+      }
     }
     FX.Act.deliverOrders(s);
     FX.Ev.processQueue(s);
@@ -161,8 +173,7 @@
       // 自家洞府有禁制护着；自家洞天自成天地，外人进不来
       const df = s.player.dongtian === place.id ? 0 : FX.Saga.isDongfu(s, p, place.id) ? cf.dongfu.disturbMult : 1;
       if (R.chance(s.rng, cf.actions.seclusionDisturb * (place.danger + 0.5) * df)) {
-        FX.Act.disturb(s, place);
-        return true;
+        if (FX.Act.disturb(s, place)) return true;
       }
     }
     return false;

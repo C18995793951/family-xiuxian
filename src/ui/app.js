@@ -147,9 +147,12 @@
   };
   // 天下大事：日期开局就排好，提前几年有风声；正在进行的高亮
   const sagaCard = (s) => {
-    const list = Game.view.sagas(s).filter((x) => x.known);
-    if (!list.length) return '';
-    return `<div class="card"><h3>天下大事</h3>${list.map((x) => {
+    // 和你沾边的排前面；沾不上边的折成一行
+    const all = Game.view.sagas(s).filter((x) => x.known);
+    const list = all.filter((x) => x.relevant);
+    const far = all.filter((x) => !x.relevant);
+    if (!all.length) return '';
+    return `<div class="card"><h3>天下大事</h3>${far.length ? `<p class="muted" style="margin:.2em 0">与你无关：${far.map((x) => esc(x.name) + '（' + (x.open ? '正在进行' : x.year + ' 年') + '）').join('、')}</p>` : ''}${list.map((x) => {
       const when = x.open ? (x.done ? '<span class="muted">这回你已经去过了</span>' : `<span class="good">正在进行</span>，到 ${x.until} 年为止`) : x.year === s.year ? '今年' : `${x.year} 年（还有 ${x.year - s.year} 年）`;
       return `<div class="saga"><div class="row between"><b>${esc(x.name)}</b><span>${when}</span></div><div class="muted">${esc(x.hint)}</div></div>`;
     }).join('')}</div>`;
@@ -179,7 +182,7 @@
           <div class="stat"><span>寿元</span><b class="${ov.left < 15 ? 'bad' : ''}">余 ${ov.left} 年（上限 ${ov.lifespan}）</b></div>
           <div class="stat"><span>伤势</span><b>${health}</b></div>
           <div class="stat"><span>${trace('斗法战力', ov.power.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span><b>${ov.power.total}</b></div>
-          <div class="stat"><span>资质</span><b>${me.aptitude}${me.daoji ? ' · ' + CF.daojiNames[me.daoji] : ''}${me.yixiang ? ' · ' + CF.yixiangNames[me.yixiang] : ''}</b></div>
+          <div class="stat"><span>资质</span><b>${me.aptitude}${P.rootNames(me).length ? ' · ' + esc(P.rootNames(me).join(' · ')) : ''}</b></div>
           <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
           ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
           <div class="stat"><span>符钱</span><b>${n0(ov.stone)}</b></div>
@@ -239,7 +242,7 @@
     return `<h2>地图 <span class="muted">东弥州</span></h2>
       <div class="card map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" role="img" aria-label="世界地图">${labels}${lines.join('')}${nodes}</svg></div>
       <p class="muted">点地点看详情。${Object.keys(cw.placeTypes).map((k) => `<span class="legend t-${k}">●</span>${esc(cw.placeTypes[k].name)}`).join(' ')}；描金边的是你去过的地方，大圈是你所在之处。</p>
-      <p class="muted">南域是东弥州有名的穷土。往北隔着万里荒原是中域、西域、东域、北域和东海，玉宸派、赤明派、怙照宗三家大派都在那边；${canGo ? '你已能驾遁光过去。' : '要到金丹，才驾得起遁光越过荒原（虚线那条路）。'}</p>`;
+      <p class="muted">南域是东弥州有名的穷土。往北隔着万里荒原是中域；玉宸派本宗在东域宵明大泽，赤明派在北域鹿台山，魔道的怙照宗在西域极西，再往东是东海龙宫。${canGo ? '你已能驾遁光过去。' : '要到金丹，才驾得起遁光越过荒原（虚线那条路）。'}</p>`;
   };
 
   /* ---------- 人物 ---------- */
@@ -340,13 +343,19 @@
       ${(() => {
         const tr = A.find((x) => x.type === 'transfer');
         const lv = A.find((x) => x.type === 'leave');
-        const up = !clan && f.key === 'xuanzhen' ? `<p class="muted">玄真派是玉宸派下辖的道脉。到了金丹，可去中域的玉宸派持道脉符书改投，${esc(M)}照记，不看运气。玉宸派山门是灵窟，日后冲击元神正用得上。</p>` : '';
+        const up = !clan && f.key === 'xuanzhen' ? `<p class="muted">玄真派是玉宸派下辖的道脉。到了金丹，可去东域宵明大泽的玉宸派本宗持道脉符书改投，${esc(M)}照记，不看运气。宵明大泽是灵窟，日后冲击元神正用得上。</p>` : '';
         return `<div class="card"><h3>去留</h3>${up}${tr ? `<div class="row">${btn(tr)}</div>` : ''}
           ${lv ? `<div class="row"><button class="danger" data-act="doAsk" data-i="${A.indexOf(lv)}">${esc(lv.label)}</button></div>` : ''}
           <p class="muted" style="margin-bottom:0">辞出以后就是散修，可以去求入别的宗门；八派六宗要金丹才收。</p></div>`;
       })()}
       <div class="card"><h3>${clan ? '上交族中' : '功德房 · 上交'}</h3>
         ${subs.length ? `<div class="col">${subs.map((a) => `<div>${btn(a)}</div>`).join('')}</div>` : `<p class="muted">行囊里没有可上交的东西。${Object.entries(v.submit).map(([k, n]) => esc(CF.items[k].name) + '每件记 ' + n).join('、')}；本门没有的道书抄本按价值记，每部只记一次。</p>`}
+        ${(() => {
+          const dn = A.find((x) => x.type === 'donate');
+          if (!dn) return '';
+          const ten = dn.ok && dn.cost * 10 <= ov.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="10">捐 10 份（${n0(dn.cost * 10)} 符钱）</button>` : '';
+          return `<h3>功德殿 · 捐输</h3><p class="muted">八派六宗的门人可以拿符钱折${esc(M)}，每 ${n0(dn.cost)} 符钱记 ${dn.gain} ${esc(M)}。</p><div class="row">${btn(dn)}${ten}</div>`;
+        })()}
       </div>`;
   };
 
@@ -364,7 +373,7 @@
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息一路到金丹、元神、返虚（金丹分九品，品第影响战力和冲元神）。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮）、玉宸派/赤明派/怙照宗三家大派、道脉改投、职位与推举、洞府与洞天、仇家都已能玩。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息一路到金丹三重、元神、返虚；每过一道大关定一回根底（道基、紫府异象、先天金汞、金丹九品、元神法相），前面的成色影响后面。主角、世界、时间、修炼、遭遇、拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会）、玉宸派/赤明派/怙照宗三家大派、道脉改投、功德殿捐输、职位与推举、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。势力行动、秘密与剧情线在第 2 阶段，大模型生成事件在第 3 阶段接入。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -396,7 +405,8 @@
         <p>${p.sex === 'M' ? '男' : '女'} · ${v.age} 岁 · ${esc(v.faction)} · ${p.status === 'alive' ? '在' + esc(v.place) : '已故'}</p>
         <div class="stat"><span>境界</span><b>${esc(v.realmTitle)}</b></div>
         <div class="stat"><span>战力</span><b>${v.power}</b></div>
-        ${p.daoji ? `<div class="stat"><span>根基</span><b>${CF.daojiNames[p.daoji]}${p.yixiang ? ' · ' + CF.yixiangNames[p.yixiang] : ''}</b></div>` : ''}
+        ${P.rootNames(p).length ? `<div class="stat"><span>根基</span><b>${esc(P.rootNames(p).join(' · '))}</b></div>` : ''}
+        ${p.bio ? `<p class="muted">《仙业》人物 · ${esc(p.bio)}</p>` : ''}
         ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         ${v.isMe ? `<h3>生平</h3><p>${esc(v.life)}</p>` : ''}
@@ -411,6 +421,7 @@
         <p>${esc(p.region || '南域')} · ${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''}${v.here ? ' · <b class="warn">你在这里</b>' : v.visited ? ' · 去过' : ' · 没去过'}</p>
         <div class="stat"><span>灵机</span><b>${stars(p.qi)} ${QI[p.qi]} · 属「${esc(p.attr)}」</b></div>
         ${v.fit ? `<div class="stat"><span>你在此采气</span><b class="${v.fit.value >= 1 ? 'good' : v.fit.value < 0.5 ? 'bad' : ''}">${esc(v.fit.short)} ×${v.fit.value}</b></div>` : ''}
+        ${p.blurb ? `<p class="muted">${esc(p.blurb)}</p>` : ''}
         ${v.faction && v.faction.blurb ? `<p class="muted">${esc(v.faction.blurb)}</p>` : ''}
         <div class="stat"><span>危险</span><b class="${p.danger >= 3 ? 'bad' : ''}">${stars(Math.min(5, p.danger))} ${DANGER[p.danger]}</b></div>
         <div class="stat"><span>相邻</span><span>${p.links.map((l) => esc(s.places[l.to].name) + ' ' + l.days + '天').join('、')}</span></div>

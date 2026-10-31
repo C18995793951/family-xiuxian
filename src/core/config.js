@@ -11,8 +11,8 @@
   const FX = (G.FX = G.FX || {});
 
   FX.CONFIG = {
-    schemaVersion: 6,
-    gameVersion: '0.4.0-xianye4',
+    schemaVersion: 7,
+    gameVersion: '0.5.0-xianye5',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -20,15 +20,19 @@
     money: '符钱',
 
     /* ---------- 境界 ----------
-     * 胎息、练炁、筑基、紫府、洞玄、金丹、元神、返虚……（返虚之后的纯阳、合道不在本版）
-     * 金丹不分重，按成丹时的根底分九品：九品黄白金丹最次，一品龙虎金丹最高。
-     * 元神要有一处「地」（灵机六级的灵窟福地）才成得了；返虚要先开辟一座洞天。
+     * 胎息、练炁、筑基、紫府、洞玄、金丹、元神、返虚、纯阳、合道（原著：粉碎元神十二重障关，窥破返虚之谜，
+     * 渡纯阳风、火、雷三灾，便是九难合道；合道者称道君，寿与天齐）。
+     * 每过一道大关都定一回根底的成色：筑基定道基，开紫府定异象，洞玄三重定先天金汞，结丹定金丹品第，
+     * 成就元神定法相。前面的成色一路影响后面（原著里颜熙真人是低阶真炁、下等道基、下等异象、末等金汞，
+     * 照样逆反根果证得返虚，可见成色只定难易，不定生死）。
+     * 金丹三重：身根成象、渐法九还、神中有形；丹分九品，九品黄白金丹最次，一品龙虎金丹最高。
+     * 元神法相分下、中、上、至四等。元神要有一处「地」（灵机六级的灵窟福地）才成得了；返虚要先开辟一座洞天。
      * 练炁九层（练炁九返）没有关隘，壮大胎息到头便转入下一层；筑基、紫府、洞玄各分三重。 */
     realms: {
-      // major: 0 凡人 1 胎息 2 练炁 3 筑基 4 紫府 5 洞玄 6 金丹 7 元神 8 返虚
-      names: ['凡人', '胎息', '练炁', '筑基', '紫府', '洞玄', '金丹', '元神', '返虚'],
-      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称链师，金丹、元神称真人，返虚、纯阳称真君
-      titles: { 2: '羽士', 4: '高功', 5: '链师', 6: '真人', 7: '真人', 8: '真君' },
+      // major: 0 凡人 1 胎息 2 练炁 3 筑基 4 紫府 5 洞玄 6 金丹 7 元神 8 返虚 9 纯阳 10 合道
+      names: ['凡人', '胎息', '练炁', '筑基', '紫府', '洞玄', '金丹', '元神', '返虚', '纯阳', '合道'],
+      // 胥都天的尊称：练炁称羽士，紫府称高功，洞玄称链师，金丹、元神称真人，返虚、纯阳称真君，合道称道君
+      titles: { 2: '羽士', 4: '高功', 5: '链师', 6: '真人', 7: '真人', 8: '真君', 9: '真君', 10: '道君' },
       stageNames: {
         0: [''],
         1: [''],
@@ -36,19 +40,24 @@
         3: ['一重', '二重', '三重'],
         4: ['一重', '二重', '三重'],
         5: ['一重', '二重', '三重'],
-        6: [''],
+        6: ['一重', '二重', '三重'],
         7: [''],
         8: [''],
+        9: ['一重', '二重', '三重'],
+        10: [''],
       },
       stageTitles: {
         3: ['炁海生化', '大小如意', '龟蛇相抱'],
         4: ['万妙归根', '超脱分形', '换魂消魄'],
         5: ['龙虎炉鼎', '摄取五精', '先天金汞'],
-        6: ['身根成象'],
+        6: ['身根成象', '渐法九还', '神中有形'],
         7: ['法相天成'],
         8: ['洞天自在'],
+        // 纯阳三重以三灾为界：渡过风灾初成纯阳，再渡火灾、雷灾
+        9: ['风灾已渡', '火灾已渡', '雷灾已渡'],
+        10: ['九难合道'],
       },
-      maxStage: { 0: 1, 1: 1, 2: 9, 3: 3, 4: 3, 5: 3, 6: 1, 7: 1, 8: 1 },
+      maxStage: { 0: 1, 1: 1, 2: 9, 3: 3, 4: 3, 5: 3, 6: 3, 7: 1, 8: 1, 9: 3, 10: 1 },
       // 凡人这一格积的是“气感”，胎息这一格是“胎息壮大”，此后才是修为
       need: {
         0: [40],
@@ -57,13 +66,15 @@
         3: [600, 900, 1300],
         4: [2400, 3200, 4400],
         5: [6000, 8000, 10000],
-        6: [50000],
+        6: [24000, 30000, 36000],
         7: [200000],
-        8: [Infinity],
+        8: [400000],
+        9: [300000, 300000, 300000],
+        10: [Infinity],
       },
       // 全年专心修炼的基础值
-      baseGain: { 0: 10, 1: 15, 2: 20, 3: 30, 4: 60, 5: 100, 6: 150, 7: 300, 8: 500 },
-      // 寿元：凡人百年之内；胎息寿一百五；筑基三重二百出头；紫府三重三百；金丹千五；元神三千；返虚六千
+      baseGain: { 0: 10, 1: 15, 2: 20, 3: 30, 4: 60, 5: 100, 6: 150, 7: 300, 8: 500, 9: 800, 10: 1200 },
+      // 寿元：凡人百年之内；胎息寿一百五；筑基三重二百出头；紫府三重三百；金丹千五；元神三千；返虚六千；纯阳一万二；合道寿与天齐
       lifespan: {
         0: [70],
         1: [150],
@@ -71,9 +82,11 @@
         3: [190, 200, 215],
         4: [250, 275, 300],
         5: [400, 450, 500],
-        6: [1500],
+        6: [1500, 1500, 1500],
         7: [3000],
         8: [6000],
+        9: [12000, 12000, 12000],
+        10: [1000000],
       },
       power: {
         0: [0.5],
@@ -82,14 +95,23 @@
         3: [40, 55, 75],
         4: [150, 200, 260],
         5: [400, 520, 680],
-        6: [2000],
+        6: [2000, 2600, 3400],
         7: [6000],
         8: [18000],
+        9: [50000, 65000, 80000],
+        10: [300000],
       },
       // 金丹九品：成丹时按道基、紫府异象、资质定品；品第影响斗法与冲击元神
       danPinNames: ['', '一品龙虎金丹', '二品金丹', '三品金丹', '四品金丹', '五品金丹', '六品金丹', '七品金丹', '八品金丹', '九品黄白金丹'],
       danPinPower: 0.06,   // 每高（低）一品，战力 ±6%（以五品为准）
       danPinBreak: 3,      // 每高（低）一品，冲击元神成功率 ±3（以五品为准）
+      // 先天金汞（洞玄三重）：修到第三重时按道基、紫府异象和一点机缘定等第，是成丹之基
+      jinhongNames: ['', '末等先天金汞', '下等先天金汞', '中等先天金汞', '上等先天金汞'],
+      jinhongBreak: [0, -6, -2, 3, 10], // 结丹成功率修正
+      // 元神法相：成就元神时按金丹品第和一点机缘定等，前古诸真分作下、中、上、至四等
+      xiangNames: ['', '下等法相', '中等法相', '上等法相', '至等法相'],
+      xiangPower: 0.12,    // 每高（低）一等，战力 ±12%（以中等为准）
+      xiangBreak: 5,       // 每高（低）一等，冲击返虚成功率 ±5（以中等为准）
     },
 
     /* ---------- 资质 ----------
@@ -119,8 +141,8 @@
       kaifu_high: { kind: 'kaifu', name: '太清开府真经', grade: 3, mult: 1.25, price: 12000, desc: '上乘开府真法，可开上等紫府异象，向来只在大派世族间流转' },
       sanqi_kaifu: { kind: 'kaifu', name: '三炁照神术·紫府篇', grade: 1, mult: 1.0, price: 1200, desc: '三炁照神术的后半部，讲开辟紫府；玄真派弟子筑基后向长老房请授' },
       // 金丹以后的道书：结丹后修行全凭它（不必研习，手里有就用最好的一部）
-      dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.15, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备' },
-      dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九转、炼神还虚的中乘道书，大派长老房才有' },
+      dao_low: { kind: 'dao', name: '温养金丹法', grade: 1, mult: 1.2, price: 30000, desc: '温养金丹、积蓄元神的寻常道书，中域坊市常备；比下乘开府真法强，不如上乘的' },
+      dao_mid: { kind: 'dao', name: '九转还丹诀', grade: 2, mult: 1.35, price: 90000, desc: '讲金丹九还、炼神还虚的中乘道书，中域坊市常备，大派长老房可用道功换' },
       dao_high: { kind: 'dao', name: '太上元神真解', grade: 3, mult: 1.6, price: 250000, desc: '直指元神、返虚的根本道典，只在八派六宗的真传之间流转' },
     },
     tierNames: ['', '一阶', '二阶', '三阶', '四阶', '五阶', '六阶', '七阶', '八阶', '九阶'],
@@ -143,7 +165,7 @@
       npcDiligence: [0.55, 0.9], // NPC 一年里真正用在修炼上的比例
       consultFrac: [0.04, 0.09], // 请教一次得到的修为（占当前所需）
       // 以符钱修行：符钱由虚空灵气铸成，属“元”，人人可炼，只是奢费；胎息还炼不了外物
-      coin: { qi: 3, perYear: { 2: 60, 3: 240, 4: 800, 5: 2000, 6: 5000, 7: 12000, 8: 30000 } },
+      coin: { qi: 3, perYear: { 2: 60, 3: 240, 4: 800, 5: 2000, 6: 5000, 7: 12000, 8: 30000, 9: 60000, 10: 100000 } },
     },
 
     /* ---------- 突破 ----------
@@ -165,7 +187,14 @@
       // 元神、返虚屡败渐有心得（不越败越难）：每败一次 +4，最多 +20
       yuanshen: { base: 22, minQi: 6, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.12, days: 720, tianfa: true, failBonus: 4, failBonusCap: 20 },
       // 返虚：先开辟一座洞天，在自家洞天里冲关
-      fanxu: { base: 18, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.12, days: 1080, tianfa: true, failBonus: 4, failBonusCap: 20 },
+      fanxu: { base: 20, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.08, days: 1080, tianfa: true, failBonus: 4, failBonusCap: 20 },
+      // 纯阳三灾：渡风灾初成纯阳，再渡火灾、雷灾。三灾临头千难万难，八派六宗的真传也只敢困守洞天枯坐，在自家洞天里才渡得
+      chunyang: { base: 22, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.1, days: 1080, tianfa: true, failBonus: 5, failBonusCap: 25, zai: '风灾' },
+      sanzai: { base: 24, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.1, days: 1080, tianfa: true, failBonus: 5, failBonusCap: 25 },
+      // 九难合道：三灾渡尽，再过九难，与道合真，成就道君
+      hedao: { base: 15, failLossMin: 0.2, failLossMax: 0.4, deathChance: 0.08, days: 1800, tianfa: true, failBonus: 4, failBonusCap: 24 },
+      sanzaiNames: ['风灾', '火灾', '雷灾'],
+      xuduZai: 10,      // 渡三灾时还留着胥都大丹：天运青睐，消弭些灾数
       // 小境界里需要外药的几重：键为“大境界.当前重数”
       minorNeeds: {
         '3.2': { item: 'danmusha', qty: 1, why: '龟蛇相抱须借全真外药' },
@@ -175,6 +204,7 @@
       daojiMod: [0, -5, 3, 12],
       yixiangMod: [0, -5, 3, 12],
       yuanshenPill: 12, // 冲击元神时点上定神玄香
+      xuduPill: 20,     // 冲击元神时服下胥都大丹
       daojiPower: [1, 0.9, 1.0, 1.15],
       aptitudeFactor: 0.3,
       qiBonus: 8,
@@ -200,6 +230,8 @@
       restHealMult: 2,          // 静养时伤愈速度
       healPillDays: 120,        // 一颗小白阳丹抵多少天伤势
       heavyInjuryDeathYear: 0.03,
+      heavyDongtianMult: 0.25,  // 在自家洞天里养伤，重伤恶化的几率乘这个
+      heavyDongfuMult: 0.5,     // 在自家洞府里
       npcAccident: 0.004,       // NPC 每年意外身亡（乘以所在地危险度修正）
       oldFrac: 0.2,
     },
@@ -247,21 +279,28 @@
         bigsect: { name: '大派山门', count: 0 },
         sea: { name: '海外', count: 0 },
       },
-      /* 东弥州腹地：南域以北的中域、西域、东域、北域与东海。南域与中域之间隔着万里荒原，
-       * 金丹真人驾遁光才过得去。玉宸派、赤明派、怙照宗是东弥州仅有的三家八派六宗，各占一座灵窟。
-       * 地名里“中域坊市”“东域福地”是本游戏自拟的；三家大派在东弥州的具体方位原著没写，这里是安排。 */
+      /* 东弥州腹地：南域以北，中间隔着万里荒原，金丹真人驾遁光才过得去。方位照原著：
+       *   玉宸派本宗在东域宵明大泽（天地造化灵窟，九殿所在）；东域有二十余大国，景国是其一；
+       *   赤明派据北域鹿台山，北域诸国（赵国、曹国等）在它治下；鹤鸣山是火霞门旧址，上空有流火宏化洞天的遗迹；
+       *   怙照宗山门在西域极西处，西域灵气充裕、魔修横行，九危山顶有一池「琼胎阳罡」；
+       *   东海是龙宫所在，颜熙真君的洞天也开在东海。
+       * 只有“中域坊市”这个地名是本游戏自拟的（原著里中域着墨很少）。 */
       outer: {
         gate: { minMajor: 6, days: 60, why: '南域与中域之间隔着万里荒原，金丹真人驾遁光才过得去' },
         places: [
-          { key: 'zhongyu', name: '中域坊市', type: 'mart', region: '中域', x: 5, y: -3, qi: 3, danger: 0, attr: '清' },
-          { key: 'yuchen', name: '玉宸派', type: 'bigsect', region: '中域', x: 7, y: -6, qi: 6, danger: 0, attr: '阳' },
-          { key: 'chiming', name: '赤明派', type: 'bigsect', region: '东域', x: 11, y: -5, qi: 6, danger: 0, attr: '烈' },
-          { key: 'huzhao', name: '怙照宗', type: 'bigsect', region: '北域', x: 4, y: -9, qi: 6, danger: 0, attr: '阴' },
-          { key: 'jiuwei', name: '九危山', type: 'danger', region: '西域', x: 1, y: -6, qi: 6, danger: 6, attr: '刚' },
-          { key: 'fudi', name: '东域福地', type: 'wild', region: '东域', x: 10, y: -2, qi: 6, danger: 5, attr: '柔' },
-          { key: 'donghai', name: '东海', type: 'sea', region: '东海', x: 13, y: -4, qi: 5, danger: 6, attr: '寒' },
+          { key: 'zhongyu', name: '中域坊市', type: 'mart', region: '中域', x: 5, y: -3, qi: 3, danger: 0, attr: '清', blurb: '东弥州中域往来的大坊市，各域修士都在此交易' },
+          { key: 'jingguo', name: '景国', type: 'city', region: '东域', x: 10, y: -3, qi: 1, danger: 0, attr: '清', blurb: '东域二十余大国之一，境内的生米潭景都观是玉宸派下辖的道脉' },
+          { key: 'yuchen', name: '宵明大泽', type: 'bigsect', region: '东域', x: 12, y: -6, qi: 6, danger: 0, attr: '清', blurb: '玉宸派本宗所在，一口天地造化灵窟，九殿都设在这里' },
+          { key: 'donghai', name: '东海', type: 'sea', region: '东海', x: 15, y: -4, qi: 5, danger: 6, attr: '寒', blurb: '无尽东海，龙宫雄踞其中；返虚真君多在海外开辟洞天' },
+          { key: 'zhao', name: '赵国', type: 'city', region: '北域', x: 5, y: -8, qi: 1, danger: 0, attr: '阳', blurb: '北域小国，在赤明派治下' },
+          { key: 'chiming', name: '鹿台山', type: 'bigsect', region: '北域', x: 7, y: -11, qi: 6, danger: 0, attr: '烈', blurb: '赤明派山门，占着一座灵窟' },
+          { key: 'fudi', name: '鹤鸣山', type: 'wild', region: '北域', x: 9, y: -9, qi: 6, danger: 5, attr: '烈', blurb: '火霞门旧址，灵脉还在，上空悬着流火宏化洞天的遗迹；无主之地，可开洞府' },
+          { key: 'jiuwei', name: '九危山', type: 'danger', region: '西域', x: 1, y: -6, qi: 6, danger: 6, attr: '刚', blurb: '西域险地，峰顶相传有一池琼胎阳罡；天魔潮时魔物从这里涌出' },
+          { key: 'huzhao', name: '怙照宗', type: 'bigsect', region: '西域', x: -3, y: -7, qi: 6, danger: 0, attr: '阴', blurb: '魔道六宗之一的山门，在西域极西处' },
         ],
-        links: [['gate', 'zhongyu'], ['zhongyu', 'yuchen'], ['zhongyu', 'jiuwei'], ['zhongyu', 'fudi'], ['yuchen', 'huzhao'], ['yuchen', 'chiming'], ['chiming', 'fudi'], ['chiming', 'donghai'], ['jiuwei', 'huzhao']],
+        links: [['gate', 'zhongyu'], ['zhongyu', 'jingguo'], ['jingguo', 'yuchen'], ['zhongyu', 'yuchen'], ['yuchen', 'donghai'], ['zhongyu', 'zhao'], ['zhao', 'chiming'], ['chiming', 'fudi'], ['fudi', 'yuchen'], ['zhongyu', 'jiuwei'], ['jiuwei', 'huzhao'], ['zhao', 'jiuwei']],
+        // 上一版的地名 → 现在的键（旧存档迁移用）
+        oldNames: { '中域坊市': 'zhongyu', '玉宸派': 'yuchen', '赤明派': 'chiming', '怙照宗': 'huzhao', '九危山': 'jiuwei', '东域福地': 'fudi', '东海': 'donghai' },
       },
       linkExtra: 0.35,     // 在最小连通树之外多连的比例
       daysPerUnit: 4,      // 地图上一格的赶路天数
@@ -292,27 +331,42 @@
         library: [{ tech: 'xuanshui' }, { tech: 'kaifu_low', minMajor: 3 }, { tech: 'kaifu_mid', merit: 260, minMajor: 3 }, { tech: 'handou', merit: 320 }],
         join: { closed: '花神府只在「撷芳宴」上收人，眼下没有开宴' },
       },
-      { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易' },
+      { key: 'jingu', name: '金谷墟市', type: 'league', seat: 'town', blurb: '洞玄散修怀悟洞主在浮玉泊所建的墟市，南域散修多在此交易', leader: 'huaiwu' },
       // 八派六宗（tier 3）：只在东弥州腹地，金丹以后才见得到。掌门是元神真人，另有返虚、纯阳真君与道君闭关不出
       {
         key: 'yuchen', name: '玉宸派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
-        blurb: '玄门八派之一，执宰东弥州仙道的大派。玄真派这样的小宗只是它下辖的数百道脉之一，道脉出身的金丹真人可凭道脉符书改投',
+        blurb: '玄门八派之一。本宗占着东域宵明大泽这口灵窟，设九殿；另有青阳、长赢、白商、玄英四大下院教导弟子。玄真派这样的小宗只是它下辖的数百道脉之一，道脉出身的金丹真人可凭道脉符书改投',
+        transferNote: '落籍白商院（四大下院里最不看出身的一院）',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
         join: { minMajor: 6, base: 5, daomai: 'xuanzhen' },
       },
       {
         key: 'chiming', name: '赤明派', type: 'sect', tier: 3, outer: true, tech: 'ziqing',
-        blurb: '玄门八派之一，与玉宸派同在东弥州。真传多出自玄门世族，收外人只看金丹品第',
+        blurb: '玄门八派之一，据北域鹿台山，北域诸国都在它治下。真传多出自玄门世族，收外人只看金丹品第',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 3000 }, { tech: 'dao_high', merit: 12000, minMajor: 7 }],
         join: { minMajor: 6, base: 15, pin: 8 },
       },
       {
         key: 'huzhao', name: '怙照宗', type: 'sect', tier: 3, outer: true, tech: 'handou',
-        blurb: '魔道六宗之一，与玉宸、赤明两家在东弥州维持着玄魔平衡。收人不问出身，只是正直之人入不了它的门',
+        blurb: '魔道六宗之一，山门在西域极西处，与玉宸、赤明「二玄」在东弥州维持着玄魔平衡。行事酷烈，当年南域的万宝楼错卖了它一门神通，一夜之间满楼覆灭。收人不问出身，只是正直之人入不了它的门',
         library: [{ tech: 'dao_low' }, { tech: 'dao_mid', merit: 2500 }, { tech: 'dao_high', merit: 10000, minMajor: 7 }],
         join: { minMajor: 6, base: 40, refuseTrait: '正直' },
       },
-      { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱' },
+      { key: 'miaonan', name: '苗南峰', type: 'evil', seat: 'hide', blurb: '魔道流寇，苗南老祖带着几个弟子在路上收买路符钱', leader: 'miaonan' },
+    ],
+
+    /* ---------- 原著人物 ----------
+     * 只放配角，境界、身份照原著；他们和别的 NPC 一样修炼、老去、陨落。
+     * realm 为 [大境界, 重数]；faction 为势力键；role 为 leader 时接任该势力之主。 */
+    notables: [
+      { key: 'huaiwu', name: '怀悟洞主', sex: 'M', realm: [5, 3], age: 330, faction: 'jingu', role: 'leader', daoji: 2, yixiang: 2, jinhong: 2,
+        bio: '南域有名的散修链师，洞玄三重。当年冲入洞玄时一力压服了三大邪魔散修，在浮玉泊建起金谷墟市。' },
+      { key: 'miaonan', name: '苗南老祖', sex: 'M', realm: [3, 3], age: 170, faction: 'miaonan', role: 'leader', traits: ['贪婪'],
+        bio: '苗南峰的魔道流寇，筑基三重，手执一面「五方升阳旗」，带着苗南七子在路上收买路符钱。几回被紫府高功出手追杀都逃得性命，丹粟国几家小门派都要看他脸色。' },
+      { key: 'junyao', name: '君尧', sex: 'M', realm: [7, 1], age: 520, faction: 'yuchen', role: 'elder', tech: 'ziqing', aptitude: 95, daoji: 3, yixiang: 3, jinhong: 4, danPin: 1, xiang: 4,
+        bio: '玉宸派道子，上届丹元大会的魁首，玉宸派里上一个得了「斗法胜」名号的人。成道前曾在天外觅得一篇上乘开府真法，如今被称作宇内元神第一。' },
+      { key: 'yanxi', name: '颜熙', sex: 'M', realm: [8, 1], age: 2600, placeKey: 'donghai', tech: 'linghe', aptitude: 40, daoji: 1, yixiang: 1, jinhong: 1, danPin: 9, xiang: 2,
+        bio: '南域散修出身的真君。道书里记着他是低阶真炁、下等道基、下等紫府异象、末等先天金汞，却逆反根果，一路证得元神、返虚，在东海开辟了「舜烈碧云源固」洞天，与东海龙族牵连甚深。九州四海的散修里只出了这一个颜熙。' },
     ],
 
     factionTypes: {
@@ -329,7 +383,7 @@
     house: {
       meritName: '道功',
       // 奉事房差事每月记的道功，按大境界
-      taskMerit: { 1: 1, 2: 2, 3: 4, 4: 8, 5: 12, 6: 20, 7: 40, 8: 60 },
+      taskMerit: { 1: 1, 2: 2, 3: 4, 4: 8, 5: 12, 6: 20, 7: 40, 8: 60, 9: 90, 10: 120 },
       // 领符诏除妖：对手按你的战力定，打赢了才记道功（差事道功 × meritMult）
       mission: { days: 60, meritMult: 4, stone: [10, 30], powerSwing: [0.4, 1.0] },
       // 功德房收的东西，每件记多少道功
@@ -351,15 +405,18 @@
         { item: 'ningdan', merit: 900, minMajor: 5, minTier: 2 },
         { item: 'fuqi3', merit: 1500, minMajor: 6, minTier: 3 },
         { item: 'dingshen', merit: 2000, minMajor: 6, minTier: 3 },
+        { item: 'zhengyang', merit: 500, minMajor: 6, minTier: 3 },
       ],
+      // 捐输：八派六宗的门人可向功德殿捐献符钱折算道功（每份 donateStone 符钱折 donateMerit 道功）
+      donate: { minTier: 3, stone: 10000, merit: 200 },
       // 门中职位：按境界自然升任，掌门另由推举或接任。俸禄按职位加成
       posts: { sect: ['弟子', '执事', '长老', '掌门'], clan: ['族人', '管事', '族老', '家主'], minMajor: [0, 3, 4], stipendMult: [1, 1.5, 2.5, 4] },
       // 修为远超掌门时，门中推举你接任：至少紫府，且高出掌门 tuijuGap 个小境界；推辞后 tuijuAgain 年内不再提
       tuijuMinMajor: 4, tuijuGap: 3, tuijuAgain: 20,
       // 每年的俸禄：符钱按大境界，宗门再按品级加成；练炁以上另发中孚丹
       stipend: {
-        sect: { stone: [0, 6, 24, 60, 200, 500, 1200, 3000, 6000], tierMult: [0, 1, 1.5, 2], qiju: 2 },
-        clan: { stone: [0, 6, 18, 45, 150, 400, 1000, 2500, 5000], qiju: 1 },
+        sect: { stone: [0, 6, 24, 60, 200, 500, 1200, 3000, 6000, 12000, 20000], tierMult: [0, 1, 1.5, 2], qiju: 2 },
+        clan: { stone: [0, 6, 18, 45, 150, 400, 1000, 2500, 5000, 10000, 16000], qiju: 1 },
       },
     },
 
@@ -384,6 +441,21 @@
       // 天魔潮：天魔从地渊、九危山一带涌出，玉宸派发敕令召各家修士镇守；紫府以上可赴
       tianmo: { name: '天魔潮', every: [40, 70], first: [6, 14], years: 2, places: ['地渊', '九危山'], days: 180, minMajor: 4,
         guardStone: { 4: 1500, 5: 4000, 6: 12000, 7: 30000, 8: 60000 }, guardMerit: 30, guardHurt: 0.25, headSwing: [0.8, 1.4], headMerit: 80, npcDeaths: [2, 5] },
+      // 丹元大会：胥都天八派六宗的金丹天骄争雄斗法的法会，开期随胥都天气运而定，或隔数百年、或隔千载。
+      // 只有八派六宗的金丹门人能去，由本门从山门遣送。连斗四场，可随时认输离场，按胜场排名次；魁首得胥都大丹
+      danyuan: { name: '丹元大会', every: [120, 200], first: [200, 320], years: 1, major: 6, tier: 3, days: 90,
+        rounds: 4, foeBase: 2600, foeMult: [1.4, 1.9, 2.5, 3.2],
+        foes: ['斗枢派', '太符宫', '中乙剑派', '北极苑', '阴景派', '九真教', '神御宗', '血河宗', '先天魔宗', '瘟癀宗', '玄酆洞', '玉宸派', '赤明派', '怙照宗'],
+        // 按胜场：0 落选，1–2 有名次，3 前列，4 魁首
+        reward: [{ merit: 40 }, { merit: 150, zhengyang: 1 }, { merit: 300, zhengyang: 2 }, { merit: 600, zhengyang: 3, dingshen: 1 }, { merit: 1200, xudu: 1, zhengyang: 3 }] },
+      // 流火宏化洞天：旁门纯阳火霞老祖开辟的下等洞天，漂泊万载后落回胥都天，悬在鹤鸣山上空。
+      // 玉宸派与赤明派赌斗三场赢下了它，每隔些年门户显世，玉宸门人可入内寻造化（原著里是四院弟子去，这里金丹以上的门人才放进去）
+      liuhuo: { name: '流火宏化洞天显世', every: [20, 35], first: [8, 20], years: 3, place: '鹤鸣山', faction: 'yuchen', minMajor: 6, days: 120,
+        outerStone: { 6: 6000, 7: 15000, 8: 30000 }, outerGain: { 6: 2000, 7: 5000, 8: 8000 }, outerHurt: 0.25,
+        midSwing: [0.7, 1.05], midGain: { 6: 5000, 7: 12000, 8: 20000 },
+        deepSwing: [1.0, 1.5], deepGain: { 6: 9000, 7: 25000, 8: 40000 }, npcDeaths: [0, 2] },
+      // 拜谒颜熙真君：元神以后到东海求问返虚之道。真君肯不肯见看缘法，不见的话十年后可再去
+      yanxi: { minMajor: 7, chance: 45, again: 10, gain: 10000, fanxu: 8 },
     },
 
     /* ---------- 洞府 ----------
@@ -430,12 +502,17 @@
       fuqi2: { name: '中品符器', price: 1500, desc: '带在身上斗法战力 ×1.6（只算最好的一件）', power: 1.6 },
       fuqi3: { name: '上品符器', price: 40000, desc: '大派真传才配得起的符器，斗法战力 ×2.2（只算最好的一件）', power: 2.2 },
       dingshen: { name: '定神玄香', price: 60000, desc: '冲击元神时点上，安定心神，成功率 +12（冲关时耗掉）', where: '中域坊市常备；八派六宗弟子可用道功换' },
+      zhengyang: { name: '正阳丹砂', price: 20000, desc: '推升丹力的真砂，没有隐患。金丹真人服下一枚，修为 +2500（只对金丹有用）', where: '中域坊市常备；八派六宗弟子可用道功换' },
+      dongtianji: { name: '洞天残基', price: 0, desc: '从流火宏化洞天深处剥下的一块洞天根基。开辟洞天时用上，省一半符钱、一年工夫（用时耗掉）', where: '流火宏化洞天深处' },
+      xudu: { name: '胥都大丹', price: 0, desc: '胥都天气运所凝的大丹，只赐丹元大会魁首。冲击元神时服下成功率 +20；已成元神的，服下修为 +30000', where: '只有丹元大会的魁首才有' },
       herb: { name: '灵草', price: 5, desc: '寻常灵草，可卖钱' },
       rareHerb: { name: '人面芝', price: 60, desc: '生在阴气浓郁之地的珍贵外药，可卖钱' },
       beastCore: { name: '妖物内丹', price: 25, desc: '斗杀妖物所得，可卖钱' },
       beastHide: { name: '妖物皮骨', price: 8, desc: '斗杀妖物所得，可卖钱' },
     },
-    usable: ['qiju', 'heal', 'yanshou'],
+    usable: ['qiju', 'heal', 'yanshou', 'zhengyang', 'xudu'],
+    zhengyangGain: 2500,
+    xuduGain: 30000,
     loot: ['herb', 'rareHerb', 'beastCore', 'beastHide'],
     yanshouYears: [6, 4, 2],
     /* 坊市：staples 是常备货，每年补足；rare 是稀罕货，每年有 slots 个格子，各有 chance 的机会上架。
@@ -499,10 +576,12 @@
           { item: 'wujing', qty: [3, 6] },
           { item: 'yusui', qty: [1, 3] },
           { item: 'dingshen', qty: [1, 1] },
+          { item: 'zhengyang', qty: [2, 4] },
           { item: 'tech:dao_low', qty: [1, 1] },
+          { item: 'tech:dao_mid', qty: [1, 1] },
           { item: 'tech:kaifu_high', qty: [1, 1] },
         ],
-        rare: [{ item: 'fuqi3', w: 2 }, { item: 'tech:dao_mid', w: 1 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 }],
+        rare: [{ item: 'fuqi3', w: 2 }, { item: 'yanshou', w: 2, qty: [1, 3] }, { item: 'tech:ziqing', w: 1 }],
         slots: 2, chance: 0.6,
       },
       priceSwing: 0.2,
@@ -515,7 +594,7 @@
     actions: {
       cultivateDays: [30, 90, 180, 360, 1800, 3600],
       // 营生的酬劳按大境界翻倍：筑基修士当供奉，身价远非练炁可比
-      workPayMult: [0.6, 0.8, 1, 3, 8, 20, 50, 120, 300],
+      workPayMult: [0.6, 0.8, 1, 3, 8, 20, 50, 120, 300, 600, 1000],
       coinDays: [90, 360],
       exploreDays: [10, 30],
       restDays: [30, 90, 180],
@@ -535,6 +614,7 @@
      * 基础权重；具体由地点类型、危险度、灵机修正。
      * 原则一：多数时候什么都不发生。原则二：有些努力没有回报。 */
     encounter: {
+      robberDare: 0.6, // 劫修只劫境界战力不到自己六成的人
       weights: {
         nothing: 48,
         herb: 16,

@@ -52,7 +52,8 @@
     }
     // 服药、研习练炁术
     for (const k of cf.usable) if (s.player.inv[k] > 0) {
-      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '再服已无效' : '';
+      const why = k === 'heal' && p.health.state === 'healthy' ? '没有受伤' : k === 'yanshou' && p.yanshouTaken >= cf.yanshouYears.length ? '再服已无效'
+        : k === 'zhengyang' && p.realm.major !== 6 ? '只对金丹真人有用' : k === 'zhengyang' && P().isFull(p) ? '丹力已经圆满，先冲关' : k === 'xudu' && p.realm.major < 7 ? '留着冲元神时服（冲关时自动服下）' : k === 'xudu' && P().isFull(p) ? '修为已经圆满' : '';
       add({ type: 'use', item: k, days: 0, label: '服用' + cf.items[k].name, group: '物品', ok: !why, reason: why });
     }
     for (const t of s.player.manuals) {
@@ -118,6 +119,10 @@
       req.qty = Math.floor(a.qty);
       if (item.cost * req.qty > s.player.merit) return { ok: false, error: C().house.meritName + '不够（需 ' + item.cost * req.qty + '）' };
     }
+    if (item.type === 'donate' && a.qty > 1) {
+      req.qty = Math.floor(a.qty);
+      if (item.cost * req.qty > s.player.stone) return { ok: false, error: '符钱不够（需 ' + item.cost * req.qty + '）' };
+    }
     const r = (Act.DO[item.type] || FX.Sect.DO[item.type] || FX.Saga.DO[item.type])(s, req);
     Sim().checkEnd(s);
     return Object.assign({ ok: true }, r);
@@ -158,6 +163,7 @@
     let effect;
     if (a.item === 'qiju') { s.player.qijuUntil = Math.max(s.player.qijuUntil, s.t) + cf.cultivation.qijuDays; effect = '此后修炼加快，药力持续到 ' + T().fmt(s.player.qijuUntil); }
     else if (a.item === 'heal') { const healed = P().heal(p, cf.life.healPillDays); effect = healed ? '伤势痊愈' : '伤势好转，还需 ' + T().dur(p.health.days); }
+    else if (a.item === 'zhengyang' || a.item === 'xudu') { const g = CU().addProgress(s, p, a.item === 'xudu' ? cf.xuduGain : cf.zhengyangGain); effect = '丹力推升，修为 +' + Math.round(g); }
     else { const y = cf.yanshouYears[p.yanshouTaken]; p.yanshouTaken++; p.lifespanBonus += y; effect = '寿元 +' + y + ' 年'; }
     H().add(s, { type: 'item', tags: ['物品'], actors: [p.id], key: 'use_item', pov: true, severity: 1, params: { name: p.name, item: cf.items[a.item].name, effect } });
     return { text: effect };
@@ -288,8 +294,7 @@
     }
     const danger = Math.max(from.danger, to.danger);
     const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
-    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger))) {
-      Act.spawnDanger(s, to, '赶路途中，', [hid]);
+    if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger)) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
     }
     return { text: '抵达' + to.name };
@@ -320,6 +325,9 @@
     const w = Act.encounterWeights(s, place, a.days);
     const keys = Object.keys(w).sort();
     let kind = R.weighted(s.rng, keys, (k) => w[k]) || 'nothing';
+    // 劫修只挑看得上的人下手：此地没有敢劫你的人，这一回就什么也没遇上
+    let robber = null;
+    if (kind === 'trouble' && !isTown(place)) { robber = Act.pickRobber(s, place); if (!robber) kind = 'nothing'; }
     // 奇遇冷却：五年内只算一次，多出来的降为普通收获
     let downgraded = false;
     if (kind === 'fortune' && s.t - s.player.lastFortuneT < E.fortuneCooldownDays) downgraded = true;
@@ -362,7 +370,7 @@
       }
       case 'trouble': {
         if (!isTown(place)) {
-          const foe = Act.pickRobber(s, place);
+          const foe = robber;
           FX.Ev.spawn(s, 'ROBBER', { place: place.id, foe: foe.id }, []);
           seek(s, false);
           s.player.stats.exploreNothing++;
@@ -399,14 +407,19 @@
   };
 
   // 劫修：优先用附近的邪修或品行不端的散修，没有就生成一个
+  // 劫修：只挑看得上的人下手（境界战力不到你六成的，不敢来劫）。找不到敢来的就返回 null
+  const basePow = (realm) => { const t = C().realms.power[realm.major]; return t[Math.min(t.length - 1, realm.stage - 1)]; };
+  Act.robberDares = (realm, p) => basePow(realm) >= C().encounter.robberDare * basePow(p.realm);
   Act.pickRobber = (s, place) => {
     const p = me(s);
-    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3);
+    const evil = P().living(s).filter((q) => q.id !== p.id && q.factionId && s.factions[q.factionId].type === 'evil' && P().realmRank(q) <= P().realmRank(p) + 3 && Act.robberDares(q.realm, p));
     const nearby = evil.filter((q) => q.locationId === place.id || s.places[q.locationId].links.some((l) => l.to === place.id));
     if (nearby.length) { const q = R.pick(s.rng, nearby); q.locationId = place.id; return q; }
-    // 南域的劫修最高不过筑基二重；东弥州腹地什么人都有
-    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, place.outer ? P().maxRank() - 1 : 12);
-    return W().spawnNpc(s, { realm: P().realmFromRank(rank), locationId: place.id });
+    // 南域的劫修最高不过筑基二重；东弥州腹地最高到元神（返虚以上的真君不屑拦路）
+    const rank = U.clamp(P().realmRank(p) + R.int(s.rng, -2, 2), 1, place.outer ? P().rankOf(7, 1) : 12);
+    const realm = P().realmFromRank(rank);
+    if (!Act.robberDares(realm, p)) return null;
+    return W().spawnNpc(s, { realm, locationId: place.id });
   };
 
   // 闭关被打扰：在野外多是妖物，在人多处多是劫修
@@ -416,10 +429,11 @@
       const E = C().encounter;
       const power = Math.round(E.dangerPower[d] * R.range(s.rng, E.beastSwing[0], E.beastSwing[1]) * 10) / 10;
       FX.Ev.spawn(s, 'BEAST', { place: place.id, _beast: R.pick(s.rng, FX.Combat.beastNames[d]), _power: power, _danger: d, _why: '闭关时洞府外闯来一头' }, []);
-    } else {
-      const foe = Act.pickRobber(s, place);
-      FX.Ev.spawn(s, 'ROBBER', { place: place.id, foe: foe.id }, []);
+      return true;
     }
+    const foe = Act.pickRobber(s, place);
+    if (foe) FX.Ev.spawn(s, 'ROBBER', { place: place.id, foe: foe.id }, []);
+    return !!foe;
   };
 
   Act.spawnDanger = (s, place, why, causeIds) => {
@@ -428,7 +442,11 @@
       const d = Math.max(1, place.danger);
       const power = Math.round(E.dangerPower[d] * R.range(s.rng, E.beastSwing[0], E.beastSwing[1]) * 10) / 10;
       FX.Ev.spawn(s, 'BEAST', { place: place.id, _beast: R.pick(s.rng, FX.Combat.beastNames[d]), _power: power, _danger: d, _why: why + '一头' }, causeIds);
-    } else FX.Ev.spawn(s, 'ROBBER', { place: place.id, foe: Act.pickRobber(s, place).id }, causeIds);
+      return true;
+    }
+    const foe = Act.pickRobber(s, place);
+    if (foe) FX.Ev.spawn(s, 'ROBBER', { place: place.id, foe: foe.id }, causeIds);
+    return !!foe;
   };
 
   // 传闻：只讲世界里真实存在的事

@@ -157,6 +157,12 @@
       const n = s.player.inv[k];
       add({ type: 'submit', item: k, days: 0, gain: n * HS().submit[k], label: '上交' + cf.items[k].name + '×' + n + '（记 ' + n * HS().submit[k] + ' ' + M() + '）', group: '库藏', ok: at, reason: away });
     }
+    // 功德殿捐输：八派六宗的门人可以拿符钱折道功
+    const DN = HS().donate;
+    if (f.tier >= DN.minTier) {
+      const why = s.player.stone < DN.stone ? '符钱不够（需 ' + DN.stone + '）' : away;
+      add({ type: 'donate', days: 0, cost: DN.stone, gain: DN.merit, label: '向功德殿捐输 ' + DN.stone + ' 符钱（记 ' + DN.merit + ' ' + M() + '）', group: '库藏', ok: !why, reason: why });
+    }
     for (const t of s.player.manuals) {
       const g = Sect.manualMerit(s, f, t);
       if (g > 0) add({ type: 'submit', tech: t, days: 0, gain: g, label: '献上《' + cf.techniques[t].name + '》抄本（记 ' + g + ' ' + M() + '）', group: '库藏', ok: at, reason: away });
@@ -208,6 +214,14 @@
     const item = C().items[a.item].name + (n > 1 ? '×' + n : '');
     H().add(s, { type: 'redeem', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'redeem', pov: true, severity: 1, params: { name: p.name, faction: f.name, item, cost: a.cost * n, merit: M() } });
     return { text: '换得' + item };
+  };
+
+  DO.donate = (s, a) => {
+    const p = me(s), f = Sect.mine(s), n = a.qty || 1;
+    s.player.stone -= a.cost * n;
+    s.player.merit += a.gain * n;
+    H().add(s, { type: 'submit', tags: ['宗门'], actors: [p.id], factions: [f.id], key: 'submit', pov: true, severity: 1, params: { name: p.name, faction: f.name, what: '符钱 ' + a.cost * n, gain: a.gain * n, merit: M() } });
+    return { text: '捐输符钱 ' + a.cost * n + '，记 ' + a.gain * n + ' ' + M() };
   };
 
   DO.submit = (s, a) => {
@@ -264,14 +278,16 @@
     Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
     if (s.pending.length) return { text: '还没见到人，先出了变故', interrupted: true };
+    const def = C().factionDefs.find((d) => d.key === g.key);
+    const note = def && def.transferNote ? def.transferNote : '';
     leaveFaction(s, p, from);
     p.factionId = g.id;
     p.role = 'member';
     g.relToPlayer = Math.max(g.relToPlayer, 20);
     if (g.leaderId && P().alive(s.people[g.leaderId])) P().adjustRelation(s, p.id, g.leaderId, 8, '同门');
-    const hid = H().add(s, { type: 'join', tags: ['宗门', '大事'], actors: [p.id], factions: [g.id, from.id], places: [g.seatId], key: 'transfer', pov: true, severity: 4, params: { name: p.name, from: from.name, faction: g.name } });
+    const hid = H().add(s, { type: 'join', tags: ['宗门', '大事'], actors: [p.id], factions: [g.id, from.id], places: [g.seatId], key: 'transfer', pov: true, severity: 4, params: { name: p.name, from: from.name, faction: g.name, note: note ? '，' + note : '' } });
     H().markFirst(s, 'join_' + g.key, hid);
-    return { text: '改投' + g.name };
+    return { text: '改投' + g.name + (note ? '，' + note : '') };
   };
 
   Sect.DO = DO;

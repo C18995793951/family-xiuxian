@@ -45,7 +45,8 @@
       for (const p of Object.values(st.people)) {
         if (p.danPin === undefined) p.danPin = 0;
         if (p.daoId === undefined) p.daoId = null;
-        // 已结丹的人补定金丹品第（不掷骰，机缘按中等算）
+        // 已结丹的人补定金丹品第（不掷骰，机缘按中等算）；先补上先天金汞，品第才算得准
+        if (p.realm.major >= 6 && !p.jinhong) p.jinhong = FX.CU.jinhongFor(p, 0);
         if (p.realm.major >= 6 && !p.danPin) p.danPin = FX.CU.danPinFor(p, 1);
         if (p.realm.major >= 6 && !p.daoId && st.player.id !== p.id) p.daoId = 'dao_low';
         if (p.realm.major === 6 && p.realm.stage > 1) p.realm.stage = 1;
@@ -53,6 +54,35 @@
       FX.World.genOuter(st);
       FX.Saga.init(st);
       st.schemaVersion = 6;
+      return st;
+    },
+    // v6 → v7：按原著校正——金丹分三重、先天金汞、元神法相；东弥州腹地方位重排；原著人物入世；丹元大会
+    6: (st) => {
+      const need6 = FX.CONFIG.realms.need[6];
+      const total6 = need6.reduce((a, b) => a + b, 0);
+      for (const p of Object.values(st.people)) {
+        for (const k of ['jinhong', 'xiang']) if (p[k] === undefined) p[k] = 0;
+        if (p.notable === undefined) p.notable = null;
+        if (p.bio === undefined) p.bio = '';
+        // 洞玄三重以上补定先天金汞、元神以上补定法相（不掷骰，机缘按中下算）
+        if (!p.jinhong && (p.realm.major > 5 || (p.realm.major === 5 && p.realm.stage === 3))) p.jinhong = FX.CU.jinhongFor(p, 0);
+        if (!p.xiang && p.realm.major >= 7) p.xiang = FX.CU.xiangFor(p, 1);
+        // 金丹分了三重：原来的金丹修为（满数 50000）按比例摊到三重里
+        if (p.realm.major === 6) {
+          let left = Math.min(1, (p.progress || 0) / 50000) * total6, stg = 1;
+          while (stg < 3 && left >= need6[stg - 1]) { left -= need6[stg - 1]; stg++; }
+          p.realm.stage = stg;
+          p.progress = Math.min(Math.round(left), need6[stg - 1]);
+          FX.CU.updateLifespan(st, p);
+        }
+        // 境界序号顺延：金丹多了两重，元神以上的序号各加二
+        if (p.peakRank >= 21) p.peakRank += 2;
+      }
+      FX.World.genOuter(st);
+      FX.World.genNotables(st);
+      for (const pl of Object.values(st.places)) if (pl.outer && pl.type === 'mart') FX.World.refreshMarket(st, pl.id);
+      FX.Saga.init(st);
+      st.schemaVersion = 7;
       return st;
     },
   };
