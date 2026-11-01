@@ -832,7 +832,7 @@
     const s = UI.s, f = UI.chron.filter;
     const list = s.history.filter((e) => (f === 'pov' ? e.pov : f === 'rumor' ? !e.pov && e.severity >= 2 : e.pov || e.severity >= 2)).slice(-400).reverse();
     return `<h2>纪事</h2>${seenTabs('chron')}<div class="row tabs">${[['pov', '亲历'], ['rumor', '传闻'], ['all', '全部']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="chronFilter" data-k="${k}">${n}</button>`).join('')}</div>
-      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
+      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}${!e.pov && e.params && e.params.ix && !s.ended ? ` <button class="link small" data-act="rumorAct" data-id="${e.id}">插手</button>` : ''}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
       ${s.history.length > 400 ? '<p class="muted">只列最近 400 条。</p>' : ''}`;
   };
 
@@ -923,6 +923,16 @@
         ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         ${v.isMe ? `<h3>生平</h3><p>${esc(v.life)}</p>` : ''}
+        ${!v.isMe && p.status === 'alive' && Game.npc.aim(s, p.id) ? `<div class="stat"><span>志向</span><span>${esc(Game.npc.aim(s, p.id))}</span></div>` : ''}
+        ${!v.isMe ? (() => {
+          const st = Game.npc.story(s, p.id, 6);
+          if (!st.length) return '';
+          const on = !!(FX.AI && FX.AI.config().enabled);
+          const key = on ? FX.AI.npcKey(s, p.id) : null;
+          const bio = key ? Game.ai.text(s, key) : null;
+          const busy = key && FX.AI.isPending(key);
+          return `<h3>近况</h3>${bio ? aiNote(bio) : busy ? aiWaiting(key) : on ? '<button class="link small" data-act="aiNpc" data-id="' + p.id + '">请 AI 写他的近况与打算</button>' : ''}<div class="log">${st.slice().reverse().map((e) => `<p class="rumor"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('')}</div>`;
+        })() : ''}
         <h3>${v.isMe ? '人生记录' : '你与此人'}</h3><div class="log">${v.history.slice().reverse().map((e) => `<p><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">无</p>'}</div>`;
     },
     place(m) {
@@ -981,8 +991,8 @@
           <div class="intent-steps">${c.rows.map(row).join('')}</div>
           ${c.ok ? `<div class="row between"><span class="muted small">${c.days ? '共约 ' + esc(T.dur(c.days)) : ''}${c.cost ? ' · 花 ' + n0(c.cost) + ' 符钱' : ''}${c.rows.length > 1 ? ' · 路上出事就停' : ''}</span><button class="primary" data-act="intentGo" data-i="${i}">照做</button></div>` : ''}</div>`;
       };
-      return `<div class="row between"><h2>你说</h2><button data-act="close">✕</button></div>
-        <p class="say-quote">“${esc(m.input)}”</p>
+      return `<div class="row between"><h2>${esc(m.title || '你说')}</h2><button data-act="close">✕</button></div>
+        <p class="say-quote">${m.title ? esc(m.input) : '“' + esc(m.input) + '”'}</p>
         ${m.note ? `<p class="${m.noteCls || 'muted'}">${esc(m.note)}</p>` : ''}
         ${plans.map(card).join('')}
         ${!plans.length ? '<p class="muted">没找到对得上的做法。换个说法试试，提到具体的人名、地名或东西更好认。</p>' : ''}
@@ -1110,6 +1120,14 @@
       else if (r.ok && r.cannot) pushModal({ type: 'intent', input: text, note: '做不到：' + r.cannot, noteCls: 'bad', plans: local() });
       else pushModal({ type: 'intent', input: text, note: 'AI 没接上（' + (r.reason || '未知') + '），先按字面找了几种做法。', plans: local() });
     },
+    // 传闻里的事：插手 → 预览卡（去相助、去探望、去打听），照做走自由输入那一套
+    rumorAct(d) {
+      const s = UI.s;
+      const e = FX.H.get(s, d.id);
+      const plans = Game.npc.interventions(s, d.id).map((pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) }));
+      pushModal({ type: 'intent', title: '插手', input: e ? FX.H.text(e) : '', note: plans.length ? '' : '当事人已不在，插不上手了。', plans });
+    },
+    aiNpc(d) { FX.AI.npcBio(UI.s, d.id); render(); },
     intentGo(d) {
       const m = UI.modals[UI.modals.length - 1];
       const pl = m && m.plans && m.plans[Number(d.i)];

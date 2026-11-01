@@ -66,6 +66,15 @@ const { chromium } = require('playwright');
   await page.click('svg.map .node:not(.here)');
   await page.screenshot({ path: path.join(out, 'place.png') });
   await page.keyboard.press('Escape');
+  // 传闻里插手：出预览卡
+  await page.click('nav.side [data-act="page"][data-p="chron"]');
+  await page.click('[data-act="chronFilter"][data-k="rumor"]');
+  const ra = await page.$('main [data-act="rumorAct"]');
+  if (!ra) throw new Error('传闻里没有能插手的事');
+  await ra.click();
+  await page.waitForSelector('.modal .say-quote');
+  await page.screenshot({ path: path.join(out, 'rumor-act.png') });
+  await page.keyboard.press('Escape');
   // 人物卡
   await page.click('nav.side [data-act="page"][data-p="chron"]');
   await page.click('main [data-act="page"][data-p="people"]');

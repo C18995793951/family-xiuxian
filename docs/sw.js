@@ -1,6 +1,6 @@
 /* 手机网页版的离线缓存：打开页面时先连网取新版（3 秒取不到就用缓存），断网时整页照常能玩。
  * 存档不在这里，在浏览器的 IndexedDB / localStorage 里，换版本不受影响。
- * 124e54c5f4c6 由 build.js 换成页面内容的摘要，页面一变就换一份新缓存。 */
+ * e8077bbcc128 由 build.js 换成页面内容的摘要，页面一变就换一份新缓存。 */
 const CACHE = 'fx-@@HASH@@';
 const ASSETS = ['./', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 

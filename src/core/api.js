@@ -143,6 +143,12 @@
       narrations: (s) => FX.Prop.narrations(s),
       mark: (s) => 'h' + s.nextHistId,
     },
+    // 人物的命运：志向、自己的事、传闻里插手的入口（见 npc.js）
+    npc: {
+      aim: (s, id) => (s.people[id] ? FX.Npc.aimText(s, s.people[id]) : ''),
+      story: (s, id, n) => FX.Npc.story(s, id, n).map((e) => ({ id: e.id, t: e.t, text: FX.H.text(e) })),
+      interventions: (s, hid) => { const e = FX.H.get(s, hid); return e ? FX.Npc.interventions(s, e) : []; },
+    },
     // 自由输入：AI 提案的打包与校验、没有 AI 时的关键词匹配、预览与执行（见 intent.js）
     intent: {
       job: (s, text) => FX.Intent.job(s, text),

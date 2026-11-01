@@ -208,6 +208,8 @@
         if (to && W().linkOpen(p, to)) p.locationId = to.to;
       }
     }
+    // 主角圈子里的人按各自的志向做一件事（见 npc.js）
+    FX.Npc.yearly(s);
     for (const id in s.markets) W().refreshMarket(s, id);
     W().replenish(s);
     FX.Ev.prune(s);

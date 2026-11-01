@@ -95,7 +95,7 @@
   };
 
   const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
-  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事' };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事', npc: '人物近况' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '还没调用过';
@@ -193,6 +193,9 @@
   AI.eventKey = (inst) => 'e:' + inst.id;
   // 生平：写一篇小传（玩家点了才写）
   AI.life = (s) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'life')) : Promise.resolve(null));
+  // 人物近况：玩家在人物卡里点了才写
+  AI.npcBio = (s, id) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'npc', id)) : Promise.resolve(null));
+  AI.npcKey = (s, id) => { const j = FX.Game.ai.job(s, 'npc', id); return j ? j.key : null; };
   AI.lifeKey = (s) => { const j = FX.Game.ai.job(s, 'life'); return j ? j.key : null; };
 
   // 自由输入：理解玩家的一句话。玩家在等，至多等 8 秒；不行就交给关键词匹配
