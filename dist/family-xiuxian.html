@@ -127,7 +127,7 @@ nav.bottom { display: none; }
   .app, .app.no-aside { display: block; }
   nav.side { display: none; }
   main { padding: .8em 16px calc(6em + env(safe-area-inset-bottom, 0px)); }
-  nav.bottom { display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+  nav.bottom { display: grid; grid-template-columns: repeat(8, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   nav.bottom button { border: none; border-radius: 0; background: transparent; min-height: 52px; padding: .2em; font-size: .85em; }
   nav.bottom button.on { color: var(--accent); background: var(--panel-2); }
   .more-menu { position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); right: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; z-index: 45; padding: .4em; }
@@ -273,6 +273,17 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .say-quote { font-size: 1.05em; margin: .2em 0 .5em; }
 .intent-plan { margin: .4em 0; }
 .intent-steps > div { margin: .3em 0; }
+
+/* 导演模式 */
+.dir-head .dir-who { margin-bottom: .4em; line-height: 1.6; }
+.dir-opt { display: grid; grid-template-columns: 2.6em 1fr; align-items: center; gap: .5em; margin: .35em 0; }
+.dir-opt .chips.c4 { grid-template-columns: repeat(4, 1fr); }
+.dir-opt .chips.c3 { grid-template-columns: repeat(3, 1fr); }
+.dir-ctl { margin: .5em 0; }
+.chips .chip.on { font-weight: bold; }
+.dir-log p.dir-think { margin: .5em 0 .2em; color: var(--accent); }
+.dir-log p.dir-think i { color: var(--text); font-style: normal; }
+.dir-log p.dir-think .src { color: var(--muted); font-size: .8em; margin-left: .4em; }
 
 </style>
 </head>
@@ -6510,9 +6521,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     return { text: L.join('\n'), acts };
   };
 
-  const SYSTEM = [
-    '你是修仙游戏的意图解析器。玩家用一句话说想做什么，你把它拆成至多三步游戏规则认得的行动，只输出一个 JSON 对象，不要别的文字。',
-    '格式：{"say":"你想……（一句复述）","steps":[步骤…]}；拿不准玩家想做什么时改回 {"ask":"一句追问"}；规则里做不到时回 {"cannot":"一句原因"}。',
+  // 步骤格式说明（自由输入和导演模式共用）
+  Intent.STEP_RULES = [
     '每个步骤是下面之一（字段值一律用文字，不要写数字）：',
     '1. {"act":"a3"}：此刻清单里的编号，只能放在第一步或赶路之前。',
     '2. {"go":"地名"}：赶到某地。',
@@ -6525,8 +6535,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
     '交谈、交易、相助、相争、潜行、立约的对象必须和主角在同一地；不在就先用 go 赶过去。',
     '只能用事实里出现的人名、地名、物品名、功法名。成败、得失、数字都由规则算，你不要写。',
     '游戏没有的做法（凭空得到宝物、直接突破境界、杀死某人、加寿元、学会没有的功法、让别人送你东西）一律回 cannot。',
-    'say 用第二人称“你想……”，不超过四十字，不要写数字。',
-  ].join('\n');
+  ];
+  const SYSTEM = [
+    '你是修仙游戏的意图解析器。玩家用一句话说想做什么，你把它拆成至多三步游戏规则认得的行动，只输出一个 JSON 对象，不要别的文字。',
+    '格式：{"say":"你想……（一句复述）","steps":[步骤…]}；拿不准玩家想做什么时改回 {"ask":"一句追问"}；规则里做不到时回 {"cannot":"一句原因"}。',
+  ].concat(Intent.STEP_RULES, ['say 用第二人称“你想……”，不超过四十字，不要写数字。']).join('\n');
 
   Intent.job = (s, text) => {
     const f = Intent.facts(s);
@@ -7492,6 +7505,438 @@ button.wide { width: 100%; margin-bottom: .6em; }
   FX.Npc = Npc;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- core/director.js ---------- */
+/* ============================================================
+ * director —— 导演模式：主角全程由 AI（或本地策略）自己过这一生，玩家只看
+ * 主角的每一步都落到规则认得的行动上，规则照常校验、掷骰、结算：
+ *  - 本地策略（没有 AI 时、AI 没接上时）：按「本心」（性格与志向）在苦修之外游历、结交、插手传闻、赴约；
+ *  - AI：拿到和自由输入一样的事实，加上本心、志向、近来传闻、按常理的下一步，以主角本人的口吻
+ *    出一份至多三步的打算（和自由输入同一种格式、同一套校验），或者挑一桩传闻去插手、给眼前的事拿主意；
+ *  - 心声（一句第一人称的念头）过文字校验后记进 aiLog，只用于显示，不算进规则状态。
+ * 这个文件不访问网络，也不访问 DOM；网络与节奏在 ui/director.js。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const T = () => FX.T;
+  const W = () => FX.World;
+  const Act = () => FX.Act;
+  const Intent = () => FX.Intent;
+  const Prop = () => FX.Prop;
+
+  const Dir = {};
+  const me = (s) => P().player(s);
+
+  /* ---------- 本心：几种活法 ----------
+   * explore/roam/social/work/meddle：不在冲关、不缺东西时，每步做这件事的几率；bold：遇事敢不敢拼；danger：肯去多险的地方 */
+  Dir.PERSONAS = {
+    qiudao: { name: '一心求道', desc: '闭关苦修为主，少管闲事，缺什么就去找来路', explore: 0.04, roam: 0.02, social: 0.04, work: 0.02, meddle: 0.08, bold: 0, danger: 1 },
+    youli: { name: '游历四方', desc: '修炼之余四处走、四处看，结交各色人物', explore: 0.2, roam: 0.14, social: 0.1, work: 0.02, meddle: 0.25, bold: 1, danger: 2 },
+    xiayi: { name: '古道热肠', desc: '见不得旁人受难，传闻里的事常去插手', explore: 0.08, roam: 0.05, social: 0.12, work: 0.03, meddle: 0.6, bold: 1, danger: 2 },
+    jingying: { name: '精打细算', desc: '先攒家底再求进境，多做营生，少冒险', explore: 0.04, roam: 0.02, social: 0.08, work: 0.2, meddle: 0.1, bold: -1, danger: 1 },
+    haosheng: { name: '好勇斗狠', desc: '遇事敢拼，爱去险地游历，有约必赴', explore: 0.16, roam: 0.06, social: 0.04, work: 0.02, meddle: 0.3, bold: 2, danger: 3 },
+  };
+  Dir.ORDER = ['qiudao', 'youli', 'xiayi', 'jingying', 'haosheng'];
+  // 没选过时按性格定
+  Dir.defaultPersona = (p) => {
+    const t = p.traits || [];
+    if (t.includes('仁慈') || t.includes('正直')) return 'xiayi';
+    if (t.includes('野心勃勃')) return 'haosheng';
+    if (t.includes('贪婪')) return 'jingying';
+    if (t.includes('谨慎') || t.includes('孤傲')) return 'qiudao';
+    return 'youli';
+  };
+
+  // 导演自己的小账（不改任何规则数值）：本心、志向原话、看过的传闻、上回问 AI 的时刻
+  Dir.state = (s) => {
+    if (!s.director) s.director = { persona: Dir.defaultPersona(me(s)), aim: '', seen: [], lastAsk: -1e9, lastPlace: me(s).locationId, n: 0 };
+    return s.director;
+  };
+  Dir.setPersona = (s, k) => { if (!Dir.PERSONAS[k]) return { ok: false, error: '没有这种活法' }; Dir.state(s).persona = k; return { ok: true }; };
+  Dir.setAim = (s, text) => { Dir.state(s).aim = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 60); return { ok: true }; };
+  const persona = (s) => Dir.PERSONAS[Dir.state(s).persona] || Dir.PERSONAS.qiudao;
+
+  // 小型确定性随机数：只管导演自己的取舍，不碰游戏的 rng（同种子同一生）
+  const mkRng = (seed) => {
+    let h = 2166136261;
+    for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 1e6) / 1e6; };
+  };
+  Dir.mkRng = mkRng;
+  const rngAt = (s) => mkRng('dir:' + s.seed + ':' + s.t + ':' + s.player.stats.actions + ':' + Dir.state(s).n);
+
+  /* ---------- 苦修（与测试里的苦修策略同一套）---------- */
+  // 以闭关为主，能突破就突破；无门无派时先去拜入宗门；缺什么先找本门库藏，道功不够就做差事，再不行去墟市买或托人代寻；伤了就养
+  Dir.diligent = (s, rng) => {
+    const Gm = FX.Game;
+    const A = Gm.actions(s);
+    const ov = Gm.view.overview(s);
+    const me = ov.me, CF = C();
+    const find = (f) => A.find((a) => a.ok && f(a));
+    const here = ov.place.id;
+    const goTo = (pid) => { const r = W().route(s, here, pid); return r && r.path.length > 1 ? find((a) => a.type === 'travel' && a.to === r.path[1]) : null; };
+    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || find((a) => a.type === 'rest');
+    const house = Gm.view.house(s);
+    if (!house.member && !me.factionId && me.realm.major >= 1) {
+      const tgt = house.sects.find((x) => x.join && !x.join.closed && (x.can === true || /^要回到/.test(x.can)));
+      if (tgt) { const j = find((a) => a.type === 'join' && a.fid === tgt.f.id); if (j) return j; const t = goTo(tgt.f.seatId); if (t) return t; }
+    }
+    const free = find((a) => a.type === 'sect_learn' && !a.cost);
+    if (free) return free;
+    const sub = find((a) => a.type === 'submit');
+    if (sub) return sub;
+    const curTier = ov.lianqi ? ov.lianqi.tier : 0;
+    const learn = find((a) => a.type === 'learn' && CF.techniques[a.tech].tier > curTier && (!me.techniqueId || (me.realm.major === 2 && me.realm.stage <= 3)));
+    if (learn) return learn;
+    const jk = A.find((a) => a.type === 'jiaokao');
+    if (jk && jk.ok) return jk;
+    if (jk && /^要回到/.test(jk.reason)) { const t = goTo(house.faction.seatId); if (t) return t; }
+    const dyCfg = CF.saga.diyuan;
+    const dyOpen = FX.Saga.openYear(s, 'diyuan') !== null && s.saga.diyuan.done !== s.saga.diyuan.open.from;
+    if (dyOpen && me.realm.major >= 3 && me.health.state === 'healthy') {
+      const dy = find((a) => a.type === 'diyuan');
+      if (dy) return dy;
+      const pit = Object.values(s.places).find((x) => x.name === dyCfg.place);
+      const r = pit && W().route(s, here, pit.id);
+      if (r && r.days <= 60) { const t = goTo(pit.id); if (t) return t; }
+    }
+    const bt = ov.breakthrough;
+    const br = find((a) => a.type === 'breakthrough');
+    if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * CF.daysPerYear || ov.age > ov.lifespan - 25)) return br;
+    if (ov.pillUntil === null && me.realm.major >= 2) { const q = find((a) => a.type === 'use' && a.item === 'qiju'); if (q) return q; }
+    const mk = s.markets[here];
+    if (!house.member) for (const k of CF.loot) if (ov.inv[k] > 0 && mk) return { type: 'sell', item: k, qty: ov.inv[k] };
+    const coming = (k) => s.player.orders.filter((o) => o.item === k).length;
+    const want = [];
+    if (me.realm.major === 1 && !ov.lianqi) want.push((x) => x.startsWith('tech:') && CF.techniques[x.slice(5)].kind === 'lianqi');
+    if (bt && bt.kind === 'zhuji' && !(ov.inv.zhuji > 0)) want.push((x) => x === 'zhuji');
+    const need = FX.CU.minorNeed(me);
+    if (need && (ov.inv[need.item] || 0) + coming(need.item) < need.qty) want.push((x) => x === need.item);
+    if (bt && bt.kind === 'zifu' && !FX.CU.bestKaifu(s)) want.push((x) => x.startsWith('tech:') && CF.techniques[x.slice(5)].kind === 'kaifu' && !coming(x));
+    if (bt && bt.kind === 'jindan' && !(ov.inv.ningdan > 0) && !coming('ningdan')) want.push((x) => x === 'ningdan');
+    const wanted = (x) => want.some((f) => f(x));
+    if (want.length) {
+      const red = A.find((a) => (a.type === 'redeem' && wanted(a.item)) || (a.type === 'sect_learn' && wanted('tech:' + a.tech)));
+      if (red && red.ok) return red;
+      if (red && /不够/.test(red.reason)) {
+        if (!house.atSeat) { const t = goTo(house.faction.seatId); if (t) return t; }
+        const m = find((a) => a.type === 'mission');
+        if (m && rng() < 0.5) return m;
+        const w = find((a) => a.type === 'work');
+        if (w) return w;
+      }
+      if (red && /^要回到/.test(red.reason)) { const t = goTo(house.faction.seatId); if (t) return t; }
+      const slot = mk && mk.stock.find((x) => wanted(x.item) && x.qty > 0);
+      if (slot && ov.stone >= slot.price) return { type: 'buy', item: slot.item, qty: 1 };
+      const ord = find((a) => a.type === 'order' && wanted(a.item));
+      if (ord) return ord;
+      const markets = Object.values(s.places).filter((p) => p.id !== here && s.markets[p.id] && s.markets[p.id].stock.some((x) => wanted(x.item) && x.qty > 0 && x.price <= ov.stone));
+      const best = markets.map((p) => W().route(s, here, p.id)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
+      if (best) return find((a) => a.type === 'travel' && a.to === best.path[1]);
+      const w = find((a) => a.type === 'work');
+      if (w && rng() < 0.6) return w;
+    }
+    const qslot = mk && mk.stock.find((x) => x.item === 'qiju' && x.qty > 0);
+    if (me.realm.major >= 2 && qslot && ov.stone >= qslot.price + 150 && !(ov.inv.qiju > 0) && !want.length) return { type: 'buy', item: 'qiju', qty: 1 };
+    if (me.realm.major >= 2 && !want.length) {
+      const rateAt = (p) => { const lim = CF.cultivation.outsiderQi[p.type]; const qi = lim !== undefined && p.factionId && p.factionId !== me.factionId ? Math.min(p.qi, lim) : p.qi; const f = FX.CU.attrFit(s, me, p); return CF.cultivation.qiMult[qi] * (f ? f.value : 1); };
+      const cur = rateAt(ov.place);
+      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: W().route(s, here, p.id) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
+      if (goal) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
+      const df = find((a) => a.type === 'dongfu');
+      if (df && ov.place.danger <= 1 && ov.stone > df.cost * 2) return df;
+      const coin = find((a) => a.type === 'cultivate' && a.coin && a.days === 360);
+      if (coin && ov.stone > coin.cost * 3 && CF.cultivation.qiMult[CF.cultivation.coin.qi] > cur) return coin;
+    }
+    if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+  };
+
+  /* ---------- 传闻：近来能插手、还没理会过的 ---------- */
+  Dir.rumors = (s, n) => {
+    const d = Dir.state(s), seen = new Set(d.seen), p = me(s);
+    const since = s.t - 2 * C().daysPerYear;
+    const out = [];
+    for (let i = s.history.length - 1; i >= 0 && out.length < (n || 4); i--) {
+      const e = s.history[i];
+      if (e.t < since) break;
+      if (e.pov || !e.params || !e.params.ix || seen.has(e.id)) continue;
+      const plans = FX.Npc.interventions(s, e);
+      if (plans.length) out.push({ hid: e.id, text: H().text(e), plans, close: (e.actors || []).some((id) => id !== p.id && Math.abs(P().relValue(s, p.id, id)) >= 20) });
+    }
+    return out;
+  };
+  const markSeen = (s, ids) => { const d = Dir.state(s); for (const id of ids) if (!d.seen.includes(id)) d.seen.push(id); if (d.seen.length > 60) d.seen.splice(0, d.seen.length - 60); };
+
+  /* ---------- 本地策略：返回 { act } 或 { plan }，附 why（心声）和 seen（看过的传闻）---------- */
+  Dir.local = (s) => {
+    const per = persona(s), rng = rngAt(s), p = me(s), cf = C();
+    const A = Act().list(s);
+    const find = (f) => A.find((a) => a.ok && f(a));
+    let skipped = [];
+    const out = (o, why, seen) => Object.assign(o, { why, seen: (seen || []).concat(skipped), via: 'local' });
+    // 到期的约战：照约去
+    const pact = (s.player.pacts || []).find((x) => x.kind === 'duel' && !x.done && x.due <= s.t && s.people[x.npc] && P().alive(s.people[x.npc]));
+    if (pact && p.health.state === 'healthy' && per.bold >= 0) {
+      const q = s.people[pact.npc];
+      const steps = (q.locationId !== p.locationId ? [{ k: 'go', to: q.locationId }] : []).concat([{ k: 'deed', a: { type: 'deed', verb: 'fight', mode: 'duel', npc: q.id } }]);
+      if (Intent().preview(s, steps).ok) return out({ plan: { say: '赴' + q.name + '的约战', steps, via: 'director' } }, '与' + q.name + '有约在先，该去了结。');
+    }
+    const ov = FX.Game.view.overview(s);
+    const atGate = ov.full && ov.breakthrough && ov.breakthrough.can && ov.breakthrough.can.ok;
+    const hurt = p.health.state !== 'healthy';
+    // 传闻：按本心决定插不插手（看过的就不再想）
+    const rs = hurt || atGate ? [] : Dir.rumors(s, 2);
+    if (rs.length) {
+      const r = rs[0];
+      if (rng() < per.meddle) {
+        const order = per.meddle >= 0.5 ? ['相助', '送药', '看看', '打听'] : ['看看', '打听', '相助', '送药'];
+        const rank = (pl) => { const i = order.findIndex((w) => pl.say.includes(w)); return i < 0 ? 9 : i; };
+        const pl = r.plans.slice().sort((a, b) => rank(a) - rank(b))[0];
+        const pv = Intent().preview(s, pl.steps);
+        if (pv.ok && pv.days <= 90 * (1 + per.danger)) return out({ plan: Object.assign({}, pl, { via: 'director' }) }, '听说了这件事，' + (per.meddle >= 0.5 ? '不能坐视不管。' : '去看看也好。'), rs.map((x) => x.hid));
+      }
+      // 不插手也记下，免得每步都想一遍
+      skipped = rs.map((x) => x.hid);
+    }
+    // 本心里的闲笔：不在关口、没伤、不缺急用的东西时
+    const g = FX.Guide && FX.Guide.next(s);
+    const stuck = g && g.need && !g.need.soon;
+    if (!hurt && !atGate && !stuck) {
+      const r = rng();
+      let acc = per.explore;
+      if (r < acc) {
+        const ex = find((a) => a.type === 'explore' && a.days === 30) || find((a) => a.type === 'explore');
+        if (ex && s.places[p.locationId].danger <= per.danger + 1) return out({ act: ex }, '在此地走走看看，或有所得。');
+      }
+      if (r < (acc += per.roam)) {
+        const ts = A.filter((a) => a.ok && a.type === 'travel' && s.places[a.to].danger <= per.danger);
+        if (ts.length) { const t = ts[Math.floor(rng() * ts.length)]; return out({ act: t }, '久居一地，想去' + s.places[t.to].name + '看看。'); }
+      }
+      if (r < (acc += per.social)) {
+        const cs = A.filter((a) => a.ok && (a.type === 'befriend' || a.type === 'consult'));
+        if (cs.length) { const c = cs[Math.floor(rng() * cs.length)]; const q = s.people[c.npc]; return out({ act: c }, c.type === 'consult' ? q.name + '修为在我之上，正好请教。' : '与' + q.name + '同在一地，该去走动走动。'); }
+      }
+      if (r < (acc += per.work)) {
+        const w = find((a) => a.type === 'work');
+        if (w) return out({ act: w }, '手头不宽裕，先挣些符钱。');
+      }
+    }
+    const a = Dir.diligent(s, rng) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 360) || find((x) => x.type === 'rest') || find((x) => x.type === 'cultivate');
+    if (!a) return null;
+    return out({ act: a }, whyOf(s, a));
+  };
+  // 苦修路上的心声（模板；只在换了做法时才记）
+  const whyOf = (s, a) => {
+    const n = (id) => (s.people[id] ? s.people[id].name : '');
+    switch (a.type) {
+      case 'breakthrough': return '修为已到关口，成败在此一举。';
+      case 'cultivate': return a.coin ? '符钱尚足，以符钱修行快些。' : '闭关修炼，不问外事。';
+      case 'rest': case 'use': return a.item && a.item !== 'heal' ? '服下' + C().items[a.item].name + '。' : '伤还没好，先养伤。';
+      case 'travel': return '动身去' + s.places[a.to].name + '。';
+      case 'join': return '无门无派难有出路，去求入山门。';
+      case 'learn': case 'sect_learn': return '换一门更好的功法。';
+      case 'redeem': case 'order': case 'buy': return '冲关缺的东西，得先备齐。';
+      case 'mission': case 'work': return '道功、符钱不够，先去挣。';
+      case 'explore': return '出去走走，或有机缘。';
+      case 'befriend': return '去拜访' + n(a.npc) + '。';
+      case 'diyuan': return '地渊开了，去碰碰运气。';
+      default: return a.label ? a.label + '。' : '';
+    }
+  };
+
+  /* ---------- 眼前的事：本地按本心拿主意 ---------- */
+  Dir.eventLocal = (s) => {
+    const v = FX.Game.pendingEvents(s)[0];
+    if (!v) return null;
+    const per = persona(s);
+    const opts = v.options.filter((o) => o.available);
+    if (!opts.length) return null;
+    const ch = (o) => (o.chance && typeof o.chance.chance === 'number' ? o.chance.chance : null);
+    const line = { 2: 40, 1: 55, 0: 65, '-1': 75 }[per.bold];
+    const brave = opts.filter((o) => ['fight', 'deep'].includes(o.id) && (ch(o) === null ? per.bold >= 2 : ch(o) >= line)).sort((a, b) => (ch(b) || 0) - (ch(a) || 0))[0];
+    if (brave) return { id: brave.id, label: brave.label, why: ch(brave) !== null ? '胜算不小，拼一拼。' : '富贵险中求。', via: 'local' };
+    const safe = opts.find((o) => ['safe', 'pay', 'flee'].includes(o.id)) || opts.filter((o) => !o.irreversible)[0] || opts[0];
+    return { id: safe.id, label: safe.label, why: per.bold >= 1 ? '这回不值得拼命。' : '稳妥为上。', via: 'local' };
+  };
+
+  /* ---------- 什么时候值得问 AI（「要紧时」模式）---------- */
+  Dir.moment = (s, everyYears) => {
+    const d = Dir.state(s), p = me(s);
+    if (s.pending.length) return '眼前有事';
+    const ov = FX.Game.view.overview(s);
+    if (ov.full && ov.breakthrough && ov.breakthrough.can && ov.breakthrough.can.ok) return '到了关口';
+    if (p.health.state === 'heavy') return '受了重伤';
+    if (d.lastPlace !== p.locationId) return '到了新地方';
+    // 传闻常有，只有牵涉到相熟的人（交情或仇怨够深）、且隔了两年以上才算要紧
+    if (s.t - d.lastAsk >= 2 * C().daysPerYear && Dir.rumors(s, 3).some((r) => r.close)) return '听到熟人的事';
+    if ((s.player.pacts || []).some((x) => !x.done && x.due <= s.t)) return '约期到了';
+    if (s.t - d.lastAsk >= (everyYears || 8) * C().daysPerYear) return '隔了些年';
+    return '';
+  };
+
+  // 问过 AI 了（不管成没成）：记下时刻和所在，免得接着每步都问
+  Dir.asked = (s) => { const d = Dir.state(s); d.lastAsk = s.t; d.lastPlace = me(s).locationId; };
+
+  /* ---------- 给 AI 的打包 ---------- */
+  const SYSTEM_HEAD = [
+    '你就是这位修士本人，正在过自己的一生。玩家只在旁观，由你按自己的性格、本心和志向决定接下来做什么。只输出一个 JSON 对象，不要别的文字。',
+  ];
+  const lifeLine = (s) => {
+    const p = me(s), d = Dir.state(s), per = persona(s);
+    return '本心：' + per.name + '（' + per.desc + '）' + (d.aim ? '；志向：' + d.aim : '') + '。性格：' + ((p.traits || []).join('、') || '平常') + '。年 ' + P().age(s, p) + '，余寿约 ' + Math.floor(P().lifespanLeft(s, p)) + ' 年。';
+  };
+  const suggestText = (s, sug, acts) => {
+    if (!sug) return '';
+    if (sug.plan) return '按常理的下一步：' + sug.plan.say + '。';
+    const i = acts.findIndex((a) => a.type === sug.act.type && ['days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall', 'coin', 'until'].every((k) => a[k] === sug.act[k]));
+    return '按常理的下一步：' + (i >= 0 ? 'a' + (i + 1) + '（' + acts[i].label + '）' : sug.act.label || sug.act.type) + '。';
+  };
+  Dir.job = (s) => {
+    const f = Intent().facts(s);
+    const rs = Dir.rumors(s, 3);
+    const sug = Dir.local(s);
+    const rText = rs.length ? '近来的传闻（可插手）：\n' + rs.map((r, i) => 'r' + (i + 1) + '：' + r.text + '（做法：' + r.plans.map((pl) => pl.say).join(' / ') + '）').join('\n') : '';
+    const system = SYSTEM_HEAD.concat([
+      '格式：{"think":"一句心声","steps":[步骤…]}；想插手某桩传闻时回 {"think":"一句心声","rumor":"r1","how":"做法原文"}。',
+      'think 是你此刻心里的一句话，第一人称“我”，不超过四十字，不写数字，只用事实里出现的名字。',
+    ], Intent().STEP_RULES, [
+      '寿元有限：闭关修炼是正道，但不必一辈子只闭关；修为圆满就去冲关，卡关缺东西就去找来路；重伤先养伤。',
+      '按本心行事：好管闲事的常插手传闻，爱游历的常出门，求道的少管闲事。拿不定主意就照“按常理的下一步”。',
+    ]).join('\n');
+    const facts = f.text + '\n' + lifeLine(s) + (rText ? '\n' + rText : '');
+    return {
+      kind: 'director', facts, acts: f.acts, rumors: rs, suggest: sug, input: '', maxTokens: 500,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: '事实：\n' + facts + '\n' + suggestText(s, sug, f.acts) + '\n\n你接下来做什么？' }],
+    };
+  };
+  const cleanThink = (s, t, facts) => {
+    if (typeof t !== 'string') return '';
+    const x = Prop().tidy(t).replace(/\s+/g, '').slice(0, 60);
+    return x && !Prop().checkText(s, x, facts, { maxLen: 60 }) ? x : '';
+  };
+  // 返回 { ok, choice } | { ok:false, why }；choice 和 Dir.local 的形状一样
+  Dir.parse = (s, job, raw) => {
+    const j = Prop().parseJSON(raw);
+    if (!j.ok) return { ok: false, why: j.error };
+    const v = j.value || {};
+    const why = cleanThink(s, v.think, job.facts);
+    if (v.rumor !== undefined) {
+      const m = /^r?(\d)$/.exec(String(v.rumor).trim());
+      const r = m && job.rumors[Number(m[1]) - 1];
+      if (!r) return { ok: false, why: '没有传闻 ' + v.rumor };
+      const how = String(v.how || '');
+      const pl = r.plans.find((x) => how && (x.say === how || how.includes(x.say) || x.say.includes(how))) || r.plans[0];
+      return { ok: true, choice: { plan: Object.assign({}, pl, { via: 'director' }), why, seen: [r.hid], via: 'ai' } };
+    }
+    const rest = {};
+    for (const k of ['steps', 'ask', 'cannot']) if (v[k] !== undefined) rest[k] = v[k];
+    if (rest.ask || rest.cannot) return { ok: false, why: '没拿定主意' };
+    const r = Intent().parse(s, job, JSON.stringify(rest));
+    if (!r.ok) return { ok: false, why: r.why };
+    if (!r.steps) return { ok: false, why: '没有步骤' };
+    const say = why || (r.say || '');
+    return { ok: true, choice: { plan: { say, steps: r.steps, via: 'director' }, why, seen: job.rumors.map((x) => x.hid), via: 'ai' } };
+  };
+
+  Dir.eventJob = (s) => {
+    const v = FX.Game.pendingEvents(s)[0];
+    if (!v) return null;
+    const av = v.options.filter((o) => o.available);
+    const f = Intent().facts(s);
+    const evText = '眼前的事「' + v.name + '」：' + v.text + (v.causes.length ? '\n起因：' + v.causes.join('；') : '') + '\n可选（id｜做法｜代价｜风险｜成算）：\n' +
+      av.map((o) => [o.id, o.label, o.cost, o.risk, o.chance && typeof o.chance.chance === 'number' ? o.chance.chance + '%' : '—'].join('｜')).join('\n');
+    const facts = f.text + '\n' + lifeLine(s) + '\n' + evText;
+    const sug = Dir.eventLocal(s);
+    return {
+      kind: 'director_event', facts, options: av, suggest: sug, maxTokens: 200,
+      messages: [
+        { role: 'system', content: SYSTEM_HEAD.concat(['格式：{"id":"选项 id","think":"一句心声"}。think 第一人称“我”，不超过四十字，不写数字，只用事实里出现的名字。', '成败由规则掷骰，你只管拿主意；按本心和性格，惜命还是拼一把都可以。']).join('\n') },
+        { role: 'user', content: '事实：\n' + facts + (sug ? '\n按常理：选 ' + sug.id + '。' : '') + '\n\n你怎么办？' },
+      ],
+    };
+  };
+  Dir.parseEvent = (s, job, raw) => {
+    const j = Prop().parseJSON(raw);
+    if (!j.ok) return { ok: false, why: j.error };
+    const v = j.value || {};
+    const o = job.options.find((x) => x.id === String(v.id || '').trim());
+    if (!o) return { ok: false, why: '没有选项「' + v.id + '」' };
+    return { ok: true, choice: { id: o.id, label: o.label, why: cleanThink(s, v.think, job.facts), via: 'ai' } };
+  };
+
+  /* ---------- 执行一步 ----------
+   * choice 来自 Dir.local / Dir.parse；返回 { ok, label, text, error }
+   * 心声记进 aiLog（kind 'dir'）：{ out: 心声, label: 做了什么, via: ai|local, hid: 当时的纪事位置 } */
+  Dir.note = (s, label, why, via, force) => {
+    const d = Dir.state(s);
+    d.n++;
+    const last = Prop().latest(s, 'dir');
+    if (!force && via === 'local' && last && last.via === 'local' && last.label === label) return false; // 照旧闭关就不重复记
+    Prop().record(s, 'dir', 'd:' + s.t + ':' + d.n, why || '', { label, via, hid: 'h' + s.nextHistId });
+    return true;
+  };
+  Dir.exec = (s, choice) => {
+    const d = Dir.state(s);
+    if (!choice) return { ok: false, error: '没有可做的事' };
+    markSeen(s, choice.seen || []);
+    let r, label;
+    if (choice.plan) {
+      label = choice.plan.say || '依计行事';
+      Dir.note(s, label, choice.why, choice.via, true);
+      const x = FX.Game.intent.exec(s, choice.plan);
+      r = { ok: x.done > 0 || s.pending.length > 0 || !!s.ended, text: x.texts.join('；'), error: x.stopped, partial: x.stopped };
+    } else {
+      const a = choice.act;
+      label = a.label || (a.type === 'buy' ? '买' + W().itemName(a.item) : a.type === 'sell' ? '卖' + W().itemName(a.item) : a.type);
+      Dir.note(s, label, choice.why, choice.via, a.type === 'breakthrough');
+      r = FX.Game.act(s, a);
+    }
+    return Object.assign({ label }, r);
+  };
+  Dir.choose = (s, choice) => {
+    const v = FX.Game.pendingEvents(s)[0];
+    if (!v || !choice) return { ok: false, error: '眼前没有事' };
+    Dir.note(s, v.name + '：' + choice.label, choice.why, choice.via, true);
+    return FX.Game.choose(s, v.id, choice.id);
+  };
+  // 不问 AI，按本地策略走一步（事件或行动）；测试与“不用 AI”时用
+  Dir.stepLocal = (s) => {
+    if (s.ended) return { ok: false, error: '这一生已经结束' };
+    if (s.pending.length) return Dir.choose(s, Dir.eventLocal(s));
+    const c = Dir.local(s);
+    const r = Dir.exec(s, c);
+    // 走不通（例如货架刚卖空）就闭关一年，免得原地打转
+    if (!r.ok) { const a = Act().list(s).find((x) => x.ok && x.type === 'cultivate' && !x.coin && x.days === 360) || Act().list(s).find((x) => x.ok && (x.type === 'rest' || x.type === 'cultivate')); if (a) return Object.assign({ fallback: true }, FX.Game.act(s, a)); }
+    return r;
+  };
+
+  // 导演页的时间线：亲历的事、要紧的传闻、心声，按时间排（新的在前）
+  // 心声记着当时的纪事位置 hid，排在那以后的第一条纪事前面
+  const hnum = (id) => Number(String(id).slice(1)) || 0;
+  Dir.timeline = (s, n) => {
+    const notes = (s.aiLog || []).filter((r) => r.kind === 'dir').sort((a, b) => hnum(a.hid) - hnum(b.hid));
+    const hs = s.history.filter((e) => e.pov || e.severity >= 3).slice(-(n || 80));
+    const first = hs.length ? hnum(hs[0].id) : Infinity;
+    const out = [];
+    let i = 0;
+    while (i < notes.length && hnum(notes[i].hid) < first) i++;
+    const dn = (r) => ({ kind: 'dir', t: r.t, label: r.label, text: r.out, via: r.via });
+    for (const e of hs) {
+      while (i < notes.length && hnum(notes[i].hid) <= hnum(e.id)) out.push(dn(notes[i++]));
+      out.push({ kind: 'h', t: e.t, id: e.id, pov: e.pov, text: H().text(e), sev: e.severity });
+    }
+    while (i < notes.length) out.push(dn(notes[i++]));
+    return out.reverse();
+  };
+
+  FX.Dir = Dir;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- core/save.js ---------- */
 /* ============================================================
  * save（核心部分）—— 序列化、校验、迁移、校验和
@@ -8122,7 +8567,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 
   const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
-  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事', npc: '人物近况' };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事', npc: '人物近况', director: '导演' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '还没调用过';
@@ -8269,6 +8714,157 @@ button.wide { width: 100%; margin-bottom: .6em; }
   FX.AI = AI;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---------- ui/director.js ---------- */
+/* ============================================================
+ * director（界面一侧）—— 导演模式的节奏：开始、暂停、接管、调速，问不问 AI
+ * 决策与校验都在核心 FX.Dir；这里只管什么时候走下一步、要不要等 AI。
+ *  - 每一步都通过公开接口执行，规则照常结算；AI 没开、没接上、回来的东西不合规，就按本地策略走这一步；
+ *  - AI 频率：「要紧时」只在关口、遇事、听到传闻、到了新地方、隔了些年时问；「每一步」步步都问；「不用」全走本地；
+ *  - 连着出岔子（行动走不通）就自己停下，等玩家接管。
+ * 这个文件不碰 DOM，可在 Node 里注入 FX.AI.env 做测试。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+
+  const LS = 'family-xiuxian:director';
+  const Director = {
+    running: false,
+    busy: false,
+    s: null,
+    speed: 'mid',
+    aiMode: 'key', // key 要紧时 / every 每一步 / off 不用
+    everyYears: 8,
+    status: '',
+    lastAI: '', // 最近一次 AI 的结果（给界面看）
+    fails: 0,
+    onStep: null, // 走完一步通知界面
+    onStop: null,
+    timer: null,
+    env: { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), now: () => Date.now() },
+  };
+  // 每步之间停多久（毫秒）；极速时一口气走若干步再刷新
+  Director.SPEEDS = { slow: { name: '慢', ms: 2600 }, mid: { name: '中', ms: 1000 }, fast: { name: '快', ms: 250 }, max: { name: '极速', ms: 0 } };
+  Director.MODES = { key: '要紧时问', every: '每步都问', off: '不用 AI' };
+
+  try {
+    const c = JSON.parse((G.localStorage && G.localStorage.getItem(LS)) || '{}') || {};
+    if (Director.SPEEDS[c.speed]) Director.speed = c.speed;
+    if (Director.MODES[c.aiMode]) Director.aiMode = c.aiMode;
+  } catch (e) { /* 忽略 */ }
+  const remember = () => { try { G.localStorage && G.localStorage.setItem(LS, JSON.stringify({ speed: Director.speed, aiMode: Director.aiMode })); } catch (e) { /* 忽略 */ } };
+  Director.setSpeed = (k) => { if (Director.SPEEDS[k]) { Director.speed = k; remember(); } };
+  Director.setMode = (k) => { if (Director.MODES[k]) { Director.aiMode = k; remember(); } };
+
+  const aiReady = () => !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
+  Director.aiState = () => {
+    if (Director.aiMode === 'off') return '不用 AI，按本心走本地策略';
+    if (!FX.AI) return '没有 AI 模块，按本地策略';
+    const r = FX.AI.config().enabled ? FX.AI.ready() : { ok: false, reason: '没有开启 AI' };
+    return r.ok ? 'AI 已接上（' + { key: '只在关口、遇事、熟人有事、到新地方时问它', every: '每一步都问它' }[Director.aiMode] + '）' : 'AI 没接上（' + r.reason + '），按本地策略';
+  };
+
+  const notify = () => { if (typeof Director.onStep === 'function') { try { Director.onStep(); } catch (e) { /* 界面刷新失败不影响导演 */ } } };
+
+  // 问一次 AI：返回 choice 或 null（并记下原因）
+  async function askAI(s, isEvent) {
+    const job = isEvent ? FX.Dir.eventJob(s) : FX.Dir.job(s);
+    if (!job) return null;
+    const res = await FX.AI.call('director', job.messages, job.maxTokens, Math.min(15000, FX.AI.config().timeoutMs));
+    if (!res.ok) { Director.lastAI = 'AI 没接上（' + res.reason + '），这一步按本心走'; return null; }
+    if (Director.s !== s) return null;
+    const v = isEvent ? FX.Dir.parseEvent(s, job, res.text) : FX.Dir.parse(s, job, res.text);
+    if (!v.ok) { Director.lastAI = 'AI 的打算不合规（' + v.why + '），这一步按本心走'; if (FX.AI.rejects) { FX.AI.rejects.unshift({ at: Date.now(), kind: 'director', why: v.why, text: String(res.text).slice(0, 400) }); FX.AI.rejects.length = Math.min(FX.AI.rejects.length, 20); } return null; }
+    Director.lastAI = 'AI 拿了主意';
+    return v.choice;
+  }
+
+  // 走一步（事件或行动）；返回结果
+  Director.step = async (s) => {
+    if (s.ended) return { ok: false, error: '这一生已经结束' };
+    const isEvent = s.pending.length > 0;
+    const D = FX.Dir;
+    let choice = null;
+    const why = Director.aiMode === 'every' ? '每一步' : Director.aiMode === 'key' ? D.moment(s, Director.everyYears) : '';
+    if (why && aiReady()) {
+      if (!isEvent) D.asked(s);
+      Director.status = (isEvent ? '眼前有事，' : why + '，') + '思量中…';
+      notify();
+      choice = await askAI(s, isEvent);
+      if (Director.s !== s) return { ok: false, error: '换了一局' };
+      // 等 AI 的工夫里玩家可能接管了：那就不做了
+      if (!Director.running && !Director.single) return { ok: false, error: '已暂停' };
+    }
+    Director.status = '';
+    if (isEvent) return D.choose(s, choice || D.eventLocal(s));
+    if (!choice) return D.stepLocal(s);
+    const r = D.exec(s, choice);
+    if (!r.ok) return D.stepLocal(s); // AI 的打算第一步就走不通：照本心走
+    return r;
+  };
+
+  function loop() {
+    Director.timer = null;
+    const s = Director.s;
+    if (!Director.running || !s) return;
+    if (s.ended) { Director.stop('这一生已经结束'); return; }
+    if (Director.busy) return;
+    Director.busy = true;
+    const sp = Director.SPEEDS[Director.speed];
+    const t0 = Director.env.now();
+    (async () => {
+      let n = 0;
+      // 极速：一口气走到 150 毫秒或要问 AI 为止
+      do {
+        let r;
+        try { r = await Director.step(s); } catch (e) { r = { ok: false, error: '出错了：' + (e && e.message) }; }
+        n++;
+        if (r && r.ok === false && !/已暂停|换了一局/.test(r.error || '')) Director.fails++; else Director.fails = 0;
+        if (Director.fails >= 6) { Director.stop('连着几步走不通（' + (r && r.error) + '），先停下，你来接管'); break; }
+        if (sp.ms > 0 || !Director.running || s.ended) break;
+        if (Director.aiMode !== 'off' && aiReady() && (Director.aiMode === 'every' || FX.Dir.moment(s, Director.everyYears))) break;
+      } while (Director.env.now() - t0 < 150 && n < 40);
+      Director.busy = false;
+      notify();
+      if (s.ended) { Director.stop('这一生已经结束'); return; }
+      if (Director.running) Director.timer = Director.env.setTimeout(loop, sp.ms || 16);
+    })();
+  }
+
+  Director.start = (s) => {
+    if (!s || s.ended) return false;
+    FX.Dir.state(s);
+    Director.s = s;
+    Director.running = true;
+    Director.fails = 0;
+    Director.status = '';
+    if (!Director.busy && !Director.timer) loop();
+    notify();
+    return true;
+  };
+  Director.stop = (why) => {
+    Director.running = false;
+    if (Director.timer) { Director.env.clearTimeout(Director.timer); Director.timer = null; }
+    Director.status = why || '';
+    if (typeof Director.onStop === 'function') { try { Director.onStop(why); } catch (e) { /* 忽略 */ } }
+    notify();
+  };
+  // 只走一步（暂停时手动推一下）
+  Director.once = async (s) => {
+    if (Director.busy || !s || s.ended) return null;
+    Director.s = s;
+    Director.busy = true; Director.single = true;
+    let r;
+    try { r = await Director.step(s); } finally { Director.busy = false; Director.single = false; }
+    notify();
+    return r;
+  };
+  // 换局、读档时：停下，丢掉旧局
+  Director.reset = () => { Director.stop(''); Director.s = null; Director.lastAI = ''; };
+
+  FX.Director = Director;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---------- ui/app.js ---------- */
 /* ============================================================
  * ui —— 交互界面。只通过 FX.Game 公开函数操作核心，不直接修改状态。
@@ -8342,11 +8938,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
   function afterAction() {
     scheduleSave();
     if (UI.s && UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
-    else if (UI.s && UI.s.pending.length && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
+    else if (UI.s && UI.s.pending.length && !dirOn() && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
     render();
     focusModal();
     aiAfter();
   }
+  const dirOn = () => !!(FX.Director && FX.Director.running && FX.Director.s === UI.s);
   /* ---------- AI：行动以后写一段叙述（不等它；回来了再刷新）---------- */
   // UI.aiMark 记着上回看到的纪事位置；读档、开局时对齐，免得把以前的事都写一遍
   function aiAfter() {
@@ -8369,6 +8966,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   async function readSave(text) {
     const r = Game.save.deserialize(text);
     if (!r.ok) { toast('读取失败：' + r.error, 5000); return false; }
+    if (FX.Director) FX.Director.reset();
     UI.s = r.state; UI.modals = []; UI.page = 'now'; UI.aiMark = Game.ai.mark(UI.s);
     afterAction();
     if (G.scrollTo) G.scrollTo(0, 0);
@@ -8391,6 +8989,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   // 导航按要办的事分：修行在此刻，买东西都在采买，跑图在地图；纪事、人物、天下大事合成见闻
   const PAGES = [
     { id: 'now', name: '此刻' },
+    { id: 'dir', name: '导演' },
     { id: 'shop', name: '采买' },
     { id: 'map', name: '地图' },
     { id: 'bag', name: '行囊' },
@@ -8408,7 +9007,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     root.innerHTML = `
       <div class="app">
         <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(CF.world.region)}</div><div class="sub">${esc(ov.me.name)} · ${esc(ov.date)}</div>${nav}</nav>
-        <main id="main" class="p-${UI.page}"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
+        <main id="main" class="p-${UI.page}"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${dirOn() ? ' · <button class="link" data-act="page" data-p="dir">导演中</button> <button class="link" data-act="dirStop">接管</button>' : UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
         <aside class="right" aria-label="最近经历">${renderAside()}</aside>
       </div>
       <nav class="bottom" aria-label="底部导航">${bottom}</nav>
@@ -8452,7 +9051,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
           <label>性别 <select id="in-sex"><option value="">随机</option><option value="M" ${st.sex === 'M' ? 'selected' : ''}>男</option><option value="F" ${st.sex === 'F' ? 'selected' : ''}>女</option></select></label>
           <label>种子 <input type="text" id="in-seed" value="${esc(st.seed)}" placeholder="随机" style="width:9em"></label>
           <button class="primary" data-act="newGame">踏入仙途</button>
+          <button data-act="newGame" data-dir="1">交给导演（全程 AI）</button>
         </div>
+        <p class="muted">交给导演：主角自己过这一生，按性格与本心修炼、游历、插手传闻、遇事拿主意，你只看；随时可暂停、调速、接管。开了 AI 就由 DeepSeek 替他想，没开就按本地策略走。</p>
         <p class="muted">资质与世界由种子决定。种子相同、选择相同，这一生就逐位相同。修道家族子弟的家族会以你的姓氏命名。</p>
         <p class="muted">世界与设定取自鹓扶君《仙业》的东弥州南域：胎息、练炁、筑基、紫府、洞玄、金丹，玄真派、五光宗、花神府、金谷墟市、地渊。</p>
       </div></div>`;
@@ -9140,13 +9741,42 @@ button.wide { width: 100%; margin-bottom: .6em; }
       <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
       ${rej}</div>`;
   }
+  /* ---------- 导演模式 ---------- */
+  PAGE.dir = (ov) => {
+    const s = UI.s, D = FX.Director, Dir = FX.Dir;
+    if (!D || !Dir) return '<h2>导演</h2><p class="muted">这一版没有导演模式。</p>';
+    const st = Dir.state(s), on = dirOn(), me = ov.me;
+    const chips = (obj, cur, act) => Object.keys(obj).map((k) => `<button class="chip ${k === cur ? 'on primary' : ''}" data-act="${act}" data-k="${k}">${esc(obj[k].name || obj[k])}</button>`).join('');
+    const per = Dir.PERSONAS[st.persona];
+    const tl = Dir.timeline(s, 70);
+    const nr = narrOf();
+    const row = (x) => x.kind === 'dir'
+      ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">${x.via === 'ai' ? 'AI' : '本心'}</span></p>`
+      : `${nr[x.id] ? aiNote(nr[x.id]) : ''}<p class="${x.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(x.t))}</span>${esc(x.text)}</p>`;
+    const head = `<div class="card dir-head">
+      <div class="dir-who"><b>${esc(me.name)}</b> · ${ov.age} 岁 · ${esc(ov.realm)} · 在${esc(ov.place.name)} · 余寿约 ${n0(ov.left)} 年 · 符钱 ${n0(ov.stone)}${ov.faction ? ' · ' + esc(ov.faction.name) : ''}</div>
+      ${ov.need && isFinite(ov.need) ? bar((me.progress / ov.need) * 100) : ''}
+      <div class="row dir-ctl">${s.ended ? '<button class="primary" data-act="life">看生平</button><button data-act="askNew">另开一生</button>'
+        : on ? '<button class="primary" data-act="dirPause">⏸ 暂停</button><button data-act="dirStop">接管（我来玩）</button>'
+        : '<button class="primary" data-act="dirStart">▶ ' + (tl.some((x) => x.kind === 'dir') ? '继续导演' : '开始导演') + '</button><button data-act="dirOnce" ' + (D.busy ? 'disabled' : '') + '>走一步</button><button data-act="page" data-p="now">自己玩</button>'}</div>
+      <div class="dir-opt"><span class="muted">速度</span><div class="chips c4">${chips(D.SPEEDS, D.speed, 'dirSpeed')}</div></div>
+      <div class="dir-opt"><span class="muted">AI</span><div class="chips c3">${chips(D.MODES, D.aiMode, 'dirMode')}</div></div>
+      <p class="muted small" style="margin:.3em 0 0">${esc(D.aiState())}${D.status ? ' · <b class="warn">' + esc(D.status) + '</b>' : ''}${D.lastAI && D.aiMode !== 'off' ? ' · ' + esc(D.lastAI) : ''}</p>
+    </div>`;
+    const heart = `<div class="card"><h3>本心</h3><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
+      <p class="muted small">${esc(per.desc)}。性格：${esc((me.traits || []).join('、') || '平常')}。</p>
+      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></div>`;
+    return `<h2>导演模式</h2>${head}${s.ended ? '' : heart}
+      <div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+  };
+
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
     ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：眼下会写纪事叙述、改写眼前的事、写小传；打字说想做什么、事件从世界里长出来、人物各有命运，接下来几步接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -9328,21 +9958,23 @@ button.wide { width: 100%; margin-bottom: .6em; }
       afterAction();
     },
     pickOrigin(d) { UI.start.origin = d.k; render(); },
-    newGame() {
+    newGame(d) {
       UI.start.surname = ($('#in-surname') || {}).value || '';
       UI.start.given = ($('#in-given') || {}).value || '';
       UI.start.sex = ($('#in-sex') || {}).value || '';
       UI.start.seed = ($('#in-seed') || {}).value || '';
       const seed = UI.start.seed || String(Date.now() % 1e9) + '-' + Math.floor(Math.random() * 1e6);
       UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, given: UI.start.given, sex: UI.start.sex, seed });
-      UI.page = 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
+      UI.page = d && d.dir ? 'dir' : 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
+      if (FX.Director) FX.Director.reset();
+      if (d && d.dir && FX.Director) FX.Director.start(UI.s);
       afterAction();
       if (G.scrollTo) G.scrollTo(0, 0);
       toast(`${P.player(UI.s).name}踏入仙途（种子 ${seed}）`, 3500);
     },
     async continue() { const t = await loadAuto(); if (t) readSave(t); },
-    newRun() { UI.s = null; UI.modals = []; render(); },
-    askNew() { pushModal({ type: 'confirm', title: '另开一生', text: '当前这一生会留在自动存档里，直到新的一生开始后被覆盖。要继续保留，先存到槽位。', onYes: () => { UI.s = null; UI.modals = []; render(); } }); },
+    newRun() { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); },
+    askNew() { pushModal({ type: 'confirm', title: '另开一生', text: '当前这一生会留在自动存档里，直到新的一生开始后被覆盖。要继续保留，先存到槽位。', onYes: () => { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); } }); },
     do(d, el) {
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;
@@ -9400,6 +10032,15 @@ button.wide { width: 100%; margin-bottom: .6em; }
       pushModal({ type: 'intent', title: '插手', input: e ? FX.H.text(e) : '', note: plans.length ? '' : '当事人已不在，插不上手了。', plans });
     },
     aiNpc(d) { FX.AI.npcBio(UI.s, d.id); render(); },
+    // 导演模式
+    dirStart() { UI.modals = UI.modals.filter((m) => m.type !== 'event'); FX.Director.start(UI.s); UI.page = 'dir'; render(); },
+    dirPause() { FX.Director.stop('已暂停'); afterAction(); },
+    dirStop() { FX.Director.stop(''); UI.page = 'now'; afterAction(); toast('你接管了，自己来'); },
+    async dirOnce() { await FX.Director.once(UI.s); afterAction(); },
+    dirSpeed(d) { FX.Director.setSpeed(d.k); render(); },
+    dirMode(d) { FX.Director.setMode(d.k); render(); },
+    dirPersona(d) { FX.Dir.setPersona(UI.s, d.k); scheduleSave(); render(); },
+    dirAim() { FX.Dir.setAim(UI.s, ($('#dir-aim') || {}).value || ''); scheduleSave(); toast('志向定下了'); render(); },
     intentGo(d) {
       const m = UI.modals[UI.modals.length - 1];
       const pl = m && m.plans && m.plans[Number(d.i)];
@@ -9503,9 +10144,20 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
+  // 导演跑得快时页面不停重画，按下到抬起之间按钮可能已换掉、点击就丢了：暂停、接管在按下时就办
+  const PRESS = new Set(['dirPause', 'dirStop']);
+  let pressed = 0;
+  document.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest && ev.target.closest('[data-act]');
+    if (!el || !PRESS.has(el.dataset.act) || ev.button) return;
+    ev.preventDefault();
+    pressed = Date.now();
+    ACT[el.dataset.act](el.dataset, el, ev);
+  });
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-act]');
     if (!el || !el.dataset.act) return;
+    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) return;
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
@@ -9526,6 +10178,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   });
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
 
+  let dirDrawn = 0, dirDrawTimer = null;
   async function boot() {
     try { UI.fontScale = Number(localStorage.getItem('family-xiuxian:font')) || 1; } catch (e) { UI.fontScale = 1; }
     try { UI.fold = JSON.parse(localStorage.getItem('family-xiuxian:fold') || '{}') || {}; } catch (e) { UI.fold = {}; }
@@ -9535,6 +10188,21 @@ button.wide { width: 100%; margin-bottom: .6em; }
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
     if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
+    if (FX.Director) {
+      // 导演走一步：存档、记叙述、刷新；正在打字时不重画
+      FX.Director.onStep = () => {
+        if (!UI.s || FX.Director.s !== UI.s) return;
+        scheduleSave();
+        if (UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
+        aiAfter();
+        const a = document.activeElement;
+        if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+        // 至多每 0.3 秒重画一次，省电，也好点按钮
+        const now = Date.now();
+        if (now - dirDrawn >= 300 || !FX.Director.running) { dirDrawn = now; render(); }
+        else if (!dirDrawTimer) dirDrawTimer = setTimeout(() => { dirDrawTimer = null; dirDrawn = Date.now(); if (UI.s) render(); }, 300 - (now - dirDrawn));
+      };
+    }
     if (FX.AI) FX.AI.onUpdate = () => {
       if (UI.s) scheduleSave();
       const a = document.activeElement;

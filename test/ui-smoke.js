@@ -97,7 +97,7 @@ const { chromium } = require('playwright');
   await mp.goto('file://' + path.join(__dirname, '..', 'dist', 'family-xiuxian.html'));
   await mp.click('[data-act="newGame"]');
   const overflow = [];
-  for (const p of ['now', 'shop', 'map', 'bag', 'sect', 'chron', 'people', 'sagas', 'sys']) {
+  for (const p of ['now', 'dir', 'shop', 'map', 'bag', 'sect', 'chron', 'people', 'sagas', 'sys']) {
     await mp.click(['people', 'sagas'].includes(p) ? `main [data-act="page"][data-p="${p}"]` : `nav.bottom [data-act="page"][data-p="${p}"]`);
     const w = await mp.evaluate(() => document.documentElement.scrollWidth);
     if (w > 376) overflow.push(p + ':' + w);
@@ -124,10 +124,20 @@ const { chromium } = require('playwright');
   // AI：手机宽度下开启、填 key、测试连接，过几步看纪事叙述和小传；DeepSeek 用假回声顶替，不发真实请求
   const KEY = 'sk-UI-SMOKE-0123456789-SECRET';
   const aiNet = [];
+  let dirAsks = 0;
   await mp.route('https://api.deepseek.com/**', async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
     aiNet.push({ auth: route.request().headers().authorization, model: body.model });
     const user = (body.messages || []).slice(-1)[0].content || '';
+    // 导演模式：照“按常理”的编号走；眼前的事选第一个选项
+    if (/你就是这位修士本人/.test(body.messages[0].content)) {
+      dirAsks++;
+      let reply;
+      if (/你怎么办/.test(user)) { const m = /可选（id｜做法｜代价｜风险｜成算）：\n([^｜\n]+)｜/.exec(user); reply = { id: m ? m[1] : 'safe', think: '我稳妥些。' }; }
+      else { const m = /按常理的下一步：a(\d+)/.exec(user); reply = { think: '我照常行事。', steps: [{ act: 'a' + (m ? m[1] : '1') }] }; }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }], usage: { total_tokens: 100 } }) });
+      return;
+    }
     if (/意图解析器/.test(body.messages[0].content)) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '{"say":"你想在此地游历","steps":[{"do":"游历"}]}' } }], usage: { total_tokens: 100 } }) });
       return;
@@ -163,6 +173,8 @@ const { chromium } = require('playwright');
   }
   if (!notes) throw new Error('过了 60 步，此刻页没出现 AI 叙述');
   await mp.screenshot({ path: path.join(out, 'mobile-ai-now.png'), fullPage: true });
+  // 最后一步可能刚好遇事：先把弹窗处理掉
+  while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
   await mp.click('nav.bottom [data-act="page"][data-p="sys"]');
   await mp.click('[data-act="life"]');
   await mp.click('.modal [data-act="aiLife"]');
@@ -172,6 +184,31 @@ const { chromium } = require('playwright');
   await mp.keyboard.press('Escape');
   await mp.click('nav.bottom [data-act="page"][data-p="now"]');
   await sayIntent('四处走走看看', true);
+  // 导演模式（AI 已开，假 DeepSeek）：开始、极速走一阵、暂停后不再走、接管回到此刻页
+  await mp.click('nav.bottom [data-act="page"][data-p="dir"]');
+  await mp.click('[data-act="dirMode"][data-k="key"]');
+  await mp.click('[data-act="dirSpeed"][data-k="max"]');
+  const dirT0 = await mp.evaluate(() => FX.UI.s.t);
+  await mp.click('[data-act="dirStart"]');
+  await mp.waitForFunction((t0) => FX.UI.s.t - t0 > 360 * 15 || FX.UI.s.ended, dirT0, { timeout: 60000 });
+  await mp.waitForFunction(() => document.querySelectorAll('.dir-log .dir-think').length >= 3, null, { timeout: 20000 });
+  await mp.dispatchEvent('[data-act="dirPause"]', 'pointerdown'); // 跑得快时按钮不停重画，暂停在按下时就办
+  await mp.waitForFunction(() => !FX.Director.busy, null, { timeout: 20000 });
+  const dirT1 = await mp.evaluate(() => FX.UI.s.t);
+  await mp.waitForTimeout(500);
+  if ((await mp.evaluate(() => FX.UI.s.t)) !== dirT1) throw new Error('导演暂停后还在走');
+  const dirAI = await mp.evaluate(() => FX.UI.s.aiLog.filter((r) => r.kind === 'dir' && r.via === 'ai').length);
+  if (!dirAsks || !dirAI) throw new Error('导演模式没问过 AI（' + dirAsks + ' 次请求，' + dirAI + ' 条 AI 心声）');
+  const wDir = await mp.evaluate(() => document.documentElement.scrollWidth);
+  if (wDir > 376) overflow.push('dir:' + wDir);
+  await mp.screenshot({ path: path.join(out, 'mobile-director.png'), fullPage: true });
+  // 暂停时若眼前有事会弹出来；继续导演时由导演接着处理。这一生已结束就不再接管
+  if (!(await mp.evaluate(() => FX.UI.s.ended))) {
+    await mp.evaluate(() => document.querySelector('main [data-act="dirStart"]').click());
+    await mp.dispatchEvent('.mtop [data-act="dirStop"]', 'pointerdown');
+    await mp.waitForFunction(() => !FX.Director.running && FX.UI.page === 'now');
+  }
+  while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
   const leak = await mp.evaluate((k) => {
     const out = [];
     for (let i = 0; i < localStorage.length; i++) { const n = localStorage.key(i); if (n !== 'family-xiuxian:ai-key' && String(localStorage.getItem(n)).includes(k)) out.push(n); }
@@ -185,5 +222,5 @@ const { chromium } = require('playwright');
   const report = { years: year - startYear, steps, events, errors, net, overflow, ai: { requests: aiNet.length, notes, aiLog: aiLog.length } };
   console.log(JSON.stringify(report, null, 2));
   if (errors.length || net.length || overflow.length) process.exit(1);
-  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成、自由输入（有无 AI）预览后照做，key 只在请求头里');
+  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成、自由输入（有无 AI）预览后照做，导演模式走了 ' + Math.round((dirT1 - dirT0) / 360) + ' 年（问 AI ' + dirAsks + ' 回）、暂停即停、可接管，key 只在请求头里');
 })().catch((e) => { console.error(e); process.exit(1); });
