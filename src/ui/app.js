@@ -82,6 +82,7 @@
     const mark = UI.aiMark;
     UI.aiMark = Game.ai.mark(UI.s);
     if (mark && mark !== UI.aiMark) FX.AI.narrate(UI.s, mark);
+    FX.AI.hookPrefetch(UI.s);
   }
   const aiOn = (what) => !!(FX.AI && FX.AI.on(what));
   const narrOf = () => (UI.s && aiOn('narrate') ? Game.ai.narrations(UI.s) : {});
@@ -342,7 +343,11 @@
       if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
     }
     const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
+    // 自由输入：说一句想做什么，先看预览再照做
+    const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
+    const sayBox = disabled ? '' : `<div class="say-box"><div class="row say-row"><input id="say-in" type="text" maxlength="200" enterkeyhint="go" autocomplete="off" placeholder="想做什么，直接说（如：去坊市打听丹母砂哪里有）" value="${esc(UI.sayText || '')}" ${UI.sayBusy ? 'disabled' : ''}><button class="primary" data-act="say" ${UI.sayBusy ? 'disabled' : ''}>${UI.sayBusy ? 'AI 理解中…' : '说'}</button></div><div class="muted small">${aiReady ? 'AI 理解你的话，拆成规则认得的几步，先给你看再做' : 'AI 没开，按地名、人名、物名找最像的几种做法'}</div></div>`;
     const actCard = `<div class="card acts"><h3>做什么</h3>${disabled ? `<p class="warn">眼前的事要先处理。 ${s.pending.length ? '<button class="link" data-act="openEvent">去处理</button>' : ''}</p>` : ''}
+        ${sayBox}
         ${sagaMini}
         ${big.length ? `<div class="act-group"><span class="warn">大事</span><div class="row">${big.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div></div>` : ''}
         ${tabs.length > 1 ? `<div class="row tabs acts-tabs">${tabs.map((g) => { const n = listOf(g).filter((a) => a.ok).length; return `<button class="${g === tab ? 'on' : ''}" data-act="subTab" data-key="actTab" data-k="${g}">${g}${g !== tab && n ? ' <span class="muted small">' + n + '</span>' : ''}</button>`; }).join('')}</div>` : ''}
@@ -827,7 +832,7 @@
     const s = UI.s, f = UI.chron.filter;
     const list = s.history.filter((e) => (f === 'pov' ? e.pov : f === 'rumor' ? !e.pov && e.severity >= 2 : e.pov || e.severity >= 2)).slice(-400).reverse();
     return `<h2>纪事</h2>${seenTabs('chron')}<div class="row tabs">${[['pov', '亲历'], ['rumor', '传闻'], ['all', '全部']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="chronFilter" data-k="${k}">${n}</button>`).join('')}</div>
-      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
+      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}${!e.pov && e.params && e.params.ix && !s.ended ? ` <button class="link small" data-act="rumorAct" data-id="${e.id}">插手</button>` : ''}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
       ${s.history.length > 400 ? '<p class="muted">只列最近 400 条。</p>' : ''}`;
   };
 
@@ -859,7 +864,7 @@
       <div class="row"><button class="${c.enabled ? '' : 'primary'}" data-act="aiToggle">${c.enabled ? '关闭 AI' : '开启 AI'}</button><button data-act="aiTest" ${ready.ok ? '' : 'disabled'}>测试连接</button></div>
       <div class="row"><input type="password" id="ai-key" autocomplete="off" spellcheck="false" placeholder="${key ? '已填写（要换就粘贴新的）' : '粘贴 DeepSeek 的 key（sk-…）'}"><button data-act="aiKey">保存 key</button>${key ? '<button data-act="aiKeyClear">清除 key</button>' : ''}</div>
       <div class="row"><label>模型 <select id="ai-model">${opts}</select></label><label>每天至多 <input type="number" id="ai-limit" min="1" max="5000" value="${c.dailyLimit}" style="width:5.5em"> 次</label></div>
-      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><button data-act="aiSave">保存设置</button></div>
+      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><label><input type="checkbox" id="ai-hooks" ${c.hooks !== false ? 'checked' : ''}> 找上门的事由 AI 写</label><button data-act="aiSave">保存设置</button></div>
       <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
       ${rej}</div>`;
   }
@@ -889,7 +894,8 @@
       m.blocking = true;
       const v = Game.pendingEvents(s)[0];
       let alt = null, wait = '';
-      if (aiOn('eventText')) {
+      const hp = s.pending[0].bound && s.pending[0].bound._p;
+      if (aiOn('eventText') && !(hp && hp.via === 'ai')) {
         const key = FX.AI.eventKey(s.pending[0]);
         alt = Game.ai.text(s, key);
         if (!alt) { FX.AI.eventText(s, s.pending[0]); wait = aiWaiting(key); }
@@ -917,6 +923,16 @@
         ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
         <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
         ${v.isMe ? `<h3>生平</h3><p>${esc(v.life)}</p>` : ''}
+        ${!v.isMe && p.status === 'alive' && Game.npc.aim(s, p.id) ? `<div class="stat"><span>志向</span><span>${esc(Game.npc.aim(s, p.id))}</span></div>` : ''}
+        ${!v.isMe ? (() => {
+          const st = Game.npc.story(s, p.id, 6);
+          if (!st.length) return '';
+          const on = !!(FX.AI && FX.AI.config().enabled);
+          const key = on ? FX.AI.npcKey(s, p.id) : null;
+          const bio = key ? Game.ai.text(s, key) : null;
+          const busy = key && FX.AI.isPending(key);
+          return `<h3>近况</h3>${bio ? aiNote(bio) : busy ? aiWaiting(key) : on ? '<button class="link small" data-act="aiNpc" data-id="' + p.id + '">请 AI 写他的近况与打算</button>' : ''}<div class="log">${st.slice().reverse().map((e) => `<p class="rumor"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('')}</div>`;
+        })() : ''}
         <h3>${v.isMe ? '人生记录' : '你与此人'}</h3><div class="log">${v.history.slice().reverse().map((e) => `<p><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">无</p>'}</div>`;
     },
     place(m) {
@@ -956,6 +972,31 @@
       const btn = on ? `<div class="row"><button data-act="aiLife" ${busy || fresh ? 'disabled' : ''}>${busy ? 'AI 执笔中…' : L ? (fresh ? '小传已是最新' : '按眼下的经历重写小传') : '请 AI 写一篇小传'}</button></div>${fail ? `<p class="muted small">没写成：${esc(fail)}</p>` : ''}` : '';
       return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
         ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
+    },
+    // 自由输入的预览：每步的耗时、花费、成功率由规则算；确认后才结算
+    intent(m) {
+      const s = UI.s;
+      const num = '①②③④⑤';
+      const plans = m.plans || [];
+      const row = (r, i) => {
+        const bits = [];
+        if (r.days) bits.push(T.dur(r.days));
+        if (r.cost) bits.push('花 ' + n0(r.cost) + ' 符钱');
+        if (r.chance !== null && r.chance !== undefined) bits.push('成功率 ' + r.chance + '%');
+        return `<div class="${r.ok ? '' : 'bad'}">${num[i] || i + 1} ${esc(r.label || '')}${bits.length ? ' <span class="muted small">· ' + esc(bits.join(' · ')) + '</span>' : ''}${r.ok ? '' : '<br><span class="small">做不到：' + esc(r.reason || '') + '</span>'}${r.ok && (r.gain || r.risk) ? `<br><span class="muted small">${esc([r.gain, r.risk].filter(Boolean).join('；'))}</span>` : ''}${r.warn ? `<br><span class="warn small">${esc(r.warn)}</span>` : ''}</div>`;
+      };
+      const card = (pl, i) => {
+        const c = pl.check;
+        return `<div class="card intent-plan${i === 0 && c.ok ? ' hl' : ''}"><b>${esc(pl.say || '这样做')}</b>${pl.via === 'ai' ? ' <span class="muted small">AI 的理解</span>' : ''}
+          <div class="intent-steps">${c.rows.map(row).join('')}</div>
+          ${c.ok ? `<div class="row between"><span class="muted small">${c.days ? '共约 ' + esc(T.dur(c.days)) : ''}${c.cost ? ' · 花 ' + n0(c.cost) + ' 符钱' : ''}${c.rows.length > 1 ? ' · 路上出事就停' : ''}</span><button class="primary" data-act="intentGo" data-i="${i}">照做</button></div>` : ''}</div>`;
+      };
+      return `<div class="row between"><h2>${esc(m.title || '你说')}</h2><button data-act="close">✕</button></div>
+        <p class="say-quote">${m.title ? esc(m.input) : '“' + esc(m.input) + '”'}</p>
+        ${m.note ? `<p class="${m.noteCls || 'muted'}">${esc(m.note)}</p>` : ''}
+        ${plans.map(card).join('')}
+        ${!plans.length ? '<p class="muted">没找到对得上的做法。换个说法试试，提到具体的人名、地名或东西更好认。</p>' : ''}
+        <div class="row"><button data-act="close" autofocus>换个说法</button></div>`;
     },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
@@ -1054,6 +1095,50 @@
       if (!a) return;
       pushModal({ type: 'confirm', title: a.label, text: '这一步回不了头，确定吗？', onYes: () => { const r = Game.act(UI.s, a); toast(r.ok ? r.text || '已办' : '✗ ' + r.error); if (r.ok) afterAction(); } });
     },
+    // 自由输入：先问 AI（至多 8 秒），不行就按关键词匹配
+    async say() {
+      const s = UI.s;
+      const inp = $('#say-in');
+      const text = ((inp && inp.value) || UI.sayText || '').trim();
+      UI.sayText = text;
+      if (!text) { toast('先写一句想做什么'); return; }
+      if (!s || s.ended || s.pending.length || UI.sayBusy) return;
+      const local = () => Game.intent.match(s, text);
+      const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
+      const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
+      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      UI.sayBusy = true; render();
+      let r;
+      try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }
+      UI.sayBusy = false;
+      if (UI.s !== s || s.pending.length) { render(); return; }
+      if (r.ok && r.plan) {
+        const pl = withCheck(r.plan);
+        // AI 的拆法走不通时，把关键词匹配的几种也列出来
+        pushModal({ type: 'intent', input: text, plans: pl.check.ok ? [pl] : [pl].concat(local().filter((c) => c.check.ok).slice(0, 2)) });
+      } else if (r.ok && r.ask) pushModal({ type: 'intent', input: text, note: 'AI 想问清楚：' + r.ask, noteCls: 'warn', plans: local() });
+      else if (r.ok && r.cannot) pushModal({ type: 'intent', input: text, note: '做不到：' + r.cannot, noteCls: 'bad', plans: local() });
+      else pushModal({ type: 'intent', input: text, note: 'AI 没接上（' + (r.reason || '未知') + '），先按字面找了几种做法。', plans: local() });
+    },
+    // 传闻里的事：插手 → 预览卡（去相助、去探望、去打听），照做走自由输入那一套
+    rumorAct(d) {
+      const s = UI.s;
+      const e = FX.H.get(s, d.id);
+      const plans = Game.npc.interventions(s, d.id).map((pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) }));
+      pushModal({ type: 'intent', title: '插手', input: e ? FX.H.text(e) : '', note: plans.length ? '' : '当事人已不在，插不上手了。', plans });
+    },
+    aiNpc(d) { FX.AI.npcBio(UI.s, d.id); render(); },
+    intentGo(d) {
+      const m = UI.modals[UI.modals.length - 1];
+      const pl = m && m.plans && m.plans[Number(d.i)];
+      if (!pl) return;
+      UI.modals.pop();
+      const r = Game.intent.exec(UI.s, pl);
+      UI.sayText = '';
+      const msg = r.texts.join('；') || (r.done ? '办完了' : '');
+      toast((r.stopped ? (r.done ? '做了 ' + r.done + '/' + r.total + ' 步，停下：' + r.stopped : '✗ ' + r.stopped) + (msg ? '。' + msg : '') : msg), 5000);
+      afterAction();
+    },
     doN(d) {
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;
@@ -1114,7 +1199,7 @@
     },
     aiKeyClear() { pushModal({ type: 'confirm', title: '清除 key', text: '清除以后 AI 就停了，要用得重新粘贴。确定吗？', onYes: () => { FX.AI.setKey(''); toast('key 已清除'); } }); },
     aiSave() {
-      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked });
+      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked, hooks: !!($('#ai-hooks') || {}).checked });
       toast('AI 设置已保存');
       render();
     },
@@ -1152,8 +1237,11 @@
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
+  // 输入框里的字在重画时不丢
+  document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'say-in') UI.sayText = ev.target.value; });
   document.addEventListener('keydown', (ev) => {
     const m = UI.modals[UI.modals.length - 1];
+    if (!m && ev.key === 'Enter' && ev.target && ev.target.id === 'say-in' && !ev.isComposing) { ev.preventDefault(); ACT.say(); return; }
     if (!m) {
       if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset && ['pickOrigin', 'place'].includes(ev.target.dataset.act)) { ev.preventDefault(); ACT[ev.target.dataset.act](ev.target.dataset); }
       return;

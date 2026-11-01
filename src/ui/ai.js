@@ -24,6 +24,7 @@
       dailyLimit: 200, // 本机每天最多调用次数，防止误刷
       narrate: true, // 行动后写一段叙述
       eventText: true, // 眼前的事换个说法
+      hooks: true, // 找上门的事由 AI 写提案（标题、开场、选项）
     },
     models: ['deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'],
     // 可注入：测试时替换为假实现
@@ -57,6 +58,7 @@
       dailyLimit: Math.max(1, Math.min(5000, Math.floor(Number(c.dailyLimit) || AI.defaults.dailyLimit))),
       narrate: c.narrate !== false,
       eventText: c.eventText !== false,
+      hooks: c.hooks !== false,
     };
     try { store() && store().setItem(LS_CFG, JSON.stringify(clean)); } catch (e) { /* 存不了就只在本页生效 */ }
     return clean;
@@ -93,7 +95,7 @@
   };
 
   const setStatus = (kind, ok, reason) => { AI.status = { at: AI.env.now(), kind, ok, reason: reason || '' }; };
-  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接' };
+  const KIND_NAME = { narrate: '纪事叙述', event: '事件改写', life: '小传', test: '测试连接', intent: '理解自由输入', hook: '找上门的事', npc: '人物近况' };
   AI.statusText = () => {
     const st = AI.status;
     if (!st) return '还没调用过';
@@ -102,7 +104,7 @@
 
   /* ---------- 底层调用 ---------- */
   // 只返回 { ok, text } 或 { ok:false, reason }；从不抛错，从不把 key 写进 reason
-  AI.call = async (kind, messages, maxTokens) => {
+  AI.call = async (kind, messages, maxTokens, timeoutMs) => {
     const r = AI.ready();
     if (!r.ok) { setStatus(kind, false, r.reason); return { ok: false, reason: r.reason }; }
     const c = AI.config();
@@ -111,7 +113,8 @@
     let timer = null;
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     try {
-      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, c.timeoutMs); });
+      const ms = timeoutMs || c.timeoutMs;
+      const timeout = new Promise((_, rej) => { timer = setTimeout(() => { if (ctrl) ctrl.abort(); rej(new Error('timeout')); }, ms); });
       const req = AI.env.fetch(c.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
@@ -132,7 +135,7 @@
       setStatus(kind, true);
       return { ok: true, text: text.trim() };
     } catch (e) {
-      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil(c.timeoutMs / 1000) + ' 秒）' : '网络错误';
+      const reason = e && (e.name === 'AbortError' || e.message === 'timeout') ? '超时（' + Math.ceil((timeoutMs || c.timeoutMs) / 1000) + ' 秒）' : '网络错误';
       setStatus(kind, false, reason);
       return { ok: false, reason };
     } finally {
@@ -190,7 +193,47 @@
   AI.eventKey = (inst) => 'e:' + inst.id;
   // 生平：写一篇小传（玩家点了才写）
   AI.life = (s) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'life')) : Promise.resolve(null));
+  // 人物近况：玩家在人物卡里点了才写
+  AI.npcBio = (s, id) => (AI.config().enabled ? request(s, FX.Game.ai.job(s, 'npc', id)) : Promise.resolve(null));
+  AI.npcKey = (s, id) => { const j = FX.Game.ai.job(s, 'npc', id); return j ? j.key : null; };
   AI.lifeKey = (s) => { const j = FX.Game.ai.job(s, 'life'); return j ? j.key : null; };
+
+  // 自由输入：理解玩家的一句话。玩家在等，至多等 8 秒；不行就交给关键词匹配
+  // 返回 { ok:true, plan } | { ok:true, ask } | { ok:true, cannot } | { ok:false, reason }
+  AI.intentTimeoutMs = 8000;
+  AI.intent = async (s, text) => {
+    const r = AI.ready();
+    if (!r.ok) return { ok: false, reason: r.reason };
+    const job = FX.Game.intent.job(s, text);
+    const res = await AI.call('intent', job.messages, job.maxTokens, Math.min(AI.intentTimeoutMs, AI.config().timeoutMs));
+    if (!res.ok) { notify(); return { ok: false, reason: res.reason }; }
+    const v = FX.Game.intent.parse(s, job, res.text);
+    if (!v.ok) { setStatus('intent', false, '校验没过：' + v.why); reject('intent', v.why, res.text); notify(); return { ok: false, reason: 'AI 的理解不合规（' + v.why + '）' }; }
+    notify();
+    if (v.ask) return { ok: true, ask: v.ask };
+    if (v.cannot) return { ok: true, cannot: v.cannot };
+    return { ok: true, plan: { say: v.say, steps: v.steps, via: 'ai', input: job.input } };
+  };
+
+  // 世事：排进队里的钩子，在后台请 AI 写提案；到它找上门时没写好就用模板（不等）
+  AI.hookPrefetch = (s) => {
+    if (!AI.on('hooks') || !AI.ready().ok || !FX.Hook) return [];
+    const out = [];
+    for (const job of FX.Hook.pendingJobs(s)) {
+      if (AI.pending.has(job.key) || AI.failed.has(job.key)) continue;
+      const p = AI.call('hook', job.messages, job.maxTokens).then((res) => {
+        AI.pending.delete(job.key);
+        if (!res.ok) { AI.failed.set(job.key, res.reason); notify(); return null; }
+        const a = FX.Hook.accept(s, job, res.text);
+        if (!a.ok) { AI.failed.set(job.key, '校验没过：' + a.why); setStatus('hook', false, '校验没过：' + a.why); reject('hook', a.why, res.text); notify(); return null; }
+        notify();
+        return a.text;
+      });
+      AI.pending.set(job.key, p);
+      out.push(p);
+    }
+    return out;
+  };
 
   AI.testConnection = async () => {
     return AI.call('test', [{ role: 'user', content: '请只回复：通' }], 5);

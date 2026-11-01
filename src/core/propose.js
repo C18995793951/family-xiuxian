@@ -19,7 +19,7 @@
 
   /* ---------- 记录：s.aiLog ---------- */
   // 每类只留最近若干条，免得存档越积越大；同一个 key 只留最新一条
-  Prop.caps = { narrate: 200, event: 60, life: 3 };
+  Prop.caps = { narrate: 200, event: 60, life: 3, intent: 50, hook: 30, npc: 40 };
   Prop.record = (s, kind, key, out, extra) => {
     const L = (s.aiLog = s.aiLog || []).filter((r) => r.key !== key);
     L.push(Object.assign({ kind, key, t: s.t, out }, extra || {}));
@@ -171,6 +171,12 @@
     const names = v.people.map((id) => s.people[id] && s.people[id].name).filter(Boolean);
     return { name: v.name, text: v.text, names, facts: v.name + '：' + v.text };
   };
+  // 某个人物的履历：境界、志向、他自己的事
+  Prop.npcFacts = (s, id) => {
+    const q = s.people[id];
+    const lines = FX.Npc.story(s, id, 12).map(line);
+    return q.name + '，' + P().realmName(q) + '，' + P().factionName(s, q) + '，在' + s.places[q.locationId].name + '。眼下的志向：' + (FX.Npc.aimText(s, q) || '无') + '。\n' + lines.join('\n');
+  };
   Prop.lifeFacts = (s) => {
     const p = me(s);
     const big = s.history.filter((e) => e.pov && (e.severity >= 3 || e.firstOf || e.type === 'breakthrough')).slice(-40).map(line);
@@ -201,6 +207,13 @@
         { role: 'user', content: `事件「${f.name}」原文：${f.text}\n请换一种说法重写。` },
       ],
     }),
+    npc: (s, facts, name) => ({
+      maxTokens: 500, check: { maxLen: 400, minLen: 40, mustNames: [name] },
+      messages: [
+        { role: 'system', content: '你为修仙游戏里的一位人物写近况与打算，文风近似笔记小说。' + WORLD + '\n' + RULES },
+        { role: 'user', content: `请依据以下事实，写一段 80 到 200 字的${name}近况，末尾用一句话写他眼下的打算（只能照志向写）：\n${facts}` },
+      ],
+    }),
     life: (s, facts) => ({
       maxTokens: 1400, check: { maxLen: 1600, minLen: 80 },
       messages: [
@@ -221,6 +234,13 @@
     if (kind === 'event') {
       const f = Prop.eventFacts(s, arg);
       return Object.assign({ kind, key: 'e:' + arg.id, facts: f.facts, extra: { inst: arg.id } }, Prop.prompts.event(s, f));
+    }
+    if (kind === 'npc') {
+      const q = s.people[arg];
+      if (!q) return null;
+      const st = FX.Npc.story(s, arg, 1);
+      const facts = Prop.npcFacts(s, arg);
+      return Object.assign({ kind, key: 'b:' + arg + ':' + (st.length ? st[0].id : 'h0') + ':' + (q.aim ? q.aim.since : 0), facts, extra: { npc: arg } }, Prop.prompts.npc(s, facts, q.name));
     }
     if (kind === 'life') {
       const facts = Prop.lifeFacts(s);
