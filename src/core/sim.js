@@ -103,6 +103,12 @@
       type: 'start', tags: ['开局'], actors: [p.id], places: [place.id], key: 'start', pov: true, severity: 3,
       params: { name: p.name, origin: O.name + (faction ? '（' + faction.name + '）' : ''), age: cf.life.adultAge, realm: P().realmName(p), place: place.name },
     });
+    // 凡人开局：一位玄真派修士路过，给一个开头的选择
+    if (origin === 'mortal') {
+      const xz = Object.values(s.factions).find((f) => f.key === 'xuanzhen');
+      const q = xz && P().living(s).filter((x) => x.factionId === xz.id && x.realm.major >= 2 && x.realm.major <= 3).sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+      if (q) FX.Ev.spawn(s, 'XIANYUAN', { place: place.id, npc: q.id, faction: xz.id }, []);
+    }
     S.check(s);
     return s;
   };
@@ -134,6 +140,7 @@
         if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
         s.player.stats.cultivateDays += step;
+        FX.Xin.cultivate(s, step);
       }
       s.t += step; used += step; left -= step;
       S.syncYear(s);

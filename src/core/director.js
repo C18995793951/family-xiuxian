@@ -62,7 +62,9 @@
 
   /* ---------- 苦修（与测试里的苦修策略同一套）---------- */
   // 以闭关为主，能突破就突破；无门无派时先去拜入宗门；缺什么先找本门库藏，道功不够就做差事，再不行去墟市买或托人代寻；伤了就养
-  Dir.diligent = (s, rng) => {
+  // o.xinLow：心境低于此就出门游历一趟；o.gateXin：到了关口、心境低于此先出门磨一磨再冲（-1 表示不管心境，死守闭关）
+  Dir.diligent = (s, rng, o) => {
+    o = o || {};
     const Gm = FX.Game;
     const A = Gm.actions(s);
     const ov = Gm.view.overview(s);
@@ -99,6 +101,12 @@
     }
     const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
+    // 心境：闭关日久就出门走一趟（野外比城里开阔，太凶险的地方只走十天）；到了关口心境不够，也先出去磨一磨
+    const xin = FX.Xin.get(s), xinLow = o.xinLow !== undefined ? o.xinLow : 45, gateXin = o.gateXin !== undefined ? o.gateXin : 60;
+    if (me.health.state === 'healthy' && (xin < xinLow || (br && xin < gateXin && ov.age < ov.lifespan - 10))) {
+      const ex = ov.place.danger <= 2 ? find((a) => a.type === 'explore' && a.days === 30) : find((a) => a.type === 'explore' && a.days === 10);
+      if (ex) return ex;
+    }
     if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * CF.daysPerYear || ov.age > ov.lifespan - 25)) return br;
     // 冲关要灵机够高之地（结丹四级、元神六级）：修满了就去能用的地方，或到野外开洞府聚灵；太凶险的地方不去
     const qn = P().isFull(who) && FX.Guide.needs(s).find((n) => n.qi);
@@ -162,7 +170,7 @@
       const coin = find((a) => a.type === 'cultivate' && a.coin && a.days === 360);
       if (coin && ov.stone > coin.cost * 3 && CF.cultivation.qiMult[CF.cultivation.coin.qi] > cur) return coin;
     }
-    if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    if (!o.recluse && rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
   };
@@ -268,7 +276,7 @@
       case 'learn': case 'sect_learn': return '换一门更好的功法。';
       case 'redeem': case 'order': case 'buy': return a.item === 'qiju' ? '中孚丹快用完了，补上几颗。' : '冲关缺的东西，得先备齐。';
       case 'mission': case 'work': return '道功、符钱不够，先去挣。';
-      case 'explore': return '出去走走，或有机缘。';
+      case 'explore': return FX.Xin.get(s) < 45 ? '闭关久了，心里发闷，出去走走。' : '出去走走，或有机缘。';
       case 'befriend': return '去拜访' + n(a.npc) + '。';
       case 'diyuan': return '地渊开了，去碰碰运气。';
       case 'submit': case 'donate': return '把用不上的折成道功，好换冲关要用的东西。';
@@ -286,6 +294,10 @@
     const ch = (o) => (o.chance && typeof o.chance.chance === 'number' ? o.chance.chance : null);
     const line = { 2: 40, 1: 55, 0: 65, '-1': 75 }[per.bold];
     const brave = opts.filter((o) => ['fight', 'deep'].includes(o.id) && (ch(o) === null ? per.bold >= 2 : ch(o) >= line)).sort((a, b) => (ch(b) || 0) - (ch(a) || 0))[0];
+    // 一个人打不过、有欠我人情的故人赶得来：请他援手
+    const aid = opts.find((o) => o.id === 'aid');
+    const fight = opts.find((o) => o.id === 'fight');
+    if (aid && ch(aid) >= line - 10 && (!brave || ch(aid) - ch(brave) >= 15) && (!fight || ch(fight) < line)) return { id: aid.id, label: aid.label, why: '势单力薄，请故人援手。', via: 'local' };
     if (brave) return { id: brave.id, label: brave.label, why: ch(brave) !== null ? '胜算不小，拼一拼。' : '富贵险中求。', via: 'local' };
     const safe = opts.find((o) => ['safe', 'pay', 'flee'].includes(o.id)) || opts.filter((o) => !o.irreversible)[0] || opts[0];
     const risky = opts.some((o) => ['fight', 'deep'].includes(o.id));
@@ -406,6 +418,7 @@
     const last = Prop().latest(s, 'dir');
     if (!force && via === 'local' && last && last.via === 'local' && last.label === label) return false; // 照旧闭关就不重复记
     Prop().record(s, 'dir', 'd:' + s.t + ':' + d.n, why || '', { label, via, hid: 'h' + s.nextHistId });
+    s.player.ledger = null; // 一个新念头：此后的日常另起一条小结，排在念头后面
     return true;
   };
   Dir.exec = (s, choice) => {

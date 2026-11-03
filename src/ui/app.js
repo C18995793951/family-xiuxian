@@ -327,7 +327,7 @@
         ${coins.length ? `<div class="act-group"><span class="muted">以符钱修行 <span class="small">· 把符钱炼进去，奢费但不挑地方</span></span><div class="chips long">${coins.map((a) => chip(a, T.dur(a.days) + ' · ' + n0(a.cost) + ' 符钱')).join('')}</div></div>` : ''}
         ${rest.length ? `<div class="row">${rest.map((a) => btn(a)).join('')}</div>` : ''}`;
     } else if (tab) {
-      actBody = `<div class="row">${listOf(tab).map((a) => btn(a)).join('')}</div>${tab === '外出' ? '<p class="muted small" style="margin-bottom:0">游历多半一无所获，偶有遭遇。远路去地图页一键赶过去。</p>' : ''}`;
+      actBody = `<div class="row">${listOf(tab).map((a) => btn(a)).join('')}</div>${tab === '外出' ? '<p class="muted small" style="margin-bottom:0">游历必添心境（野外比城里多，头一回去的地方更多），时有领悟、草药、遭遇；越险越磨人。远路去地图页一键赶过去。</p>' : ''}`;
     }
     // 要紧的事：和你沾边、快到的天下大事；散修能去拜的宗门；长老房白给的功法；元神未入殿。每条带一个直接去办的按钮
     const tips = [];
@@ -347,6 +347,12 @@
       if (free.length) tips.push(`长老房可请授${free.map((a) => '《' + esc(CF.techniques[a.tech].name) + '》').join('')}，不收${esc(CF.house.meritName)} <button class="link" data-act="page" data-p="shop" data-tab="books">去请授</button>`);
       if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
     }
+    // 心境：闭关久了提醒出去走走；欠你人情的人
+    if (ov.xin.hint && !s.ended) {
+      const ex = A.find((a) => a.type === 'explore' && a.days === 30 && a.ok) || A.find((a) => a.type === 'explore' && a.ok);
+      tips.push(`<b class="${ov.xin.low ? 'warn' : 'good'}">心境${esc(ov.xin.name)}</b> <span class="muted small">${esc(ov.xin.hint)}</span>${ov.xin.low && ex ? ' ' + btn(ex) : ''}`);
+    }
+    if (ov.favors.length) tips.push(`<b>欠你人情的人</b> <span class="muted small">${ov.favors.slice(0, 4).map((f) => esc(f.name) + '（' + esc(f.realm) + '，在' + esc(f.at) + '）').join('、')}${ov.favors.length > 4 ? ' 等 ' + ov.favors.length + ' 人' : ''}。遇险时可传讯求援，冲大关时会来护法，也会登门回礼</span>`);
     const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
     // 自由输入：说一句想做什么，先看预览再照做
     const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
@@ -379,6 +385,7 @@
           <div><span class="muted">寿元</span> <b class="${ov.left < 15 ? 'bad' : ''}">余 ${n0(ov.left)} 年</b></div>
           <div><span class="muted">伤势</span> <b>${health}</b></div>
           <div><span class="muted">${trace('修炼', ov.speed.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${ov.speed.total}/年</b></div>
+          <div><span class="muted">${trace('心境', '闭关、修炼一年耗 ' + CF.xin.decayPerYear + ' 点；游历、赶路、遇事、交游都添心境。心境 60 修炼不加不减，0 时只有五成半，100 时快三成；冲关把握 ' + (ov.xin.breakBonus >= 0 ? '+' : '') + ov.xin.breakBonus + '%')}</span> <b class="${ov.xin.low ? 'bad' : ov.xin.value >= 80 ? 'good' : ''}">${ov.xin.value} ${esc(ov.xin.name)}</b></div>
           <div><span class="muted">${trace('战力', ov.power.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${n1(ov.power.total)}</b></div>
           <div><span class="muted">符钱</span> <b>${n0(ov.stone)}</b></div>
           ${member ? `<div><span class="muted">${esc(CF.house.meritName)}</span> <b>${n0(ov.merit)}</b> <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中' : '长老房'}</button></div>` : ''}
@@ -912,7 +919,7 @@
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
     ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
+    <div class="card"><h3>这一版</h3><p><b>0.11「历练与人情」</b>：闭关会耗心境、心境枯了修得慢，出门游历、遇事、交游添心境，回来修得快、冲关更有把握；游历必有所得；欠你人情的人会来援手、护法、登门回礼；日常流水并成小结，纪事读起来是一个人的一生。</p><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -1146,7 +1153,7 @@
       const local = () => Game.intent.match(s, text);
       const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
       const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
-      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      if (!useAI) { const pl = local(); pushModal(Object.assign({ type: 'intent', input: text, plans: pl }, pl.length && pl[0].guess ? { note: '没听懂这句话，下面是眼下最接近的几样做法。开了 AI 能听懂更多。', noteCls: 'muted' } : {})); return; }
       UI.sayBusy = true; render();
       let r;
       try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }

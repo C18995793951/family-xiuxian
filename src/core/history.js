@@ -35,9 +35,13 @@
     taixi_fail: ['{name}参悟胎息未成（成功率 {chance}%），{loss}。'],
     break_ok: ['{name}冲击{target}成功（成功率 {chance}%）{extra}，寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}{extra}。'],
     break_fail: ['{name}冲击{target}失败（成功率 {chance}%），{loss}。'],
-    travel: ['{name}自{from}赶到{to}，路上走了 {dur}。'],
+    travel: ['{name}自{from}{via}赶到{to}，路上走了 {dur}。'],
     travel_cut: ['{name}自{from}前往{to}，行至{at}出了变故。'],
-    explore_nothing: ['{name}在{place}游历 {dur}，一无所获。', '{name}在{place}转了 {dur}，没遇上什么事。', '{name}在{place}走了 {dur}，只看了些山水。'],
+    explore_nothing: ['{name}在{place}游历 {dur}，没碰上什么事{note}。', '{name}在{place}转了 {dur}，没遇上什么事{note}。', '{name}在{place}走了 {dur}，只看了些山水{note}。'],
+    explore_insight: ['{name}在{place}游历 {dur}，{what}，有所领悟，修为 +{gain}。'],
+    favor_guard: ['{name}冲关时，{other}赶来护法，还了当年的人情。{how}。'],
+    favor_aid_win: ['{name}遇上{foe}，传讯请{other}援手，两人合力得胜（{chance}%），{loot}。{other}的人情就此还清。'],
+    favor_aid_lose: ['{name}遇上{foe}，传讯请{other}援手，仍没敌过（{chance}%），{hurt}，好在有人护着。'],
     explore_herb: ['{name}在{place}采得{loot}。'],
     yao_found: ['{name}在{place}寻药{dur}，采得凝丹外药「{yao}」{hurt}。', '{name}在{place}踏遍深处，寻得一份{yao}{hurt}。'],
     yao_none: ['{name}在{place}寻药{dur}，一无所获{hurt}。', '{name}在{place}找了{dur}外药，空手而回{hurt}。'],
@@ -124,8 +128,76 @@
 
   const H = {};
 
+  /* ---------- 流水小结（0.11）----------
+   * 闭关、领俸禄、买丹服丹、做营生、静养这类日常，不再一条一条进纪事：
+   * 两件“事”之间的日常并成一条小结（“此后 3 年：闭关修炼…，领俸禄 3 回…”），读起来是一个人的一生，不是一本账。 */
+  const ROUTINE = { cultivate: 1, cultivate_idle: 1, cultivate_coin: 1, cultivate_cut: 1, realm_up: 1, injury_heal: 1, stipend: 1, buy: 1, sell: 1, use_item: 1, heal_auto: 1, work: 1, rest: 1 };
+  const num = (v, re) => { const m = re.exec(String(v || '')); return m ? Number(m[1]) : 0; };
+  const bump = (o, k, f, v) => { o[k] = o[k] || {}; o[k][f] = (o[k][f] || 0) + v; };
+  H.isRoutine = (e) => !!(e.pov && ROUTINE[e.key] && (e.key !== 'use_item' || [C().items.qiju.name, C().items.heal.name].includes(e.params && e.params.item)));
+  const mergeInto = (L, e, s) => {
+    const a = L.params, x = e.params || {};
+    a.n++;
+    a.last = s.t;
+    switch (e.key) {
+      case 'cultivate': case 'cultivate_coin': case 'cultivate_cut': case 'cultivate_idle':
+        a.cult = (a.cult || 0) + (Number(x.done) || 0);
+        a.gain = Math.round(((a.gain || 0) + (Number(x.gain) || 0)) * 10) / 10;
+        a.coin = (a.coin || 0) + (e.key === 'cultivate_coin' ? Number(x.cost) || 0 : 0);
+        a.pills = (a.pills || 0) + num(x.pills, /(\d+) 颗/);
+        if (e.key === 'cultivate_idle') a.idle = (a.idle || 0) + (Number(x.done) || 0);
+        a.what = x.what || a.what; a.verb = x.verb || a.verb;
+        break;
+      case 'stipend': a.stip = (a.stip || 0) + 1; a.stipStone = (a.stipStone || 0) + num(x.what, /符钱 (\d+)/); a.stipQiju = (a.stipQiju || 0) + num(x.what, /×(\d+)/); a.fac = x.faction; break;
+      case 'buy': bump(a, 'buy', x.item, 0); a.buy[x.item + '|q'] = (a.buy[x.item + '|q'] || 0) + (Number(x.qty) || 0); a.buy[x.item + '|c'] = (a.buy[x.item + '|c'] || 0) + (Number(x.cost) || 0); break;
+      case 'sell': bump(a, 'sell', x.item + '|q', Number(x.qty) || 0); bump(a, 'sell', x.item + '|g', Number(x.gain) || 0); break;
+      case 'use_item': case 'heal_auto': if (x.item === C().items.qiju.name) a.pills = (a.pills || 0) + 1; else bump(a, 'use', x.item, 1); break;
+      case 'realm_up': (a.ups = a.ups || []).push(x.realm); break;
+      case 'injury_heal': a.healed = 1; break;
+      case 'work': a.work = (a.work || 0) + num(x.dur, /(\d+) 年/) * C().daysPerYear + num(x.dur, /(\d+) 个月/) * C().daysPerMonth + num(x.dur, /(\d+) 天/); a.workStone = (a.workStone || 0) + (Number(x.stone) || 0); a.workMerit = (a.workMerit || 0) + num(x.merit, /(\d+)/); a.job = x.job; break;
+      case 'rest': a.rest = (a.rest || 0) + num(x.dur, /(\d+) 年/) * C().daysPerYear + num(x.dur, /(\d+) 个月/) * C().daysPerMonth + num(x.dur, /(\d+) 天/); a.restState = x.state; break;
+    }
+  };
+  H.ledgerText = (e) => {
+    const a = e.params, out = [];
+    if (!a.cult && a.pills) out.push('服' + C().items.qiju.name + ' ' + a.pills + ' 颗');
+    if (a.cult) {
+      const idle = a.idle && a.idle >= a.cult - 30;
+      out.push((a.verb || '修炼') + ' ' + T.dur(a.cult) + (idle ? '，' + (a.what || '修为') + '早已圆满，只是打磨根基' : '，' + (a.what || '修为') + ' +' + a.gain) + (a.coin ? '（以符钱修行耗去 ' + a.coin + '）' : '') + (a.pills ? '，服' + C().items.qiju.name + ' ' + a.pills + ' 颗' : ''));
+    }
+    if (a.work) out.push('做「' + a.job + '」' + T.dur(a.work) + '，得符钱 ' + a.workStone + (a.workMerit ? '、' + C().house.meritName + ' ' + a.workMerit : ''));
+    if (a.stip) out.push('领' + (a.fac || '') + '俸禄' + (a.stip > 1 ? ' ' + a.stip + ' 回，共' : '，') + (a.stipStone ? '符钱 ' + a.stipStone : '') + (a.stipQiju ? '、' + C().items.qiju.name + ' ' + a.stipQiju + ' 颗' : ''));
+    const buys = Object.keys(a.buy || {}).filter((k) => !k.includes('|'));
+    if (buys.length) out.push('买入' + buys.map((k) => k + '×' + a.buy[k + '|q']).join('、') + '（符钱 ' + buys.reduce((t, k) => t + a.buy[k + '|c'], 0) + '）');
+    const sells = Object.keys(a.sell || {}).filter((k) => k.endsWith('|q')).map((k) => k.slice(0, -2));
+    if (sells.length) out.push('卖出' + sells.map((k) => k + '×' + a.sell[k + '|q']).join('、') + '（得符钱 ' + sells.reduce((t, k) => t + a.sell[k + '|g'], 0) + '）');
+    const uses = Object.keys(a.use || {});
+    if (uses.length) out.push('服下' + uses.map((k) => k + ' ' + a.use[k] + ' 颗').join('、'));
+    if (a.rest) out.push('静养 ' + T.dur(a.rest) + (a.restState ? '，' + a.restState : ''));
+    else if (a.healed) out.push('伤势痊愈');
+    if (a.ups && a.ups.length) out.push('其间晋入' + a.ups.map((r, i) => (i ? r.replace(/^(练炁|筑基|紫府|洞玄|金丹|元神|返虚|纯阳|合道)/, '') : r)).join('、'));
+    return (a.name || '') + '：' + (out.join('；') || '日子照常过') + '。';
+  };
+
   // pov：主角亲身经历或亲眼所见（进叙事流）；其余为世界记录，只在“传闻”里露出重要的
   H.add = (s, e) => {
+    if (s.player && H.isRoutine(e)) {
+      let L = s.player.ledger ? H.get(s, s.player.ledger) : null;
+      if (!L || L.key !== 'ledger') {
+        const lid = 'h' + s.nextHistId++;
+        // 小结记在这一段日常开始的时候（第一件是闭关一年，就记在一年前），但不早于上一条纪事
+        const d0 = Number(e.params && (e.params.done || 0)) || 0;
+        const prevT = s.history.length ? s.history[s.history.length - 1].t : 0;
+        const t0 = Math.max(prevT, s.t - d0);
+        L = { id: lid, t: t0, year: T.year(t0), type: 'ledger', tags: ['小结'], actors: e.actors || [], factions: [], places: e.places || [], key: 'ledger', params: { name: (FX.P && FX.P.player(s) && FX.P.player(s).name) || (e.params && e.params.name) || '', n: 0, last: s.t }, severity: 1, pov: true, causeIds: [], firstOf: null, record: null };
+        s.history.push(L);
+        s.player.ledger = lid;
+      }
+      mergeInto(L, e, s);
+      return L.id;
+    }
+    // 一件亲历的“事”把这一段日常隔开（传闻不隔：小结本来就是一段时日）
+    if (s.player && e.pov) s.player.ledger = null;
     const id = 'h' + s.nextHistId++;
     const entry = {
       id,
@@ -148,6 +220,9 @@
     return id;
   };
 
+  // 最近一条会进纪事的条目（亲历的，或要紧的传闻）；只往回看几十条
+  H.lastShown = (s) => { for (let i = s.history.length - 1, k = 0; i >= 0 && k < 60; i--, k++) { const e = s.history[i]; if (e.pov || e.severity >= 4) return e; } return null; };
+
   H.get = (s, id) => {
     // 历史按 id 递增追加，二分查找
     const n = parseInt(String(id).slice(1), 10);
@@ -162,11 +237,12 @@
   };
 
   H.text = (entry) => {
+    if (entry.key === 'ledger') return H.ledgerText(entry);
     const vs = TX[entry.key] || ['{key}'];
     const n = parseInt(entry.id.slice(1), 10) || 0;
     const tpl = vs[n % vs.length];
     // 旧存档里的条目可能没有后来加的可选参数，按空串补上
-    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '', note: '' }, entry.params));
+    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '', note: '', via: '' }, entry.params));
   };
 
   H.markFirst = (s, key, hid) => {

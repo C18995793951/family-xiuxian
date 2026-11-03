@@ -43,11 +43,12 @@
     if (left > 0 && isFinite(left)) {
       // 逐月估：中孚丹药力只管得了一段，伤好了速度也会回来
       const pillDays = Math.max(0, s.player.qijuUntil - s.t) + (p.realm.major >= 2 && s.player.autoPill !== false ? (s.player.inv.qiju || 0) * cf.cultivation.qijuDays : 0);
-      const memo = {}, rate = (pill, hurt) => { const k = pill + '|' + hurt; return k in memo ? memo[k] : (memo[k] = CU().breakdown(s, p, { pill, healthy: !hurt }).total); };
+      // 心境也一月一月地耗，按估的时日一并算进去
+      const memo = {}, rate = (pill, hurt, xin) => { const k = pill + '|' + hurt + '|' + Math.round(xin); return k in memo ? memo[k] : (memo[k] = CU().breakdown(s, p, { pill, healthy: !hurt, xin }).total); };
       const m = cf.daysPerMonth, cap = Math.max(m, Math.min(cf.actions.untilFullMax, Math.floor(P().lifespanLeft(s, p)) * cf.daysPerYear));
-      if (rate(false, false) > 0) {
-        let d = 0, got = 0, pd = pillDays, hd = p.health.state === 'healthy' ? 0 : p.health.days;
-        while (got < left && d < cap) { got += (rate(pd > 0, hd > 0) * m) / cf.daysPerYear; pd -= m; hd -= m; d += m; }
+      if (rate(false, false, 50) > 0) {
+        let d = 0, got = 0, pd = pillDays, hd = p.health.state === 'healthy' ? 0 : p.health.days, xn = FX.Xin.get(s);
+        while (got < left && d < cap) { got += (rate(pd > 0, hd > 0, xn) * m) / cf.daysPerYear; pd -= m; hd -= m; d += m; xn = Math.max(0, xn - cf.xin.decayPerYear * m / cf.daysPerYear); }
         d = Math.max(m, d);
         add({ type: 'cultivate', until: true, days: d, label: (verb ? verb.trim() : '闭关') + '到圆满（约 ' + T().dur(d) + '）', group: '修炼' });
       }
@@ -195,9 +196,12 @@
     const p = me(s);
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p) || s.pending.length) return { text: '闭关冲关途中出了变故', interrupted: true };
+    const guard = FX.Favor.guardianFor(s, p);
     const res = CU().attempt(s, p, { path: a.path });
     if (!res.ok) return { text: res.error };
     seek(s, res.success);
+    if (guard) FX.Favor.useGuardian(s, guard, res.success);
+    if (!res.success && P().alive(p)) FX.Xin.add(s, -C().xin.failLoss);
     const v = res.verb || '冲击';
     return { text: res.success ? `${v}${res.target}成功` : `${v}${res.target}失败${res.died ? '，身死道消' : ''}`, success: res.success, used: r.used };
   };
@@ -350,6 +354,7 @@
     if (!P().alive(p)) return { text: '' };
     if (r.interrupted) return { text: '路上出了事', interrupted: true };
     p.locationId = to.id;
+    FX.Xin.travel(s, r.used, !s.player.visited.includes(to.id));
     if (!s.player.visited.includes(to.id)) {
       // 第一次踏进东弥州腹地的某一域
       if (to.region && to.region !== '南域' && !s.player.visited.some((id) => s.places[id].region === to.region)) {
@@ -358,7 +363,17 @@
       s.player.visited.push(to.id);
     }
     const danger = Math.max(from.danger, to.danger);
-    const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
+    // 一路连着赶的几段并成一条：“自容国经乌云涧、乱石原赶到小甘山，路上走了 34 天”
+    const last = H().lastShown(s);
+    let hid;
+    if (last && last.key === 'travel' && last.params.toId === from.id && last.actors[0] === p.id) {
+      const x = last.params;
+      x.days = (x.days || 0) + r.used;
+      x.via = (x.via ? x.via + '、' : '经') + from.name;
+      x.to = to.name; x.toId = to.id; x.dur = T().dur(x.days);
+      last.places.push(to.id);
+      hid = last.id;
+    } else hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, toId: to.id, days: r.used, dur: T().dur(r.used) } });
     const member = !!FX.Sect.mine(s);
     if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger * (member ? C().world.travelMemberMult : 1))) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
@@ -386,7 +401,10 @@
     const p = me(s), place = here(s), E = C().encounter;
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
-    if (r.interrupted) return { text: '游历途中出了事', interrupted: true };
+    // 游历本身就是收获：见闻渐广，心境开阔（一无所获也一样）
+    const xg = FX.Xin.explore(s, place, r.used);
+    const xt = xg > 0 ? '，心境 +' + Math.round(xg) : '';
+    if (r.interrupted) return { text: '游历途中出了事' + xt, interrupted: true };
     s.player.stats.explores++;
     const w = Act.encounterWeights(s, place, a.days);
     const keys = Object.keys(w).sort();
@@ -400,6 +418,16 @@
     const base = { name: p.name, place: place.name, dur: T().dur(a.days) };
     const add = (key, params, sev, extra) => H().add(s, Object.assign({ type: 'explore', tags: ['游历', kind], actors: [p.id], places: [place.id], key, pov: true, severity: sev || 1, params: Object.assign({}, base, params) }, extra || {}));
     switch (kind) {
+      case 'insight': {
+        // 观山川形势、看人斗法、听老农说天时，有所领悟：小幅修为。灵机越浓的地方悟得越多
+        const fr = R.range(s.rng, E.insightFrac[0], E.insightFrac[1]) * Math.max(0.5, Math.min(2, place.qi / 3));
+        const amt = Math.round(Math.min(P().need(p), 2000) * fr * 10) / 10;
+        const gain = Math.round(CU().addProgress(s, p, amt) * 10) / 10;
+        const what = isTown(place) ? R.pick(s.rng, ['看人在坊间斗法', '听老修士谈起当年的冲关', '旁观一场论道']) : R.pick(s.rng, ['观山川形势', '看云起云落', '在溪边静看流水', '听雷声过山']);
+        add('explore_insight', { what, gain }, 2);
+        seek(s, gain > 0);
+        return { text: what + '，有所领悟，修为 +' + gain + xt };
+      }
       case 'herb': {
         const q = R.int(s.rng, E.herbQty[0], E.herbQty[1]);
         giveItem(s, 'herb', q);
@@ -419,10 +447,12 @@
         return { text: '遇上了' + beast, interrupted: true };
       }
       case 'meet': {
-        const others = P().at(s, place.id).filter((q) => q.id !== p.id && P().relValue(s, p.id, q.id) === 0);
+        // 只结识素不相识的人（叙过话、交情归零的不算生人，免得“又结识了一遍”）
+        const snub = (s.player.snubbed = s.player.snubbed || []);
+        const others = P().at(s, place.id).filter((q) => q.id !== p.id && !P().relationBetween(s, p.id, q.id) && !snub.includes(q.id));
         const q = others.length ? R.pick(s.rng, others) : W().spawnNpc(s, { kind: 'loose', locationId: place.id });
         const cold = q.traits.includes('孤傲') || (P().realmRank(q) - P().realmRank(p) >= 5 && R.chance(s.rng, 0.5));
-        if (cold) { add('meet_cold', { other: q.name }, 1, { actors: [p.id, q.id] }); seek(s, false); s.player.stats.exploreNothing++; return { text: q.name + '不搭理你' }; }
+        if (cold) { snub.push(q.id); if (snub.length > 40) snub.shift(); add('meet_cold', { other: q.name }, 1, { actors: [p.id, q.id] }); seek(s, false); s.player.stats.exploreNothing++; return { text: q.name + '不搭理你' }; }
         P().adjustRelation(s, p.id, q.id, R.int(s.rng, 5, 15), '相识');
         add('meet', { other: q.name, realm: P().realmName(q), faction: P().factionName(s, q) }, 2, { actors: [p.id, q.id] });
         seek(s, true);
@@ -465,10 +495,10 @@
         return { text: '发现一处前人遗府', interrupted: true };
       }
       default:
-        add('explore_nothing', {});
+        add('explore_nothing', { note: xt ? '，倒是见闻渐广' + xt : '' });
         seek(s, false);
         s.player.stats.exploreNothing++;
-        return { text: '一无所获' };
+        return { text: '没碰上什么事' + (xt ? '，倒是见闻渐广' + xt : '') };
     }
   };
 
@@ -559,6 +589,7 @@
     const how = delta >= 8 ? '甚欢' : delta >= 4 ? '融洽' : delta > 0 ? '平平' : '冷淡';
     H().add(s, { type: 'social', tags: ['人物'], actors: [p.id, q.id], places: [p.locationId], key: 'befriend', pov: true, severity: 1, params: { name: p.name, other: q.name, how, delta: (delta > 0 ? '+' : '') + delta } });
     seek(s, delta > 0);
+    FX.Xin.add(s, C().xin.social);
     return { text: `与${q.name}相谈${how}（关系 ${delta > 0 ? '+' : ''}${delta}）` };
   };
 
@@ -577,6 +608,7 @@
     const amount = Math.round(Math.min(P().need(p), 2000) * R.range(s.rng, cc.consultFrac[0], cc.consultFrac[1]) * 10) / 10;
     const gain = Math.round(CU().addProgress(s, p, amount) * 10) / 10;
     P().adjustRelation(s, p.id, q.id, 2, '指点');
+    FX.Xin.add(s, C().xin.social);
     H().add(s, { type: 'social', tags: ['人物', '修炼'], actors: [p.id, q.id], key: 'consult', pov: true, severity: 2, params: { name: p.name, other: q.name, gain } });
     seek(s, gain > 0);
     return { text: `得${q.name}指点，修为 +${gain}` };

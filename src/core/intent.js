@@ -73,6 +73,7 @@
     const L = [];
     const inv = Object.keys(s.player.inv).filter((k) => s.player.inv[k] > 0).map((k) => W().itemName(k) + '×' + s.player.inv[k]);
     L.push('主角：' + p.name + '，' + P().realmName(p) + '，' + P().factionName(s, p) + '，' + (p.health.state === 'healthy' ? '无伤' : p.health.state === 'heavy' ? '重伤' : '轻伤') + '，符钱 ' + s.player.stone + (p.factionId ? '，' + cf.house.meritName + ' ' + s.player.merit : '') + '。');
+    { const xv = FX.Xin.view(s), ow = FX.Favor.owed(s); L.push('心境 ' + xv.value + '（' + xv.name + '，修炼 ×' + xv.factor + '，冲关 ' + (xv.breakBonus >= 0 ? '+' : '') + xv.breakBonus + '%；闭关耗心境，游历、遇事、交游添心境）' + (ow.length ? '；欠你人情的人：' + ow.slice(0, 4).map((f) => s.people[f.npc].name).join('、') + '（遇险可求援、冲大关会来护法）' : '') + '。'); }
     L.push('行囊：' + (inv.length ? inv.join('、') : '空') + (s.player.manuals.length ? '；功法：' + s.player.manuals.map((t) => '《' + cf.techniques[t].name + '》').join('') : ''));
     L.push('所在：' + pl.name + '（' + cf.world.placeTypes[pl.type].name + '）' + (W().hasMarket(s, pl.id) ? '，有坊市' : ''));
     L.push('相邻：' + pl.links.map((l) => s.places[l.to].name + '（' + l.days + ' 天）').join('、'));
@@ -213,7 +214,8 @@
           const m = Act().marketOf(s);
           if (!m) return no('卖' + name, '此地没有坊市');
           if (!((s.player.inv[st.item] || 0) > 0)) return no('卖' + name, '行囊里没有' + name);
-          return { ok: true, label: '在坊市卖掉' + name + ' 一份', days: 0, run: { type: 'sell', item: st.item, qty: 1 } };
+          const n = st.all ? s.player.inv[st.item] : 1;
+          return { ok: true, label: '在坊市卖掉' + name + (n > 1 ? ' ×' + n : ' 一份'), days: 0, run: { type: 'sell', item: st.item, qty: n } };
         }
         const m = Act().marketOf(s);
         const slot = m && m.stock.find((x) => x.item === st.item && x.qty > 0);
@@ -321,7 +323,8 @@
     const items = [];
     for (const k of Object.keys(C().items)) { const n = C().items[k].name; if (n && n.length >= 2 && t.includes(n)) items.push(k); }
     for (const k of Object.keys(C().techniques)) { const n = C().techniques[k].name; if (n && n.length >= 2 && t.includes(n)) items.push('tech:' + k); }
-    return { q: ppl[0] || null, place: places[0] || null, item: items.sort((a, b) => W().itemName(b).length - W().itemName(a).length)[0] || null };
+    const facs = Object.values(s.factions).filter((f) => f.name && f.name.length >= 2 && (t.includes(f.name) || (f.name.length >= 3 && t.includes(f.name.replace(/[派宗门]$/, ''))))).sort((a, b) => b.name.length - a.name.length);
+    return { q: ppl[0] || null, place: places[0] || null, fac: facs[0] || null, item: items.sort((a, b) => W().itemName(b).length - W().itemName(a).length)[0] || null };
   };
   Intent.match = (s, text) => {
     const t = String(text || '');
@@ -367,13 +370,61 @@
       add('前往' + m.place.name, [{ k: 'go', to: m.place.id }].concat(tail));
       if (has(t, /打听|情形|怎样|如何/)) add('打听' + m.place.name + '的情形', [dd({ verb: 'inquire', topic: 'place', place: m.place.id })]);
     }
+    // ---- 0.11：常见说法补全（这些说法比“前往某地”具体，排在前面）----
+    const n0 = cands.length;
+    const firstOf = () => { for (let i = n0; i < cands.length; i++) cands[i].pri = 1; };
+    // 拜师、入门：提到门派或门派所在地，就赶过去求入；在场有比你高的熟人，也可以请教
+    if (has(t, /拜师|拜入|入门|加入|投奔|求入|投入|拜.{0,4}为师|当弟子|做弟子/)) {
+      const f = m.fac || (m.place && m.place.factionId && s.factions[m.place.factionId]) || (s.places[p.locationId].factionId && s.factions[s.places[p.locationId].factionId]) || null;
+      if (f && f.type === 'sect' && !p.factionId) add('去' + s.places[f.seatId].name + '求入' + f.name, (f.seatId !== p.locationId ? [{ k: 'go', to: f.seatId }] : []).concat([{ k: 'act', a: { type: 'join', fid: f.id } }]));
+      else if (f && p.factionId === f.id) add('你已是' + f.name + '中人，去长老房看看能请授什么', [dd({ verb: 'inquire', topic: 'way' })]);
+      if (q && P().realmRank(q) > P().realmRank(p)) add('向' + q.name + '请教（拜师先从请教起）', toQ([{ k: 'do', type: 'consult', npc: q.id }]));
+    }
+    // 卖光：行囊里的草药、妖物材料一股脑卖掉
+    if (has(t, /卖光|全卖|都卖|卖了|清仓|全部卖|统统卖|换成符钱|换钱/) && !q && !m.item) {
+      const goods = C().loot.filter((k) => (s.player.inv[k] || 0) > 0).slice(0, Intent.MAX_STEPS);
+      if (goods.length) add('把' + goods.map((k) => W().itemName(k)).join('、') + '都卖掉', goods.map((k) => ({ k: 'do', type: 'sell', item: k, all: true })));
+    }
+    // 治病、行医：给凡人看病，按营生算（凡人国当供奉）
+    if (has(t, /治病|行医|看病|救治|施药|悬壶|医人|救人/)) {
+      const city = m.place && m.place.type === 'city' ? m.place : null;
+      add('行医济世（按营生算' + (city ? '，在' + city.name : '') + '）', (city && city.id !== p.locationId ? [{ k: 'go', to: city.id }] : []).concat([{ k: 'do', type: 'work' }]));
+    }
+    // 道侣：先得有交情
+    if (has(t, /道侣|双修|结为夫妻|成亲|心仪|喜欢|倾心|结缘/)) {
+      if (q) { add('与' + q.name + '多走动（结道侣要先有深交）', toQ([{ k: 'do', type: 'befriend', npc: q.id }])); add('与' + q.name + '叙话', toQ([dd({ verb: 'talk', npc: q.id, aim: 'chat' })])); }
+      else {
+        const here = P().at(s, p.locationId).filter((x) => x.id !== p.id).sort((a, b) => P().relValue(s, p.id, b.id) - P().relValue(s, p.id, a.id) || (a.id < b.id ? -1 : 1))[0];
+        if (here) add('去拜访' + here.name + '（结道侣要先有深交）', [{ k: 'do', type: 'befriend', npc: here.id }]);
+      }
+    }
+    // 没点名的切磋：找在场、修为相近的人
+    if (has(t, /切磋|比试|较量|过招|练练手/) && !q) {
+      const foe = P().at(s, p.locationId).filter((x) => x.id !== p.id && Math.abs(P().realmRank(x) - P().realmRank(p)) <= 3).sort((a, b) => P().relValue(s, p.id, b.id) - P().relValue(s, p.id, a.id) || (a.id < b.id ? -1 : 1))[0];
+      if (foe) add('与' + foe.name + '切磋', [dd({ verb: 'fight', npc: foe.id, mode: 'spar' })]);
+    }
+    // 潜入、偷：潜行只能对人；对地方先去探探情形
+    if (has(t, /潜入|偷|盗|摸进|夜探|混进/) && !q) {
+      const pl = m.place || s.places[p.locationId];
+      add('先去探' + pl.name + '的情形（潜行只能盯人）', (pl.id !== p.locationId ? [{ k: 'go', to: pl.id }] : []).concat([dd({ verb: 'inquire', topic: 'place', place: pl.id })]));
+    }
+    firstOf();
     if (has(t, /冲关|突破|筑基|紫府|金丹|元神/)) add('冲关', [{ k: 'do', type: 'breakthrough' }]);
     if (has(t, /闭关|修炼|打坐|吐纳/)) add('闭关修炼', [{ k: 'do', type: 'cultivate' }]);
-    if (has(t, /游历|历练|逛逛|转转|走走/)) add('在此地游历', [{ k: 'do', type: 'explore' }]);
+    if (has(t, /游历|历练|逛逛|转转|走走|散心|出门|透透气|看看/)) add('在此地游历', [{ k: 'do', type: 'explore' }]);
     if (has(t, /打工|营生|差事|挣钱|赚钱|干活/)) add('做营生挣符钱', [{ k: 'do', type: 'work' }]);
     if (has(t, /养伤|静养|疗伤/)) add('静养', [{ k: 'do', type: 'rest' }]);
     if (has(t, /卡|缺|下一步|怎么办|去哪/)) add('打听眼下卡关的来路', [dd({ verb: 'inquire', topic: 'way' })]);
     if (has(t, /打听|传闻|消息|新鲜事/) && !q && !m.item) add('在此地打听近来的传闻', [dd({ verb: 'inquire', topic: 'rumor' })]);
+    // 一句也没听懂：给最接近的几样（眼下的下一步、出门走走、闭关）
+    if (!cands.length) {
+      const g = FX.Guide && FX.Guide.next(s);
+      if (g && g.need) add('打听眼下卡关的来路', [dd({ verb: 'inquire', topic: 'way' })]);
+      add('在此地游历', [{ k: 'do', type: 'explore' }]);
+      add('闭关修炼', [{ k: 'do', type: 'cultivate' }]);
+      add('在此地打听近来的传闻', [dd({ verb: 'inquire', topic: 'rumor' })]);
+      for (const c of cands) c.guess = true;
+    }
     // 去重，先放走得通的
     const seen = new Set();
     const out = [];
@@ -384,7 +435,7 @@
       c.check = Intent.preview(s, c.steps);
       out.push(c);
     }
-    out.sort((a, b) => b.check.ok - a.check.ok);
+    out.sort((a, b) => b.check.ok - a.check.ok || (b.pri || 0) - (a.pri || 0));
     return out.slice(0, 3);
   };
 

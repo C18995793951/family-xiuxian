@@ -137,21 +137,23 @@
   EV.BEAST = {
     name: '遭遇妖物', category: '遭遇', severity: 2,
     text: (s, b, n) => `${n.place}，${b._why || '一头'}${b._beast}拦在前方（战力约 ${b._power}）。你如今${P().realmName(pl(s))}，战力 ${P().power(s, pl(s))}。`,
-    options: [fightOpt(beastFoe), fleeOpt(beastFoe)],
+    // 欠你人情的故人赶得来时，多一个“传讯求援”（见 favor.js）
+    options: (s, b) => [fightOpt(beastFoe)].concat(FX.Favor.aidFor(s, b.place) ? [FX.Favor.aidOpt(beastFoe)] : []).concat([fleeOpt(beastFoe)]),
   };
 
   EV.ROBBER = {
     name: '拦路劫修', category: '遭遇', severity: 3,
     text: (s, b, n) => { const p = s.people[b.foe]; return `${n.place}，${n.foe}（${P().realmName(p)}，${P().factionName(s, p)}，战力 ${P().power(s, p)}）拦住去路，要你留下买路符钱。你身上有符钱 ${s.player.stone}，战力 ${P().power(s, pl(s))}。`; },
-    options: [
+    options: (s, b) => [
       fightOpt(npcFoe),
+    ].concat(FX.Favor.aidFor(s, b.place) ? [FX.Favor.aidOpt(npcFoe)] : []).concat([
       {
         id: 'pay', label: '破财消灾',
         cost: (s) => `符钱 −${Math.ceil(s.player.stone * 0.4)}`, risk: () => '无', outcome: () => '对方拿钱走人',
         apply(s, b) { const lost = Math.ceil(s.player.stone * 0.4); s.player.stone -= lost; return { text: `交出符钱 ${lost}` }; },
       },
       fleeOpt(npcFoe),
-    ],
+    ]),
   };
 
   EV.RUIN = {
@@ -197,6 +199,45 @@
         },
       },
       { id: 'leave', label: '不去招惹', cost: () => '无', risk: () => '无', outcome: () => '什么也不会发生', apply() { return { text: '转身离开' }; } },
+    ],
+  };
+
+  // 凡人开局的仙缘（0.11）：一位玄真派修士路过容国。给凡人一个开头的选择，而不是先静坐十几年
+  EV.XIANYUAN = {
+    name: '仙师过境', category: '机缘', severity: 3,
+    text: (s, b, n) => `这天容国城外的茶棚里坐着一位青袍修士，腰悬玉符，自称${n.faction}的${n.npc}，下山采办，明日便走。你听过仙人的传闻，却从没这样近地见过一个。`,
+    options: [
+      {
+        id: 'ask', label: '上前叩问仙路',
+        chance: (s) => ({ chance: Math.round(U.clamp(35 + (pl(s).aptitude - 50) * 0.6, 15, 85)), parts: [{ label: '看你的资质与诚意', value: Math.round(U.clamp(35 + (pl(s).aptitude - 50) * 0.6, 15, 85)) + '%' }] }),
+        cost: () => '无', risk: () => '对方未必看得上你，最多指点一句',
+        outcome: (s, b, n) => `得对方点拨胎息的门道（气感大进），并留下一封给${n.faction}的荐书（日后求入山门把握更大）`,
+        apply(s, b) {
+          const p = pl(s), q = s.people[b.npc];
+          const ch = Math.round(U.clamp(35 + (p.aptitude - 50) * 0.6, 15, 85));
+          if (R.next(s.rng) * 100 < ch) {
+            FX.CU.addProgress(s, p, Math.round(P().need(p) * 0.6));
+            if (!p.flags.includes('jianshu')) p.flags.push('jianshu');
+            P().adjustRelation(s, p.id, q.id, 12, '指点');
+            return { text: `${q.name}看你还算顺眼，点拨了几句胎息的门道（气感大进），又留下一封荐书：“证得胎息，持此信来${s.factions[q.factionId].name}。”（${ch}%）`, gain: true };
+          }
+          FX.CU.addProgress(s, p, Math.round(P().need(p) * 0.15));
+          return { text: `${q.name}只看了你一眼：“先证得胎息再说。”临走丢下一句静坐的口诀（${ch}%）` };
+        },
+      },
+      {
+        id: 'deep', label: '悄悄跟他进山',
+        cost: () => '一个月', risk: () => '山里有妖物；凡人卷进修士斗法，非死即伤',
+        outcome: () => '亲眼见一回仙凡之别；生死之间走一遭，最容易证得胎息',
+        apply(s, b) {
+          const p = pl(s), q = s.people[b.npc];
+          FX.Xin.add(s, 25);
+          if (R.chance(s.rng, 0.55)) { P().injure(s, p, 'light'); p.nearDeathT = s.t; return { text: `你远远跟着${q.name}进了山，撞见${q.name}与一头妖物斗法，被余波掀下山坡，九死一生。那一刻胸中似有一点气感跳动（往后三年参悟胎息把握大增）`, gain: true, days: 30 }; }
+          P().injure(s, p, 'heavy');
+          return { text: `你跟丢了${q.name}，反被山里的野物盯上，拖着重伤爬回城里。生死之间走了一遭，胸中似有所感`, days: 30 };
+        },
+      },
+      { id: 'leave', label: '不去打扰', cost: () => '无', risk: () => '无', outcome: () => '仙路照旧要自己摸索', apply() { return { text: '你远远看了一会儿，转身回家' }; } },
     ],
   };
 

@@ -41,7 +41,7 @@
   // 后果白名单
   Hook.EFFECTS = {
     'coin+': '得符钱', 'coin-': '失符钱', 'item+': '得物', 'item-': '失物', 'merit+': '得道功', 'progress+': '小幅修为',
-    hurt: '受伤', 'rel+': '交情升', 'rel-': '交情降', feud: '结仇', favor_owed: '对方欠你人情', favor_owe: '你欠对方人情', repay: '还了人情', intel: '一条消息', followup: '一件后续事',
+    hurt: '受伤', 'rel+': '交情升', 'rel-': '交情降', feud: '结仇', favor_owed: '对方欠你人情', favor_owe: '你欠对方人情', repay: '还了人情', collect: '对方还了人情', intel: '一条消息', followup: '一件后续事',
   };
   const coinAmt = (p, size) => Math.round(10 * Math.pow(1 + p.realm.major, 2) * SIZE[size]);
   const relAmt = (size) => ({ small: 5, mid: 10, big: 20 }[size]);
@@ -91,6 +91,9 @@
     }
     const owe = favors(s).find((f) => f.kind === 'owe' && P().alive(s.people[f.npc]));
     if (owe) add('self_debt', 3, { npc: owe.npc });
+    // 人情回流：欠你人情的人登门回礼（先欠的先来）；送的多半是你卡关缺的东西
+    const owed = FX.Favor.owed(s)[0];
+    if (owed) { const gift = FX.Favor.giftFor(s); add('favor_return', 3 + Math.min(3, FX.Favor.owed(s).length * 0.5), Object.assign({ npc: owed.npc }, gift ? { item: gift } : {})); }
     // 地方：同住一处的人、山里的妖物
     const nb = P().at(s, place.id).filter((q) => q.id !== p.id && Math.abs(rel(s, q)) < K.friendMin).sort(sortId);
     if (nb.length) add('place_neighbor', 1.2, { npc: nb[R.int(s.rng, 0, nb.length - 1)].id });
@@ -188,12 +191,14 @@
       options: [opt('出手清剿', 'fight', 'mid', ['item+', 'merit+'], ['hurt']), opt('闭门不出', 'none', 'small', [])] }),
     saga_after: (s, b, n) => ({ title: '大事余波', text: `「${b._what}」之后，${n.npc}带着伤找上门来，求你收留几日。`, item: 'heal', max: 'mid',
       options: [opt('收留他', 'time', 'small', ['rel+', 'favor_owed']), opt('赠他一颗' + C().items.heal.name, 'none', 'mid', ['item-', 'rel+']), opt('拒之门外', 'none', 'small', ['rel-'])] }),
+    favor_return: (s, b, n) => ({ title: '故人还情', text: b._item ? `${n.npc}登门来了，说当年欠你的那份人情一直记着。听说你正缺${n.item}，特地寻了一份带来。` : `${n.npc}登门来了，说当年欠你的那份人情一直记着，带了些符钱来，权当谢礼。`, item: b._item || undefined, max: 'big',
+      options: [opt('收下', 'none', 'big', [b._item ? 'item+' : 'coin+', 'collect', 'rel+']), opt('人情不必还，留下喝茶论道', 'none', 'mid', ['collect', 'rel+', 'progress+']), opt('请他留着，日后再说', 'none', 'small', [])] }),
     follow: (s, b, n) => ({ title: '旧事后续', text: `${n.npc}又来了，还记着上回「${b._ref}」的事。`, max: 'small',
       options: [opt('叙叙旧', 'none', 'small', ['rel+']), opt('托他打听些消息', 'talk', 'small', ['intel'], []), opt('不见', 'none', 'small', ['rel-'])] }),
   };
   Hook.TPL = TPL;
   Hook.KINDS = Object.keys(TPL);
-  Hook.FAMILY = { friend_hurt: '交情', friend_visit: '交情', foe_probe: '仇怨', foe_hurt: '仇怨', sect_task: '宗门', sect_rival: '宗门', market_buyer: '市面', self_need: '主角', self_hurt: '主角', self_challenge: '主角', self_debt: '主角', place_neighbor: '地方', place_beasts: '地方', place_visitor: '地方', market_peddler: '市面', saga_after: '大事余波', follow: '后续' };
+  Hook.FAMILY = { friend_hurt: '交情', friend_visit: '交情', foe_probe: '仇怨', foe_hurt: '仇怨', sect_task: '宗门', sect_rival: '宗门', market_buyer: '市面', self_need: '主角', self_hurt: '主角', self_challenge: '主角', self_debt: '主角', place_neighbor: '地方', place_beasts: '地方', place_visitor: '地方', market_peddler: '市面', saga_after: '大事余波', follow: '后续', favor_return: '交情' };
 
   // 钩子 → 事件绑定（含模板或 AI 提案）。当事人已不在、条件已变（比如伤好了）就返回 null
   Hook.build = (s, h, ai) => {
@@ -254,6 +259,7 @@
       case 'favor_owed': return n.npc ? n.npc + '欠你一个人情' : '';
       case 'favor_owe': return n.npc ? '欠' + n.npc + '一个人情' : '';
       case 'repay': return '还了人情';
+      case 'collect': return n.npc ? n.npc + '的人情就算还了' : '';
       case 'intel': return '得一条消息';
       case 'followup': return '日后还有下文';
       default: return '';
@@ -283,6 +289,7 @@
       case 'favor_owed': if (q) favors(s).push({ npc: q.id, kind: 'owed', t: s.t }); break;
       case 'favor_owe': if (q) favors(s).push({ npc: q.id, kind: 'owe', t: s.t }); break;
       case 'repay': { const f = q && favors(s).find((x) => x.npc === q.id && x.kind === 'owe'); if (f) favors(s).splice(favors(s).indexOf(f), 1); break; }
+      case 'collect': if (q) FX.Favor.collect(s, q.id); break;
       case 'intel': ctx.intel = FX.Deed.intel(s, FX.Guide && FX.Guide.next(s) ? 'way' : 'rumor', {}); break;
       case 'followup': if (q) st(s).queue.push({ id: 'k' + s.nextId++, kind: 'follow', npc: q.id, ref: b._p.title, t: s.t + R.int(s.rng, 1, 3) * C().daysPerYear, ripe: false }); break;
     }

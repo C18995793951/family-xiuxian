@@ -8,6 +8,8 @@ const pickEvent = (FX, s, style) => {
   if (style === 'bold') o = opts.find((x) => x.id === 'deep' || x.id === 'fight') || opts[0];
   else {
     const fight = opts.find((x) => x.id === 'fight');
+    const aid = opts.find((x) => x.id === 'aid');
+    if (aid && aid.chance && aid.chance.chance >= 55 && !(fight && fight.chance && fight.chance.chance >= 60)) return FX.Game.choose(s, v.id, aid.id);
     if (fight && fight.chance && fight.chance.chance >= 60) o = fight;
     else o = opts.find((x) => x.id === 'safe' || x.id === 'pay' || x.id === 'flee') || opts[0];
   }
@@ -20,25 +22,17 @@ const STRATEGIES = {
   // 先找本门库藏，道功不够就做差事、领符诏，再不行去墟市买或托人代寻；伤了就养
   // （和导演模式的本地策略共用一套，见 src/core/director.js 的 Dir.diligent）
   diligent: (FX, s, rng) => FX.Dir.diligent(s, rng),
-  // 游侠：四处走、四处游历，修炼只占一部分
+  // 死关：和苦修一样备齐冲关的东西，但从不为心境出门，能闭关就闭关（0.11 以前的“最优解”）
+  recluse: (FX, s, rng) => FX.Dir.diligent(s, rng, { xinLow: -1, gateXin: -1, recluse: true }),
+  // 游侠：修炼照样修，但心境不满八成就出去游历，常换地方走走
   wanderer(FX, s, rng) {
     const A = FX.Game.actions(s).filter((a) => a.ok);
-    const ov = FX.Game.view.overview(s);
-    if (ov.me.health.state !== 'healthy') return A.find((a) => a.type === 'use' && a.item === 'heal') || A.find((a) => a.type === 'rest');
-    const br = A.find((a) => a.type === 'breakthrough');
-    if (br && (ov.breakthrough.kind !== 'zhuji' || ov.inv.zhuji > 0)) return br;
-    // 碰上了就去：地渊、撷芳宴
-    const big = A.find((a) => a.type === 'diyuan' || a.type === 'xiefang');
-    if (big) return big;
-    const lr = A.find((a) => a.type === 'learn' && !ov.me.techniqueId);
-    if (lr) return lr;
-    const r = rng();
-    if (r < 0.35) return A.find((a) => a.type === 'explore' && a.days === 30);
-    if (r < 0.55) { const t = A.filter((a) => a.type === 'travel'); return t[Math.floor(rng() * t.length)]; }
-    if (r < 0.65) { const b = A.filter((a) => a.type === 'befriend' || a.type === 'consult'); if (b.length) return b[Math.floor(rng() * b.length)]; }
-    for (const k of FX.CONFIG.loot) if (ov.inv[k] > 0 && s.markets[ov.place.id]) return { type: 'sell', item: k, qty: ov.inv[k] };
-    if (ov.me.realm.major === 1 && !ov.lianqi && s.markets[ov.place.id]) { const t = s.markets[ov.place.id].stock.find((x) => x.item.startsWith('tech:') && x.qty > 0 && x.price <= ov.stone && FX.CONFIG.techniques[x.item.slice(5)].kind === 'lianqi'); if (t) return { type: 'buy', item: t.item, qty: 1 }; }
-    return A.find((a) => a.type === 'cultivate' && !a.coin && a.days === 180);
+    const me = FX.P.player(s);
+    if (me.health.state === 'healthy' && !s.pending.length && rng() < 0.1) {
+      const t = A.filter((a) => a.type === 'travel' && s.places[a.to].danger <= 2);
+      if (t.length) return t[Math.floor(rng() * t.length)];
+    }
+    return FX.Dir.diligent(s, rng, { xinLow: 80, gateXin: 85 });
   },
   // 随机：在合法行动里均匀乱选（找崩溃用）
   random(FX, s, rng) {

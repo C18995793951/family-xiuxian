@@ -12,7 +12,7 @@
 
   FX.CONFIG = {
     schemaVersion: 12,
-    gameVersion: '0.10.1-xianye10',
+    gameVersion: '0.11.0-lilian',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -888,13 +888,38 @@
       seclusionDisturb: 0.004, // 闭关时每月、每级危险度被打扰的概率
     },
 
+    /* ---------- 心境（0.11）----------
+     * 闭关日久，心境渐枯，修炼变慢；出门游历、赶路、遇事、交游，心境开阔，回来修得更快、冲关更有把握。
+     * 心境 60 时修炼速度不加不减；0 时 ×0.55，100 时 ×1.3。冲关把握 (心境 − 50) / 4，即 −12% 到 +12%。 */
+    xin: {
+      start: 60, speedMin: 0.55, speedMax: 1.3, breakDiv: 4,
+      decayPerYear: 10,          // 闭关、修炼每年耗去的心境
+      explorePerDay: 0.6, exploreCap: 22, townMult: 0.6, dangerBonus: 0.15, // 游历：每天多少；城镇里减四成；每级危险度加 15%
+      newPlace: 8,               // 头一回到某地
+      travelPerDay: 0.25, travelCap: 8,
+      event: 5, fight: 4,        // 了结一件事；动手的再多一点
+      social: 2, deed: 3, saga: 10,
+      failLoss: 10,              // 冲关失败，心神受挫
+      low: 35,                   // 低于此值界面提醒“该出去走走了”
+    },
+
+    /* ---------- 人情回流（0.11）----------
+     * 替人出过力、收留过人、送过药，对方欠你的人情会回来：
+     * 遇险时传讯求援（援手的战力八成算进来）、冲大关时来护法（把握 +8%）、或登门回礼（多半是你卡关缺的东西）。 */
+    favor: {
+      guardBonus: 8, guardRankGap: 1,  // 护法的人修为至多比你低一个小境界
+      aidMult: 0.8, aidDays: 20,       // 援手战力折算；离出事的地方至多这么多天路程才赶得来
+      giftCap: 60,                     // 回礼按物价封顶：60 × (1 + 大境界)²，超过就折成符钱
+    },
+
     /* ---------- 遭遇（游历）----------
      * 基础权重；具体由地点类型、危险度、灵机修正。
      * 原则一：多数时候什么都不发生。原则二：有些努力没有回报。 */
     encounter: {
       robberDare: 0.6, // 劫修只劫境界战力不到自己六成的人
       weights: {
-        nothing: 48,
+        nothing: 30,
+        insight: 18,   // 观山川形势有所领悟：小幅修为（× 灵机 / 3，至少一半）
         herb: 16,
         beast: 6,      // × 危险度
         meet: 9,
@@ -902,7 +927,7 @@
         trouble: 3,    // × (危险度 + 1)
         fortune: 2.5,  // × 灵机 / 3；野心勃勃者略高
       },
-      townWeights: { nothing: 46, meet: 22, rumor: 10, trouble: 6, herb: 0, beast: 0, fortune: 1 },
+      townWeights: { nothing: 38, insight: 8, meet: 22, rumor: 10, trouble: 6, herb: 0, beast: 0, fortune: 1 },
       longFactor: 1.6,         // 长游历（30 天）除“无事”外的权重倍率
       fortuneCooldownDays: 1800, // 五年内奇遇最多一次，多出的降为普通收获
       herbQty: [1, 4],
@@ -917,6 +942,7 @@
       lossHeavyShare: 0.4,
       deathWhenOutmatched: 0.15, // 重伤且对手战力 ≥ 2 倍时
       troubleStoneFrac: [0.1, 0.3],
+      insightFrac: [0.03, 0.07], // 游历有悟：按当前境界所需修为（至多按 2000 算）的这一段比例
       // 按危险度 0–5 的妖物、鬼物、天魔
       beastNames: [['野狼', '山魈'], ['青鳞蛇', '赤灵彩鹦'], ['铁背熊精', '赤目妖狼'], ['行尸', '金纹豹妖'], ['阴马', '下位天魔'], ['恶嗔阴魔', '朱厌大妖'], ['上位天魔', '千年老蛟'], ['天魔化身', '太古凶兽']],
     },

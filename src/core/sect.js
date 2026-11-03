@@ -122,6 +122,7 @@
     // 一回不成就明年再来：每求过一回，诚意 +10
     const tried = s.player.joinTried[f.id];
     if (tried && tried.fails) parts.push({ label: '已求过 ' + tried.fails + ' 回，心诚', value: Math.min(30, tried.fails * 10) });
+    if (p.flags.includes('jianshu') && f.key === 'xuanzhen') parts.push({ label: '持仙师荐书', value: 20 });
     if (j.pin && p.danPin) parts.push({ label: P().danPinName(p), value: (5 - p.danPin) * 6 });
     return { chance: Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 90)), parts };
   };
