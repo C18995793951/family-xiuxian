@@ -171,7 +171,7 @@ test/       自动化测试、平衡报告、预设策略、界面冒烟测试
 
 ```bash
 node build.js                 # 生成 dist/family-xiuxian.html
-node test/run-tests.js        # 自动化测试（25 项；ONLY=16,18 只跑其中几项）
+node test/run-tests.js        # 自动化测试（29 项；ONLY=16,18 只跑其中几项）
 node test/run-tests.js --quick
 node test/balance.js --seeds 40   # 平衡报告
 node test/ui-smoke.js         # 浏览器冒烟测试（需要 Playwright）
@@ -180,6 +180,7 @@ node test/ai-tests.js         # AI 底座（假 DeepSeek，不联网）
 node test/intent-tests.js     # 自由输入：30 句测试句、不合规提案被拒、通用动作不越权
 node test/hook-tests.js       # 找上门的事：宅家百年件数与种类、两条原则、AI 事件提案校验
 node test/npc-tests.js        # 人物的命运：圈子里每人的事、传闻能插手、同一斗法公式、速度、近况校验
+node test/director-tests.js   # 导演模式：五种本心各过一生、AI 打算过校验、要紧时才问 AI、可复现、试玩后的修正（D6）
 ```
 
 ## 已知缺口

@@ -270,3 +270,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .dir-log p.dir-think { margin: .5em 0 .2em; color: var(--accent); }
 .dir-log p.dir-think i { color: var(--text); font-style: normal; }
 .dir-log p.dir-think .src { color: var(--muted); font-size: .8em; margin-left: .4em; }
+.dir-heart > summary { cursor: pointer; list-style: none; }
+.dir-heart > summary::-webkit-details-marker { display: none; }
+.dir-heart > summary h3 { display: inline; }
+.dir-heart > summary h3::after { content: ' ▾'; color: var(--muted); font-size: .8em; }
+.dir-heart[open] > summary h3::after { content: ' ▴'; }
+.dir-heart[open] > summary { margin-bottom: .5em; }

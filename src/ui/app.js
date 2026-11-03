@@ -882,8 +882,10 @@
     const per = Dir.PERSONAS[st.persona];
     const tl = Dir.timeline(s, 70);
     const nr = narrOf();
+    // 本地的心声只写念头（做了什么紧接着的纪事里有）；AI 拿的主意连做法一起写；没有念头的不占一行
     const row = (x) => x.kind === 'dir'
-      ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">${x.via === 'ai' ? 'AI' : '本心'}</span></p>`
+      ? (x.via === 'ai' ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">AI</span></p>`
+        : x.text ? `<p class="dir-think"><i>“${esc(x.text)}”</i></p>` : '')
       : `${nr[x.id] ? aiNote(nr[x.id]) : ''}<p class="${x.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(x.t))}</span>${esc(x.text)}</p>`;
     const head = `<div class="card dir-head">
       <div class="dir-who"><b>${esc(me.name)}</b> · ${ov.age} 岁 · ${esc(ov.realm)} · 在${esc(ov.place.name)} · 余寿约 ${n0(ov.left)} 年 · 符钱 ${n0(ov.stone)}${ov.faction ? ' · ' + esc(ov.faction.name) : ''}</div>
@@ -895,11 +897,13 @@
       <div class="dir-opt"><span class="muted">AI</span><div class="chips c3">${chips(D.MODES, D.aiMode, 'dirMode')}</div></div>
       <p class="muted small" style="margin:.3em 0 0">${esc(D.aiState())}${D.status ? ' · <b class="warn">' + esc(D.status) + '</b>' : ''}${D.lastAI && D.aiMode !== 'off' ? ' · ' + esc(D.lastAI) : ''}</p>
     </div>`;
-    const heart = `<div class="card"><h3>本心</h3><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
+    const started = tl.some((x) => x.kind === 'dir');
+    const heart = `<details class="card dir-heart" ${!started || UI.dirHeart ? 'open' : ''}><summary data-act="dirHeart"><h3>本心：${esc(per.name)}${st.aim ? ' · ' + esc(st.aim) : ''}</h3></summary><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
       <p class="muted small">${esc(per.desc)}。性格：${esc((me.traits || []).join('、') || '平常')}。</p>
-      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></div>`;
-    return `<h2>导演模式</h2>${head}${s.ended ? '' : heart}
-      <div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></details>`;
+    const life = `<div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+    // 开导演以后，本心折起来放到后面，手机上第一屏就能看到这一生在怎么过
+    return `<h2>导演模式</h2>${head}${s.ended ? life : started ? life + heart : heart + life}`;
   };
 
   PAGE.sys = () => `<h2>存档与设置</h2>
@@ -1170,6 +1174,8 @@
     dirStop() { FX.Director.stop(''); UI.page = 'now'; afterAction(); toast('你接管了，自己来'); },
     async dirOnce() { await FX.Director.once(UI.s); afterAction(); },
     dirSpeed(d) { FX.Director.setSpeed(d.k); render(); },
+    // 本心卡折起、展开：记在界面状态里，导演跑着页面重画也不会自己合上
+    dirHeart(d, el, ev) { if (ev) ev.preventDefault(); UI.dirHeart = !(el && el.parentNode && el.parentNode.open); render(); },
     dirMode(d) { FX.Director.setMode(d.k); render(); },
     dirPersona(d) { FX.Dir.setPersona(UI.s, d.k); scheduleSave(); render(); },
     dirAim() { FX.Dir.setAim(UI.s, ($('#dir-aim') || {}).value || ''); scheduleSave(); toast('志向定下了'); render(); },
@@ -1277,7 +1283,7 @@
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
   // 导演跑得快时页面不停重画，按下到抬起之间按钮可能已换掉、点击就丢了：暂停、接管在按下时就办
-  const PRESS = new Set(['dirPause', 'dirStop']);
+  const PRESS = new Set(['dirPause', 'dirStop', 'dirHeart']);
   let pressed = 0;
   document.addEventListener('pointerdown', (ev) => {
     const el = ev.target.closest && ev.target.closest('[data-act]');
@@ -1289,7 +1295,7 @@
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-act]');
     if (!el || !el.dataset.act) return;
-    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) return;
+    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) { ev.preventDefault(); return; }
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });

@@ -202,6 +202,8 @@
     const cir = Npc.circle(s).sort((a, b) => (a.id < b.id ? -1 : 1));
     for (const q of cir) {
       if (!P().alive(q)) continue;
+      // 隐修期满出关：说一声，免得圈子里的人一隐修就十几年没有音信
+      if (q.aim && q.aim.kind === 'seclude' && s.year >= q.aim.until && q.health.state === 'healthy') tell(s, q, 'npc_unseclude', { realm: P().realmName(q) }, [], []);
       if (!q.aim || q.aim.done || s.year >= q.aim.until || (q.aim.kind !== 'heal' && q.health.state === 'heavy')) Npc.pickAim(s, q);
       if (R.chance(s.rng, K.act[q.aim.kind] || 0.4)) Npc.step(s, q);
       if (P().alive(q) && q.aim.kind !== 'roam' && R.chance(s.rng, K.social)) Npc.social(s, q);
@@ -272,6 +274,7 @@
     npc_roam: ['{who}游历到{place}，一路无事。'],
     npc_roam_gain: ['{who}游历到{place}，颇有所得。'],
     npc_seclude: ['{who}在{place}闭门隐修，久不见人。'],
+    npc_unseclude: ['{who}隐修期满，在{place}出关，修为已是{realm}。'],
     npc_know: ['{who}在{place}结识了{other}，两人颇为投缘。'],
     npc_bond: ['{who}与同门{other}在{place}相处日久，渐成知交。'],
     npc_spar: ['{who}与{other}在{place}切磋，{win}胜了半招。'],
