@@ -88,6 +88,11 @@
       const dz = FX.Sect.perkOf(s, p, 'dazhi'); // 大知殿：不理俗务，专心清修
       if (dz) F.push({ label: '大知殿清修', value: 1 + 0.1 * dz });
     }
+    // 心境（只算主角）：闭关日久渐枯，出门历练回来更快
+    if (P().isPlayer(s, p) && FX.Xin) {
+      const x = opts && typeof opts.xin === 'number' ? opts.xin : FX.Xin.get(s);
+      F.push({ label: '心境 ' + Math.round(x) + '（' + FX.Xin.name(x) + '）', value: FX.Xin.factor(x) });
+    }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
     if (!(opts && opts.healthy) && (p.health.state === 'light' || p.health.state === 'heavy')) F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
     let total = 1;
@@ -382,6 +387,10 @@
     const aux = FX.Ars.breakPart(s, p, k);
     if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
+    if (isPlayer && FX.Xin) { const x = FX.Xin.get(s), xb = FX.Xin.breakBonus(x); if (xb) parts.push({ label: '心境' + FX.Xin.name(x) + '（' + Math.round(x) + '）', value: xb }); }
+    // 欠你人情、修为不在你之下的故人来护法（大关才来；成败都算还了人情）
+    const guard = isPlayer && k !== 'minor' && k !== 'taixi' && FX.Favor ? FX.Favor.guardian(s) : null;
+    if (guard) parts.push({ label: guard.name + '前来护法（还你人情）', value: C().favor.guardBonus });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
     const max = k === 'minor' ? B.max : B.majorMax;

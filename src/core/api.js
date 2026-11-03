@@ -44,6 +44,8 @@
           me: p, age: P.age(s, p), realm: P.realmName(p), realmTitle: P.realmTitle(p), title: P.title(p), need: P.need(p), full: P.isFull(p),
           left: P.lifespanLeft(s, p), lifespan: P.lifespanTotal(p),
           speed: FX.CU.breakdown(s, p, { pill: s.player.qijuUntil > s.t }),
+          xin: FX.Xin.view(s),
+          favors: FX.Favor.owed(s).map((f) => ({ npc: f.npc, name: s.people[f.npc].name, realm: P.realmName(s.people[f.npc]), at: s.places[s.people[f.npc].locationId].name })),
           power: P.powerBreakdown(s, p),
           tech: P.techOf(s, p), lianqi: P.lianqiOf(p), fit: FX.CU.attrFit(s, p, place),
           coinPerYear: FX.CU.coinPerYear(p),

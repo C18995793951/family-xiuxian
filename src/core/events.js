@@ -126,9 +126,16 @@
       severity: def.severity || 2, pov: true, causeIds: inst.causeIds,
     });
     const out = opt.apply(s, inst.bound, { hid, names: Ev.names(s, inst.bound), inst }) || {};
+    // 经了一件事，心境就开阔一分；动过手的更多
+    if (FX.Xin && s.player && P().alive(P().player(s))) FX.Xin.add(s, FX.CONFIG.xin.event + (def.category === '遭遇' ? FX.CONFIG.xin.fight : 0));
     const result = typeof out === 'string' ? out : out.text || '';
     const e = H().get(s, hid);
     e.params.result = result;
+    // 斗法、逃遁另有一条写得更细的纪事（以这条为前因），这条决断记录就不再进纪事，免得一件事说两遍
+    for (let i = s.history.length - 1; i >= 0 && s.history[i] !== e; i--) {
+      const x = s.history[i];
+      if (x.pov && x.type === 'fight' && x.causeIds.includes(hid)) { e.pov = false; e.severity = 1; break; }
+    }
     e.params.defId = inst.defId;
     if (inst.bound._kind) e.params.kind = inst.bound._kind;
     return { ok: true, result, hid, gain: !!out.gain, days: out.days || 0 };

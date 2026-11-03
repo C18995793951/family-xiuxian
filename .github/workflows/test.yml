@@ -1,0 +1,29 @@
+name: 测试
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 主套测试（快速）
+        run: node test/run-tests.js --quick
+      - name: AI、自由输入、钩子、NPC、导演
+        run: |
+          node test/ai-tests.js
+          node test/intent-tests.js
+          node test/hook-tests.js
+          node test/npc-tests.js
+          node test/director-tests.js
+      - name: 构建后 docs/ 与源码一致（手机网页版没漏构建）
+        run: |
+          node build.js
+          git diff --stat --exit-code -- docs dist

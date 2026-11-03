@@ -224,6 +224,7 @@ const count = (s, re) => (s.aiLog || []).filter((r) => r.kind === 'dir' && re.te
     assert(ra && ra.days >= 150, '重伤 300 天只静养 ' + (ra && ra.days) + ' 天');
     // 3) 半年差事：一次结六个月的工钱，只记一条纪事
     const w = Game.newGame({ origin: 'mortal', seed: 'd6-work' });
+    w.pending = []; // 凡人开局的仙缘事件先放下
     const half = Game.actions(w).find((a) => a.type === 'work' && a.days >= 180 && a.ok);
     assert(half, '凡人国没有做半年的营生');
     const st0 = w.player.stone, h0 = w.history.length, t0 = w.t;
@@ -231,7 +232,7 @@ const count = (s, re) => (s.aiLog || []).filter((r) => r.kind === 'dir' && re.te
     assert(r.ok, '做半年失败：' + r.error);
     assert(w.t - t0 >= 150 || w.pending.length, '半年差事没过半年：' + (w.t - t0) + ' 天');
     assert(w.player.stone > st0, '半年差事没挣到钱');
-    assert(w.history.slice(h0).filter((e) => e.type === 'work').length === 1, '半年差事记了不止一条');
+    assert(w.history.slice(h0).filter((e) => e.type === 'work' || e.type === 'ledger').length === 1, '半年差事记了不止一条');
     // 4) NPC 横死：元神以后打了一成不到的折，原著人物不横死
     const cf = FX.CONFIG.life;
     assert(cf.npcAccidentRealm[7] <= 0.1 && cf.npcAccidentRealm[2] === 1, '横死折扣不对');

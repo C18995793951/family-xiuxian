@@ -1375,10 +1375,12 @@ check('24', '试玩后的修正：闭关到圆满修满即出关、估时算上�
   ({ s, p } = mk('fix3'));
   p.realm = { major: 3, stage: 3 }; p.progress = P.need(p); p.fullDays = 0;
   s.player.inv.qiju = 6; s.player.qijuUntil = 0;
+  FX.Xin.set(s, 60); // 心境另算（闭关五年心境会耗），这里只比打磨添的把握
   const c0 = FX.CU.chance(s, p).chance;
   r = FX.Game.act(s, FX.Game.actions(s).find((x) => x.type === 'cultivate' && x.days === 360 * 5 && !x.coin));
   while (s.pending.length) { const v = FX.Game.pendingEvents(s)[0]; FX.Game.choose(s, v.id, v.options.find((o) => o.available).id); }
   assert(s.player.inv.qiju >= 6, '修为圆满了闭关还在吃中孚丹：剩 ' + s.player.inv.qiju);
+  FX.Xin.set(s, 60);
   const c1 = FX.CU.chance(s, p).chance;
   assert(c1 > c0 || r.interrupted, '圆满后闭关打磨没添把握：' + c0 + '→' + c1);
   // 4. 冲关失败在休养：给一键静修到能再冲
@@ -1522,6 +1524,124 @@ check('27', '后期俸禄放缓封顶、宗门弟子跑图少遇险：前期拮�
   assert(rl <= 0.12, '散修走有些凶险的路遇事还太多：' + Math.round(rl * 100) + '%');
   assert(rm < rl, '宗门弟子赶路没比散修少遇事：' + Math.round(rm * 100) + '% / ' + Math.round(rl * 100) + '%');
   return `俸禄 筑基 ${zj.stone}、洞玄 ${dx.stone}、金丹 ${jd.stone} 符钱一年（上限 ${CF.house.stipend.sect.cap}），金丹以后不发中孚丹；有些凶险的路每段遇事：散修 ${Math.round(rl * 100)}%（${l.n} 段）、宗门弟子 ${Math.round(rm * 100)}%（${m.n} 段）`;
+});
+
+// 28. 心境（0.11）：闭关日久修得慢，出门历练回来更快、冲关更有把握；死关不再是最优解
+check('28', '心境与历练：闭关耗心境、游历必添心境、心境影响修炼速度与冲关；死关不如出门', () => {
+  const P = FX.P;
+  const s = FX.Game.newGame({ origin: 'sect', seed: 'xin1' });
+  const p = P.player(s); s.pending = []; p.lifespanMax = 3000;
+  FX.Xin.set(s, 60);
+  const v60 = FX.CU.breakdown(s, p, {}).total;
+  FX.Sim.passDays(s, 360 * 6, 'cultivate', {});
+  const x6 = FX.Xin.get(s);
+  assert(x6 <= 10, '闭关六年心境没耗尽：' + x6);
+  const v0 = FX.CU.breakdown(s, p, {}).total;
+  assert(v0 < v60 * 0.6, '心境枯槁时修炼没变慢：' + v60 + ' → ' + v0);
+  s.pending = [];
+  const wild = Object.values(s.places).find((x) => x.type === 'wild' && x.danger === 1);
+  p.locationId = wild.id;
+  const ex = FX.Game.actions(s).find((a) => a.type === 'explore' && a.days === 30);
+  FX.Game.act(s, ex);
+  const gx = FX.Xin.get(s);
+  assert(gx >= 25, '头一回在野外游历一个月，心境添得太少：' + gx);
+  p.realm = { major: 2, stage: 9 }; p.progress = P.need(p);
+  FX.Xin.set(s, 100); const hi = FX.CU.chance(s, p).chance;
+  FX.Xin.set(s, 0); const lo = FX.CU.chance(s, p).chance;
+  assert(hi - lo >= 20, '心境对冲关把握影响太小：' + lo + '→' + hi);
+  // 三种活法对比（同一组种子）：死关 / 苦修（心境低就出门）/ 游侠（常出门）
+  const n = QUICK ? 3 : 6, sum = { recluse: 0, diligent: 0, wanderer: 0 };
+  for (const origin of ['loose', 'sect']) for (let i = 0; i < n; i++) for (const k of Object.keys(sum)) {
+    const g = runGame(FX, { origin, strategy: k, seed: 'xin-' + origin + i, years: 250 });
+    sum[k] += P.player(g).peakRank;
+  }
+  const avg = (k) => Math.round(sum[k] / (2 * n) * 10) / 10;
+  assert(avg('diligent') > avg('recluse') && avg('wanderer') > avg('recluse'), '死关仍不比出门差：死关 ' + avg('recluse') + '，苦修 ' + avg('diligent') + '，游侠 ' + avg('wanderer'));
+  return `闭关六年心境 60→${x6}，修炼 ${v60}→${v0}/年；野外游历一个月心境 →${gx}；冲关把握 心境 0 时 ${lo}%、100 时 ${hi}%；250 年平均最高境界序数：死关 ${avg('recluse')}、苦修 ${avg('diligent')}、游侠 ${avg('wanderer')}`;
+});
+
+// 29. 人情回流（0.11）：欠你人情的人会登门回礼、遇险来援、冲关护法
+check('29', '人情回流：登门回礼（多半是卡关缺的东西）、遇险传讯求援、冲大关故人护法，用过就算还了', () => {
+  const P = FX.P, G = FX.Game;
+  const s = G.newGame({ origin: 'sect', seed: 'fav1' });
+  const p = P.player(s); s.pending = []; p.lifespanMax = 3000;
+  const q = P.living(s).find((x) => x.id !== p.id && x.locationId === p.locationId && x.realm.major >= 3);
+  assert(q, '山门里没找到筑基以上的同门');
+  s.player.favors = [{ npc: q.id, kind: 'owed', t: s.t }];
+  // 回礼：筑基缺大造元珠
+  p.realm = { major: 2, stage: 9 }; p.progress = P.need(p); s.player.inv.zhuji = 0;
+  const gift = FX.Favor.giftFor(s);
+  assert(gift === 'zhuji', '回礼没挑卡关缺的东西：' + gift);
+  const kinds = FX.Hook.scan(s).map((h) => h.kind);
+  assert(kinds.includes('favor_return'), '欠人情的人不会登门：' + kinds.join(','));
+  const pr = FX.Hook.build(s, { id: 'kt', kind: 'favor_return', npc: q.id, item: gift }, null);
+  FX.Ev.spawn(s, 'HOOK', pr.bound, []);
+  let v = G.pendingEvents(s)[0];
+  const r1 = G.choose(s, v.id, v.options[0].id);
+  assert(s.player.inv.zhuji === 1 && !FX.Favor.owed(s).length, '收下回礼后没得到东西或人情没还清：' + r1.result);
+  // 求援：遭遇妖物时多一个选项，合力胜率高于独斗
+  s.player.favors = [{ npc: q.id, kind: 'owed', t: s.t }];
+  FX.Ev.spawn(s, 'BEAST', { place: p.locationId, _beast: '铁背熊精', _power: P.power(s, p) * 1.5, _danger: 2 }, []);
+  v = G.pendingEvents(s)[0];
+  const aid = v.options.find((o) => o.id === 'aid'), fight = v.options.find((o) => o.id === 'fight');
+  assert(aid && aid.available, '欠人情的同门就在山门，却没有“传讯求援”');
+  assert(aid.chance.chance > fight.chance.chance, '求援胜率不比独斗高：' + aid.chance.chance + ' / ' + fight.chance.chance);
+  G.choose(s, v.id, 'aid');
+  assert(!FX.Favor.owed(s).length, '求援后人情没算还');
+  // 护法：冲筑基时 +8%，成败都算还了
+  s.pending = []; p.health = { state: 'healthy', days: 0 }; p.restUntil = 0;
+  const c0 = FX.CU.chance(s, p).chance;
+  s.player.favors = [{ npc: q.id, kind: 'owed', t: s.t }];
+  const c1 = FX.CU.chance(s, p).chance;
+  assert(c1 - c0 === FX.CONFIG.favor.guardBonus || c1 === FX.CU.chance(s, p).max, '护法没添把握：' + c0 + '→' + c1);
+  s.player.inv.zhuji = 1;
+  G.act(s, G.actions(s).find((a) => a.type === 'breakthrough'));
+  assert(!FX.Favor.owed(s).length || !P.alive(p), '冲关后护法的人情没算还');
+  return `回礼挑中${FX.CONFIG.items.zhuji.name}；求援胜率 ${fight.chance.chance}% → ${aid.chance.chance}%；护法冲筑基 ${c0}% → ${c1}%`;
+});
+
+// 30. 纪事是故事不是账本（0.11）：日常流水并成小结，连着赶的路并成一条，斗法不重复写两遍；不重复结识
+check('30', '纪事小结：闭关、俸禄、买丹服丹、营生并成一段一条；连段赶路一条；斗法不重复；不会“又结识了一遍”', () => {
+  const P = FX.P;
+  const s = runGame(FX, { origin: 'mortal', strategy: 'diligent', seed: 'ledger1', years: 120 });
+  const pov = s.history.filter((e) => e.pov);
+  const raw = pov.filter((e) => ['cultivate', 'stipend', 'buy', 'work', 'rest', 'heal_auto', 'realm_up'].includes(e.key));
+  assert(!raw.length, '还有 ' + raw.length + ' 条日常流水单独进了纪事：' + raw.slice(0, 3).map((e) => FX.H.text(e)).join(' / '));
+  const led = pov.filter((e) => e.key === 'ledger');
+  assert(led.length && led.every((e) => /：.+。$/.test(FX.H.text(e)) && !/undefined|NaN/.test(FX.H.text(e))), '小结文字有误：' + (led[0] && FX.H.text(led[0])));
+  const years = s.year - P.player(s).birthYear - 16;
+  const per = pov.length / Math.max(1, years);
+  assert(per < 6, '一年还有 ' + per.toFixed(1) + ' 条纪事，太碎');
+  const legs = pov.filter((e) => e.key === 'travel' && e.params.via);
+  const dup = pov.filter((e) => e.key === 'event' && /^遭遇妖物|^拦路劫修/.test(e.params.title) && /^(迎战|逃走)$/.test(e.params.choice));
+  assert(!dup.length, '斗法写了两遍：' + dup.length);
+  const met = {};
+  for (const e of pov.filter((x) => x.key === 'meet')) { const id = e.actors[1]; met[id] = (met[id] || 0) + 1; }
+  const twice = Object.values(met).filter((n) => n > 1).length;
+  assert(!twice, twice + ' 人被结识了两回');
+  return `${years} 年 ${pov.length} 条亲历（每年 ${per.toFixed(1)} 条），其中小结 ${led.length} 条；连段赶路并成的 ${legs.length} 条；例：「${FX.H.text(led[Math.min(5, led.length - 1)])}」`;
+});
+
+// 31. 开局与自由输入（0.11）：凡人开局有仙缘；没 AI 时常见说法听得懂，听不懂也给最接近的几样
+check('31', '凡人开局「仙师过境」与无 AI 自由输入：拜师、卖光、治病、道侣、潜入、切磋都能落到行动；听不懂给最接近的三样', () => {
+  const G = FX.Game, P = FX.P;
+  const m = G.newGame({ origin: 'mortal', seed: 'open1' });
+  const v = G.pendingEvents(m)[0];
+  assert(v && v.defId === 'XIANYUAN', '凡人开局没有仙缘事件');
+  P.player(m).aptitude = 100;
+  let got = false;
+  for (let i = 0; i < 6 && !got; i++) { const t = G.newGame({ origin: 'mortal', seed: 'open' + i }); P.player(t).aptitude = 100; const e = G.pendingEvents(t)[0]; G.choose(t, e.id, 'ask'); got = P.player(t).flags.includes('jianshu'); }
+  assert(got, '资质满了叩问仙路六回都没得荐书');
+  const s = G.newGame({ origin: 'loose', seed: 'say1' });
+  s.player.inv.herb = 3; s.player.inv.beastHide = 2;
+  const L = ['去小甘山拜师', '我想加入玄真派', '把身上的东西都卖了', '给容国的凡人治病', '和路边的女修结为道侣', '偷偷潜入金谷墟市的库房', '找个人切磋', '出去散散心'];
+  const miss = L.filter((t) => { const c = FX.Intent.match(s, t); return !c.length || c[0].guess; });
+  assert(!miss.length, '这些话还听不懂：' + miss.join('、'));
+  const g = FX.Intent.match(s, '今天天气不错');
+  assert(g.length >= 2 && g[0].guess, '听不懂时没给最接近的几样');
+  const sell = FX.Intent.match(s, '把身上的东西都卖了')[0];
+  assert(sell.check.ok, '卖光走不通：' + JSON.stringify(sell.check.rows.map((r) => r.reason)));
+  return `叩问仙路得荐书；${L.length} 句常见说法都落到了行动（如「去小甘山拜师」→${FX.Intent.match(s, '去小甘山拜师')[0].say}）；听不懂时给 ${g.length} 样`;
 });
 
 const failed = results.filter((r) => !r.ok);

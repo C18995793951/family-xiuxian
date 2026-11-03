@@ -312,7 +312,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   FX.CONFIG = {
     schemaVersion: 12,
-    gameVersion: '0.10.1-xianye10',
+    gameVersion: '0.11.0-lilian',
     startYear: 300,
     daysPerMonth: 30,
     monthsPerYear: 12,
@@ -1188,13 +1188,38 @@ button.wide { width: 100%; margin-bottom: .6em; }
       seclusionDisturb: 0.004, // 闭关时每月、每级危险度被打扰的概率
     },
 
+    /* ---------- 心境（0.11）----------
+     * 闭关日久，心境渐枯，修炼变慢；出门游历、赶路、遇事、交游，心境开阔，回来修得更快、冲关更有把握。
+     * 心境 60 时修炼速度不加不减；0 时 ×0.55，100 时 ×1.3。冲关把握 (心境 − 50) / 4，即 −12% 到 +12%。 */
+    xin: {
+      start: 60, speedMin: 0.55, speedMax: 1.3, breakDiv: 4,
+      decayPerYear: 10,          // 闭关、修炼每年耗去的心境
+      explorePerDay: 0.6, exploreCap: 22, townMult: 0.6, dangerBonus: 0.15, // 游历：每天多少；城镇里减四成；每级危险度加 15%
+      newPlace: 8,               // 头一回到某地
+      travelPerDay: 0.25, travelCap: 8,
+      event: 5, fight: 4,        // 了结一件事；动手的再多一点
+      social: 2, deed: 3, saga: 10,
+      failLoss: 10,              // 冲关失败，心神受挫
+      low: 35,                   // 低于此值界面提醒“该出去走走了”
+    },
+
+    /* ---------- 人情回流（0.11）----------
+     * 替人出过力、收留过人、送过药，对方欠你的人情会回来：
+     * 遇险时传讯求援（援手的战力八成算进来）、冲大关时来护法（把握 +8%）、或登门回礼（多半是你卡关缺的东西）。 */
+    favor: {
+      guardBonus: 8, guardRankGap: 1,  // 护法的人修为至多比你低一个小境界
+      aidMult: 0.8, aidDays: 20,       // 援手战力折算；离出事的地方至多这么多天路程才赶得来
+      giftCap: 60,                     // 回礼按物价封顶：60 × (1 + 大境界)²，超过就折成符钱
+    },
+
     /* ---------- 遭遇（游历）----------
      * 基础权重；具体由地点类型、危险度、灵机修正。
      * 原则一：多数时候什么都不发生。原则二：有些努力没有回报。 */
     encounter: {
       robberDare: 0.6, // 劫修只劫境界战力不到自己六成的人
       weights: {
-        nothing: 48,
+        nothing: 30,
+        insight: 18,   // 观山川形势有所领悟：小幅修为（× 灵机 / 3，至少一半）
         herb: 16,
         beast: 6,      // × 危险度
         meet: 9,
@@ -1202,7 +1227,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
         trouble: 3,    // × (危险度 + 1)
         fortune: 2.5,  // × 灵机 / 3；野心勃勃者略高
       },
-      townWeights: { nothing: 46, meet: 22, rumor: 10, trouble: 6, herb: 0, beast: 0, fortune: 1 },
+      townWeights: { nothing: 38, insight: 8, meet: 22, rumor: 10, trouble: 6, herb: 0, beast: 0, fortune: 1 },
       longFactor: 1.6,         // 长游历（30 天）除“无事”外的权重倍率
       fortuneCooldownDays: 1800, // 五年内奇遇最多一次，多出的降为普通收获
       herbQty: [1, 4],
@@ -1217,6 +1242,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       lossHeavyShare: 0.4,
       deathWhenOutmatched: 0.15, // 重伤且对手战力 ≥ 2 倍时
       troubleStoneFrac: [0.1, 0.3],
+      insightFrac: [0.03, 0.07], // 游历有悟：按当前境界所需修为（至多按 2000 算）的这一段比例
       // 按危险度 0–5 的妖物、鬼物、天魔
       beastNames: [['野狼', '山魈'], ['青鳞蛇', '赤灵彩鹦'], ['铁背熊精', '赤目妖狼'], ['行尸', '金纹豹妖'], ['阴马', '下位天魔'], ['恶嗔阴魔', '朱厌大妖'], ['上位天魔', '千年老蛟'], ['天魔化身', '太古凶兽']],
     },
@@ -1384,9 +1410,13 @@ button.wide { width: 100%; margin-bottom: .6em; }
     taixi_fail: ['{name}参悟胎息未成（成功率 {chance}%），{loss}。'],
     break_ok: ['{name}冲击{target}成功（成功率 {chance}%）{extra}，寿元上限增至 {life}。', '{name}以 {chance}% 之机破关，成就{target}{extra}。'],
     break_fail: ['{name}冲击{target}失败（成功率 {chance}%），{loss}。'],
-    travel: ['{name}自{from}赶到{to}，路上走了 {dur}。'],
+    travel: ['{name}自{from}{via}赶到{to}，路上走了 {dur}。'],
     travel_cut: ['{name}自{from}前往{to}，行至{at}出了变故。'],
-    explore_nothing: ['{name}在{place}游历 {dur}，一无所获。', '{name}在{place}转了 {dur}，没遇上什么事。', '{name}在{place}走了 {dur}，只看了些山水。'],
+    explore_nothing: ['{name}在{place}游历 {dur}，没碰上什么事{note}。', '{name}在{place}转了 {dur}，没遇上什么事{note}。', '{name}在{place}走了 {dur}，只看了些山水{note}。'],
+    explore_insight: ['{name}在{place}游历 {dur}，{what}，有所领悟，修为 +{gain}。'],
+    favor_guard: ['{name}冲关时，{other}赶来护法，还了当年的人情。{how}。'],
+    favor_aid_win: ['{name}遇上{foe}，传讯请{other}援手，两人合力得胜（{chance}%），{loot}。{other}的人情就此还清。'],
+    favor_aid_lose: ['{name}遇上{foe}，传讯请{other}援手，仍没敌过（{chance}%），{hurt}，好在有人护着。'],
     explore_herb: ['{name}在{place}采得{loot}。'],
     yao_found: ['{name}在{place}寻药{dur}，采得凝丹外药「{yao}」{hurt}。', '{name}在{place}踏遍深处，寻得一份{yao}{hurt}。'],
     yao_none: ['{name}在{place}寻药{dur}，一无所获{hurt}。', '{name}在{place}找了{dur}外药，空手而回{hurt}。'],
@@ -1473,8 +1503,76 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   const H = {};
 
+  /* ---------- 流水小结（0.11）----------
+   * 闭关、领俸禄、买丹服丹、做营生、静养这类日常，不再一条一条进纪事：
+   * 两件“事”之间的日常并成一条小结（“此后 3 年：闭关修炼…，领俸禄 3 回…”），读起来是一个人的一生，不是一本账。 */
+  const ROUTINE = { cultivate: 1, cultivate_idle: 1, cultivate_coin: 1, cultivate_cut: 1, realm_up: 1, injury_heal: 1, stipend: 1, buy: 1, sell: 1, use_item: 1, heal_auto: 1, work: 1, rest: 1 };
+  const num = (v, re) => { const m = re.exec(String(v || '')); return m ? Number(m[1]) : 0; };
+  const bump = (o, k, f, v) => { o[k] = o[k] || {}; o[k][f] = (o[k][f] || 0) + v; };
+  H.isRoutine = (e) => !!(e.pov && ROUTINE[e.key] && (e.key !== 'use_item' || [C().items.qiju.name, C().items.heal.name].includes(e.params && e.params.item)));
+  const mergeInto = (L, e, s) => {
+    const a = L.params, x = e.params || {};
+    a.n++;
+    a.last = s.t;
+    switch (e.key) {
+      case 'cultivate': case 'cultivate_coin': case 'cultivate_cut': case 'cultivate_idle':
+        a.cult = (a.cult || 0) + (Number(x.done) || 0);
+        a.gain = Math.round(((a.gain || 0) + (Number(x.gain) || 0)) * 10) / 10;
+        a.coin = (a.coin || 0) + (e.key === 'cultivate_coin' ? Number(x.cost) || 0 : 0);
+        a.pills = (a.pills || 0) + num(x.pills, /(\d+) 颗/);
+        if (e.key === 'cultivate_idle') a.idle = (a.idle || 0) + (Number(x.done) || 0);
+        a.what = x.what || a.what; a.verb = x.verb || a.verb;
+        break;
+      case 'stipend': a.stip = (a.stip || 0) + 1; a.stipStone = (a.stipStone || 0) + num(x.what, /符钱 (\d+)/); a.stipQiju = (a.stipQiju || 0) + num(x.what, /×(\d+)/); a.fac = x.faction; break;
+      case 'buy': bump(a, 'buy', x.item, 0); a.buy[x.item + '|q'] = (a.buy[x.item + '|q'] || 0) + (Number(x.qty) || 0); a.buy[x.item + '|c'] = (a.buy[x.item + '|c'] || 0) + (Number(x.cost) || 0); break;
+      case 'sell': bump(a, 'sell', x.item + '|q', Number(x.qty) || 0); bump(a, 'sell', x.item + '|g', Number(x.gain) || 0); break;
+      case 'use_item': case 'heal_auto': if (x.item === C().items.qiju.name) a.pills = (a.pills || 0) + 1; else bump(a, 'use', x.item, 1); break;
+      case 'realm_up': (a.ups = a.ups || []).push(x.realm); break;
+      case 'injury_heal': a.healed = 1; break;
+      case 'work': a.work = (a.work || 0) + num(x.dur, /(\d+) 年/) * C().daysPerYear + num(x.dur, /(\d+) 个月/) * C().daysPerMonth + num(x.dur, /(\d+) 天/); a.workStone = (a.workStone || 0) + (Number(x.stone) || 0); a.workMerit = (a.workMerit || 0) + num(x.merit, /(\d+)/); a.job = x.job; break;
+      case 'rest': a.rest = (a.rest || 0) + num(x.dur, /(\d+) 年/) * C().daysPerYear + num(x.dur, /(\d+) 个月/) * C().daysPerMonth + num(x.dur, /(\d+) 天/); a.restState = x.state; break;
+    }
+  };
+  H.ledgerText = (e) => {
+    const a = e.params, out = [];
+    if (!a.cult && a.pills) out.push('服' + C().items.qiju.name + ' ' + a.pills + ' 颗');
+    if (a.cult) {
+      const idle = a.idle && a.idle >= a.cult - 30;
+      out.push((a.verb || '修炼') + ' ' + T.dur(a.cult) + (idle ? '，' + (a.what || '修为') + '早已圆满，只是打磨根基' : '，' + (a.what || '修为') + ' +' + a.gain) + (a.coin ? '（以符钱修行耗去 ' + a.coin + '）' : '') + (a.pills ? '，服' + C().items.qiju.name + ' ' + a.pills + ' 颗' : ''));
+    }
+    if (a.work) out.push('做「' + a.job + '」' + T.dur(a.work) + '，得符钱 ' + a.workStone + (a.workMerit ? '、' + C().house.meritName + ' ' + a.workMerit : ''));
+    if (a.stip) out.push('领' + (a.fac || '') + '俸禄' + (a.stip > 1 ? ' ' + a.stip + ' 回，共' : '，') + (a.stipStone ? '符钱 ' + a.stipStone : '') + (a.stipQiju ? '、' + C().items.qiju.name + ' ' + a.stipQiju + ' 颗' : ''));
+    const buys = Object.keys(a.buy || {}).filter((k) => !k.includes('|'));
+    if (buys.length) out.push('买入' + buys.map((k) => k + '×' + a.buy[k + '|q']).join('、') + '（符钱 ' + buys.reduce((t, k) => t + a.buy[k + '|c'], 0) + '）');
+    const sells = Object.keys(a.sell || {}).filter((k) => k.endsWith('|q')).map((k) => k.slice(0, -2));
+    if (sells.length) out.push('卖出' + sells.map((k) => k + '×' + a.sell[k + '|q']).join('、') + '（得符钱 ' + sells.reduce((t, k) => t + a.sell[k + '|g'], 0) + '）');
+    const uses = Object.keys(a.use || {});
+    if (uses.length) out.push('服下' + uses.map((k) => k + ' ' + a.use[k] + ' 颗').join('、'));
+    if (a.rest) out.push('静养 ' + T.dur(a.rest) + (a.restState ? '，' + a.restState : ''));
+    else if (a.healed) out.push('伤势痊愈');
+    if (a.ups && a.ups.length) out.push('其间晋入' + a.ups.map((r, i) => (i ? r.replace(/^(练炁|筑基|紫府|洞玄|金丹|元神|返虚|纯阳|合道)/, '') : r)).join('、'));
+    return (a.name || '') + '：' + (out.join('；') || '日子照常过') + '。';
+  };
+
   // pov：主角亲身经历或亲眼所见（进叙事流）；其余为世界记录，只在“传闻”里露出重要的
   H.add = (s, e) => {
+    if (s.player && H.isRoutine(e)) {
+      let L = s.player.ledger ? H.get(s, s.player.ledger) : null;
+      if (!L || L.key !== 'ledger') {
+        const lid = 'h' + s.nextHistId++;
+        // 小结记在这一段日常开始的时候（第一件是闭关一年，就记在一年前），但不早于上一条纪事
+        const d0 = Number(e.params && (e.params.done || 0)) || 0;
+        const prevT = s.history.length ? s.history[s.history.length - 1].t : 0;
+        const t0 = Math.max(prevT, s.t - d0);
+        L = { id: lid, t: t0, year: T.year(t0), type: 'ledger', tags: ['小结'], actors: e.actors || [], factions: [], places: e.places || [], key: 'ledger', params: { name: (FX.P && FX.P.player(s) && FX.P.player(s).name) || (e.params && e.params.name) || '', n: 0, last: s.t }, severity: 1, pov: true, causeIds: [], firstOf: null, record: null };
+        s.history.push(L);
+        s.player.ledger = lid;
+      }
+      mergeInto(L, e, s);
+      return L.id;
+    }
+    // 一件亲历的“事”把这一段日常隔开（传闻不隔：小结本来就是一段时日）
+    if (s.player && e.pov) s.player.ledger = null;
     const id = 'h' + s.nextHistId++;
     const entry = {
       id,
@@ -1497,6 +1595,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
     return id;
   };
 
+  // 最近一条会进纪事的条目（亲历的，或要紧的传闻）；只往回看几十条
+  H.lastShown = (s) => { for (let i = s.history.length - 1, k = 0; i >= 0 && k < 60; i--, k++) { const e = s.history[i]; if (e.pov || e.severity >= 4) return e; } return null; };
+
   H.get = (s, id) => {
     // 历史按 id 递增追加，二分查找
     const n = parseInt(String(id).slice(1), 10);
@@ -1511,11 +1612,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 
   H.text = (entry) => {
+    if (entry.key === 'ledger') return H.ledgerText(entry);
     const vs = TX[entry.key] || ['{key}'];
     const n = parseInt(entry.id.slice(1), 10) || 0;
     const tpl = vs[n % vs.length];
     // 旧存档里的条目可能没有后来加的可选参数，按空串补上
-    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '', note: '' }, entry.params));
+    return U.fill(tpl, Object.assign({ key: entry.key, pills: '', merit: '', note: '', via: '' }, entry.params));
   };
 
   H.markFirst = (s, key, hid) => {
@@ -1967,6 +2069,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const dz = FX.Sect.perkOf(s, p, 'dazhi'); // 大知殿：不理俗务，专心清修
       if (dz) F.push({ label: '大知殿清修', value: 1 + 0.1 * dz });
     }
+    // 心境（只算主角）：闭关日久渐枯，出门历练回来更快
+    if (P().isPlayer(s, p) && FX.Xin) {
+      const x = opts && typeof opts.xin === 'number' ? opts.xin : FX.Xin.get(s);
+      F.push({ label: '心境 ' + Math.round(x) + '（' + FX.Xin.name(x) + '）', value: FX.Xin.factor(x) });
+    }
     if (P().isOld(s, p)) F.push({ label: '年老', value: cc.oldAgeCoef });
     if (!(opts && opts.healthy) && (p.health.state === 'light' || p.health.state === 'heavy')) F.push({ label: p.health.state === 'heavy' ? '重伤' : '轻伤', value: cc.injury[p.health.state] });
     let total = 1;
@@ -2261,6 +2368,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const aux = FX.Ars.breakPart(s, p, k);
     if (aux) parts.push(aux);
     if (p.traits.includes('孤傲')) parts.push({ label: '孤傲', value: C().traits.proudBreak });
+    if (isPlayer && FX.Xin) { const x = FX.Xin.get(s), xb = FX.Xin.breakBonus(x); if (xb) parts.push({ label: '心境' + FX.Xin.name(x) + '（' + Math.round(x) + '）', value: xb }); }
+    // 欠你人情、修为不在你之下的故人来护法（大关才来；成败都算还了人情）
+    const guard = isPlayer && k !== 'minor' && k !== 'taixi' && FX.Favor ? FX.Favor.guardian(s) : null;
+    if (guard) parts.push({ label: guard.name + '前来护法（还你人情）', value: C().favor.guardBonus });
     if (p.health.state === 'light') parts.push({ label: '轻伤', value: -5 });
     let total = parts.reduce((a, x) => a + x.value, 0);
     const max = k === 'minor' ? B.max : B.majorMax;
@@ -2427,6 +2538,60 @@ button.wide { width: 100%; margin-bottom: .6em; }
   };
 
   FX.CU = CU;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ---------- core/xin.js ---------- */
+/* ============================================================
+ * xin —— 心境（0.11）
+ * 闭关是修为的来路，出门是心境的来路，两样缺一不可：
+ *  · 闭关、修炼一年耗心境 10 点；心境越枯，修得越慢（0 时只有平常的五成半）；
+ *  · 游历、赶路、遇事、交游都添心境；心境通明时修得快三成，冲关多一成把握；
+ *  · 冲关失败心神受挫，心境跌一截。
+ * 只记在主角身上（s.player.xin），NPC 不算。旧存档没有这个字段时按 60（不加不减）。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const K = () => FX.CONFIG.xin;
+  const U = FX.U;
+
+  const Xin = {};
+  Xin.get = (s) => (s.player && typeof s.player.xin === 'number' ? s.player.xin : K().start);
+  Xin.set = (s, v) => { if (s.player) s.player.xin = Math.round(U.clamp(v, 0, 100) * 10) / 10; };
+  // 加减心境，返回实际变化
+  Xin.add = (s, v) => {
+    if (!s.player || !v) return 0;
+    const before = Xin.get(s);
+    Xin.set(s, before + v);
+    return Math.round((Xin.get(s) - before) * 10) / 10;
+  };
+  Xin.factor = (x) => Math.round((K().speedMin + (K().speedMax - K().speedMin) * U.clamp(x, 0, 100) / 100) * 100) / 100;
+  Xin.name = (x) => (x >= 80 ? '通明' : x >= 55 ? '平和' : x >= 30 ? '滞涩' : '枯槁');
+  Xin.breakBonus = (x) => Math.round((x - 50) / K().breakDiv);
+  // 修炼若干天：心境渐耗
+  Xin.cultivate = (s, days) => Xin.add(s, -K().decayPerYear * days / FX.CONFIG.daysPerYear);
+  // 游历若干天：野外比城里开阔，越险越磨人；头一回游历的地方另加
+  Xin.explore = (s, place, days) => {
+    const k = K();
+    const town = ['town', 'city', 'sect', 'clan'].includes(place.type);
+    let v = Math.min(k.exploreCap, days * k.explorePerDay) * (town ? k.townMult : 1 + (place.danger || 0) * k.dangerBonus);
+    const seen = (s.player.explored = s.player.explored || []);
+    if (!seen.includes(place.id)) { seen.push(place.id); v += k.newPlace; }
+    return Xin.add(s, v);
+  };
+  Xin.travel = (s, days, fresh) => Xin.add(s, Math.min(K().travelCap, days * K().travelPerDay) + (fresh ? K().newPlace : 0));
+  // 给界面看的一句话
+  Xin.view = (s) => {
+    const x = Xin.get(s);
+    const f = Xin.factor(x);
+    const b = Xin.breakBonus(x);
+    const hint = x < K().low ? '闭关日久，心境枯滞，修炼只有平常的 ' + Math.round(f * 100) + '%。出去游历一两个月再回来，会快得多。'
+      : x >= 80 ? '心境通明，此时闭关、冲关都正好。'
+      : '';
+    return { value: Math.round(x), name: Xin.name(x), factor: f, breakBonus: b, hint, low: x < K().low };
+  };
+
+  FX.Xin = Xin;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---------- core/world.js ---------- */
@@ -2956,9 +3121,16 @@ button.wide { width: 100%; margin-bottom: .6em; }
       severity: def.severity || 2, pov: true, causeIds: inst.causeIds,
     });
     const out = opt.apply(s, inst.bound, { hid, names: Ev.names(s, inst.bound), inst }) || {};
+    // 经了一件事，心境就开阔一分；动过手的更多
+    if (FX.Xin && s.player && P().alive(P().player(s))) FX.Xin.add(s, FX.CONFIG.xin.event + (def.category === '遭遇' ? FX.CONFIG.xin.fight : 0));
     const result = typeof out === 'string' ? out : out.text || '';
     const e = H().get(s, hid);
     e.params.result = result;
+    // 斗法、逃遁另有一条写得更细的纪事（以这条为前因），这条决断记录就不再进纪事，免得一件事说两遍
+    for (let i = s.history.length - 1; i >= 0 && s.history[i] !== e; i--) {
+      const x = s.history[i];
+      if (x.pov && x.type === 'fight' && x.causeIds.includes(hid)) { e.pov = false; e.severity = 1; break; }
+    }
     e.params.defId = inst.defId;
     if (inst.bound._kind) e.params.kind = inst.bound._kind;
     return { ok: true, result, hid, gain: !!out.gain, days: out.days || 0 };
@@ -3107,21 +3279,23 @@ button.wide { width: 100%; margin-bottom: .6em; }
   EV.BEAST = {
     name: '遭遇妖物', category: '遭遇', severity: 2,
     text: (s, b, n) => `${n.place}，${b._why || '一头'}${b._beast}拦在前方（战力约 ${b._power}）。你如今${P().realmName(pl(s))}，战力 ${P().power(s, pl(s))}。`,
-    options: [fightOpt(beastFoe), fleeOpt(beastFoe)],
+    // 欠你人情的故人赶得来时，多一个“传讯求援”（见 favor.js）
+    options: (s, b) => [fightOpt(beastFoe)].concat(FX.Favor.aidFor(s, b.place) ? [FX.Favor.aidOpt(beastFoe)] : []).concat([fleeOpt(beastFoe)]),
   };
 
   EV.ROBBER = {
     name: '拦路劫修', category: '遭遇', severity: 3,
     text: (s, b, n) => { const p = s.people[b.foe]; return `${n.place}，${n.foe}（${P().realmName(p)}，${P().factionName(s, p)}，战力 ${P().power(s, p)}）拦住去路，要你留下买路符钱。你身上有符钱 ${s.player.stone}，战力 ${P().power(s, pl(s))}。`; },
-    options: [
+    options: (s, b) => [
       fightOpt(npcFoe),
+    ].concat(FX.Favor.aidFor(s, b.place) ? [FX.Favor.aidOpt(npcFoe)] : []).concat([
       {
         id: 'pay', label: '破财消灾',
         cost: (s) => `符钱 −${Math.ceil(s.player.stone * 0.4)}`, risk: () => '无', outcome: () => '对方拿钱走人',
         apply(s, b) { const lost = Math.ceil(s.player.stone * 0.4); s.player.stone -= lost; return { text: `交出符钱 ${lost}` }; },
       },
       fleeOpt(npcFoe),
-    ],
+    ]),
   };
 
   EV.RUIN = {
@@ -3167,6 +3341,45 @@ button.wide { width: 100%; margin-bottom: .6em; }
         },
       },
       { id: 'leave', label: '不去招惹', cost: () => '无', risk: () => '无', outcome: () => '什么也不会发生', apply() { return { text: '转身离开' }; } },
+    ],
+  };
+
+  // 凡人开局的仙缘（0.11）：一位玄真派修士路过容国。给凡人一个开头的选择，而不是先静坐十几年
+  EV.XIANYUAN = {
+    name: '仙师过境', category: '机缘', severity: 3,
+    text: (s, b, n) => `这天容国城外的茶棚里坐着一位青袍修士，腰悬玉符，自称${n.faction}的${n.npc}，下山采办，明日便走。你听过仙人的传闻，却从没这样近地见过一个。`,
+    options: [
+      {
+        id: 'ask', label: '上前叩问仙路',
+        chance: (s) => ({ chance: Math.round(U.clamp(35 + (pl(s).aptitude - 50) * 0.6, 15, 85)), parts: [{ label: '看你的资质与诚意', value: Math.round(U.clamp(35 + (pl(s).aptitude - 50) * 0.6, 15, 85)) + '%' }] }),
+        cost: () => '无', risk: () => '对方未必看得上你，最多指点一句',
+        outcome: (s, b, n) => `得对方点拨胎息的门道（气感大进），并留下一封给${n.faction}的荐书（日后求入山门把握更大）`,
+        apply(s, b) {
+          const p = pl(s), q = s.people[b.npc];
+          const ch = Math.round(U.clamp(35 + (p.aptitude - 50) * 0.6, 15, 85));
+          if (R.next(s.rng) * 100 < ch) {
+            FX.CU.addProgress(s, p, Math.round(P().need(p) * 0.6));
+            if (!p.flags.includes('jianshu')) p.flags.push('jianshu');
+            P().adjustRelation(s, p.id, q.id, 12, '指点');
+            return { text: `${q.name}看你还算顺眼，点拨了几句胎息的门道（气感大进），又留下一封荐书：“证得胎息，持此信来${s.factions[q.factionId].name}。”（${ch}%）`, gain: true };
+          }
+          FX.CU.addProgress(s, p, Math.round(P().need(p) * 0.15));
+          return { text: `${q.name}只看了你一眼：“先证得胎息再说。”临走丢下一句静坐的口诀（${ch}%）` };
+        },
+      },
+      {
+        id: 'deep', label: '悄悄跟他进山',
+        cost: () => '一个月', risk: () => '山里有妖物；凡人卷进修士斗法，非死即伤',
+        outcome: () => '亲眼见一回仙凡之别；生死之间走一遭，最容易证得胎息',
+        apply(s, b) {
+          const p = pl(s), q = s.people[b.npc];
+          FX.Xin.add(s, 25);
+          if (R.chance(s.rng, 0.55)) { P().injure(s, p, 'light'); p.nearDeathT = s.t; return { text: `你远远跟着${q.name}进了山，撞见${q.name}与一头妖物斗法，被余波掀下山坡，九死一生。那一刻胸中似有一点气感跳动（往后三年参悟胎息把握大增）`, gain: true, days: 30 }; }
+          P().injure(s, p, 'heavy');
+          return { text: `你跟丢了${q.name}，反被山里的野物盯上，拖着重伤爬回城里。生死之间走了一遭，胸中似有所感`, days: 30 };
+        },
+      },
+      { id: 'leave', label: '不去打扰', cost: () => '无', risk: () => '无', outcome: () => '仙路照旧要自己摸索', apply() { return { text: '你远远看了一会儿，转身回家' }; } },
     ],
   };
 
@@ -3282,6 +3495,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
       type: 'start', tags: ['开局'], actors: [p.id], places: [place.id], key: 'start', pov: true, severity: 3,
       params: { name: p.name, origin: O.name + (faction ? '（' + faction.name + '）' : ''), age: cf.life.adultAge, realm: P().realmName(p), place: place.name },
     });
+    // 凡人开局：一位玄真派修士路过，给一个开头的选择
+    if (origin === 'mortal') {
+      const xz = Object.values(s.factions).find((f) => f.key === 'xuanzhen');
+      const q = xz && P().living(s).filter((x) => x.factionId === xz.id && x.realm.major >= 2 && x.realm.major <= 3).sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+      if (q) FX.Ev.spawn(s, 'XIANYUAN', { place: place.id, npc: q.id, faction: xz.id }, []);
+    }
     S.check(s);
     return s;
   };
@@ -3313,6 +3532,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
         if (P().isFull(p) && CU().capped(p)) p.fullDays += step;
         else gained += CU().addProgress(s, p, (rate * step) / cf.daysPerYear);
         s.player.stats.cultivateDays += step;
+        FX.Xin.cultivate(s, step);
       }
       s.t += step; used += step; left -= step;
       S.syncYear(s);
@@ -3494,11 +3714,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (left > 0 && isFinite(left)) {
       // 逐月估：中孚丹药力只管得了一段，伤好了速度也会回来
       const pillDays = Math.max(0, s.player.qijuUntil - s.t) + (p.realm.major >= 2 && s.player.autoPill !== false ? (s.player.inv.qiju || 0) * cf.cultivation.qijuDays : 0);
-      const memo = {}, rate = (pill, hurt) => { const k = pill + '|' + hurt; return k in memo ? memo[k] : (memo[k] = CU().breakdown(s, p, { pill, healthy: !hurt }).total); };
+      // 心境也一月一月地耗，按估的时日一并算进去
+      const memo = {}, rate = (pill, hurt, xin) => { const k = pill + '|' + hurt + '|' + Math.round(xin); return k in memo ? memo[k] : (memo[k] = CU().breakdown(s, p, { pill, healthy: !hurt, xin }).total); };
       const m = cf.daysPerMonth, cap = Math.max(m, Math.min(cf.actions.untilFullMax, Math.floor(P().lifespanLeft(s, p)) * cf.daysPerYear));
-      if (rate(false, false) > 0) {
-        let d = 0, got = 0, pd = pillDays, hd = p.health.state === 'healthy' ? 0 : p.health.days;
-        while (got < left && d < cap) { got += (rate(pd > 0, hd > 0) * m) / cf.daysPerYear; pd -= m; hd -= m; d += m; }
+      if (rate(false, false, 50) > 0) {
+        let d = 0, got = 0, pd = pillDays, hd = p.health.state === 'healthy' ? 0 : p.health.days, xn = FX.Xin.get(s);
+        while (got < left && d < cap) { got += (rate(pd > 0, hd > 0, xn) * m) / cf.daysPerYear; pd -= m; hd -= m; d += m; xn = Math.max(0, xn - cf.xin.decayPerYear * m / cf.daysPerYear); }
         d = Math.max(m, d);
         add({ type: 'cultivate', until: true, days: d, label: (verb ? verb.trim() : '闭关') + '到圆满（约 ' + T().dur(d) + '）', group: '修炼' });
       }
@@ -3646,9 +3867,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const p = me(s);
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p) || s.pending.length) return { text: '闭关冲关途中出了变故', interrupted: true };
+    const guard = FX.Favor.guardianFor(s, p);
     const res = CU().attempt(s, p, { path: a.path });
     if (!res.ok) return { text: res.error };
     seek(s, res.success);
+    if (guard) FX.Favor.useGuardian(s, guard, res.success);
+    if (!res.success && P().alive(p)) FX.Xin.add(s, -C().xin.failLoss);
     const v = res.verb || '冲击';
     return { text: res.success ? `${v}${res.target}成功` : `${v}${res.target}失败${res.died ? '，身死道消' : ''}`, success: res.success, used: r.used };
   };
@@ -3801,6 +4025,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (!P().alive(p)) return { text: '' };
     if (r.interrupted) return { text: '路上出了事', interrupted: true };
     p.locationId = to.id;
+    FX.Xin.travel(s, r.used, !s.player.visited.includes(to.id));
     if (!s.player.visited.includes(to.id)) {
       // 第一次踏进东弥州腹地的某一域
       if (to.region && to.region !== '南域' && !s.player.visited.some((id) => s.places[id].region === to.region)) {
@@ -3809,7 +4034,17 @@ button.wide { width: 100%; margin-bottom: .6em; }
       s.player.visited.push(to.id);
     }
     const danger = Math.max(from.danger, to.danger);
-    const hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, dur: T().dur(r.used) } });
+    // 一路连着赶的几段并成一条：“自容国经乌云涧、乱石原赶到小甘山，路上走了 34 天”
+    const last = H().lastShown(s);
+    let hid;
+    if (last && last.key === 'travel' && last.params.toId === from.id && last.actors[0] === p.id) {
+      const x = last.params;
+      x.days = (x.days || 0) + r.used;
+      x.via = (x.via ? x.via + '、' : '经') + from.name;
+      x.to = to.name; x.toId = to.id; x.dur = T().dur(x.days);
+      last.places.push(to.id);
+      hid = last.id;
+    } else hid = H().add(s, { type: 'travel', tags: ['赶路'], actors: [p.id], places: [from.id, to.id], key: 'travel', pov: true, severity: 1, params: { name: p.name, from: from.name, to: to.name, toId: to.id, days: r.used, dur: T().dur(r.used) } });
     const member = !!FX.Sect.mine(s);
     if (danger > 0 && R.chance(s.rng, Math.min(0.3, C().world.travelEncounterPerDanger * danger * (member ? C().world.travelMemberMult : 1))) && Act.spawnDanger(s, to, '赶路途中，', [hid])) {
       return { text: '抵达' + to.name + '时遇上了麻烦', interrupted: true };
@@ -3837,7 +4072,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const p = me(s), place = here(s), E = C().encounter;
     const r = Sim().passDays(s, a.days, 'other');
     if (!P().alive(p)) return { text: '' };
-    if (r.interrupted) return { text: '游历途中出了事', interrupted: true };
+    // 游历本身就是收获：见闻渐广，心境开阔（一无所获也一样）
+    const xg = FX.Xin.explore(s, place, r.used);
+    const xt = xg > 0 ? '，心境 +' + Math.round(xg) : '';
+    if (r.interrupted) return { text: '游历途中出了事' + xt, interrupted: true };
     s.player.stats.explores++;
     const w = Act.encounterWeights(s, place, a.days);
     const keys = Object.keys(w).sort();
@@ -3851,6 +4089,16 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const base = { name: p.name, place: place.name, dur: T().dur(a.days) };
     const add = (key, params, sev, extra) => H().add(s, Object.assign({ type: 'explore', tags: ['游历', kind], actors: [p.id], places: [place.id], key, pov: true, severity: sev || 1, params: Object.assign({}, base, params) }, extra || {}));
     switch (kind) {
+      case 'insight': {
+        // 观山川形势、看人斗法、听老农说天时，有所领悟：小幅修为。灵机越浓的地方悟得越多
+        const fr = R.range(s.rng, E.insightFrac[0], E.insightFrac[1]) * Math.max(0.5, Math.min(2, place.qi / 3));
+        const amt = Math.round(Math.min(P().need(p), 2000) * fr * 10) / 10;
+        const gain = Math.round(CU().addProgress(s, p, amt) * 10) / 10;
+        const what = isTown(place) ? R.pick(s.rng, ['看人在坊间斗法', '听老修士谈起当年的冲关', '旁观一场论道']) : R.pick(s.rng, ['观山川形势', '看云起云落', '在溪边静看流水', '听雷声过山']);
+        add('explore_insight', { what, gain }, 2);
+        seek(s, gain > 0);
+        return { text: what + '，有所领悟，修为 +' + gain + xt };
+      }
       case 'herb': {
         const q = R.int(s.rng, E.herbQty[0], E.herbQty[1]);
         giveItem(s, 'herb', q);
@@ -3870,10 +4118,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
         return { text: '遇上了' + beast, interrupted: true };
       }
       case 'meet': {
-        const others = P().at(s, place.id).filter((q) => q.id !== p.id && P().relValue(s, p.id, q.id) === 0);
+        // 只结识素不相识的人（叙过话、交情归零的不算生人，免得“又结识了一遍”）
+        const snub = (s.player.snubbed = s.player.snubbed || []);
+        const others = P().at(s, place.id).filter((q) => q.id !== p.id && !P().relationBetween(s, p.id, q.id) && !snub.includes(q.id));
         const q = others.length ? R.pick(s.rng, others) : W().spawnNpc(s, { kind: 'loose', locationId: place.id });
         const cold = q.traits.includes('孤傲') || (P().realmRank(q) - P().realmRank(p) >= 5 && R.chance(s.rng, 0.5));
-        if (cold) { add('meet_cold', { other: q.name }, 1, { actors: [p.id, q.id] }); seek(s, false); s.player.stats.exploreNothing++; return { text: q.name + '不搭理你' }; }
+        if (cold) { snub.push(q.id); if (snub.length > 40) snub.shift(); add('meet_cold', { other: q.name }, 1, { actors: [p.id, q.id] }); seek(s, false); s.player.stats.exploreNothing++; return { text: q.name + '不搭理你' }; }
         P().adjustRelation(s, p.id, q.id, R.int(s.rng, 5, 15), '相识');
         add('meet', { other: q.name, realm: P().realmName(q), faction: P().factionName(s, q) }, 2, { actors: [p.id, q.id] });
         seek(s, true);
@@ -3916,10 +4166,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
         return { text: '发现一处前人遗府', interrupted: true };
       }
       default:
-        add('explore_nothing', {});
+        add('explore_nothing', { note: xt ? '，倒是见闻渐广' + xt : '' });
         seek(s, false);
         s.player.stats.exploreNothing++;
-        return { text: '一无所获' };
+        return { text: '没碰上什么事' + (xt ? '，倒是见闻渐广' + xt : '') };
     }
   };
 
@@ -4010,6 +4260,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const how = delta >= 8 ? '甚欢' : delta >= 4 ? '融洽' : delta > 0 ? '平平' : '冷淡';
     H().add(s, { type: 'social', tags: ['人物'], actors: [p.id, q.id], places: [p.locationId], key: 'befriend', pov: true, severity: 1, params: { name: p.name, other: q.name, how, delta: (delta > 0 ? '+' : '') + delta } });
     seek(s, delta > 0);
+    FX.Xin.add(s, C().xin.social);
     return { text: `与${q.name}相谈${how}（关系 ${delta > 0 ? '+' : ''}${delta}）` };
   };
 
@@ -4028,6 +4279,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const amount = Math.round(Math.min(P().need(p), 2000) * R.range(s.rng, cc.consultFrac[0], cc.consultFrac[1]) * 10) / 10;
     const gain = Math.round(CU().addProgress(s, p, amount) * 10) / 10;
     P().adjustRelation(s, p.id, q.id, 2, '指点');
+    FX.Xin.add(s, C().xin.social);
     H().add(s, { type: 'social', tags: ['人物', '修炼'], actors: [p.id, q.id], key: 'consult', pov: true, severity: 2, params: { name: p.name, other: q.name, gain } });
     seek(s, gain > 0);
     return { text: `得${q.name}指点，修为 +${gain}` };
@@ -4161,6 +4413,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     // 一回不成就明年再来：每求过一回，诚意 +10
     const tried = s.player.joinTried[f.id];
     if (tried && tried.fails) parts.push({ label: '已求过 ' + tried.fails + ' 回，心诚', value: Math.min(30, tried.fails * 10) });
+    if (p.flags.includes('jianshu') && f.key === 'xuanzhen') parts.push({ label: '持仙师荐书', value: 20 });
     if (j.pin && p.danPin) parts.push({ label: P().danPinName(p), value: (5 - p.danPin) * 6 });
     return { chance: Math.round(U.clamp(parts.reduce((a, x) => a + x.value, 0), 5, 90)), parts };
   };
@@ -6043,6 +6296,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (q && (!P().alive(q) || q.locationId !== p.locationId)) { FX.Act.seek(s, false); return { ok: true, text: '没见着' + q.name }; }
     const win = R.chance(s.rng, (c.chance === null ? 100 : c.chance) / 100);
     FX.Act.seek(s, win);
+    FX.Xin.add(s, C().xin.deed);
     let text = '';
     switch (a.verb) {
       case 'talk': {
@@ -6202,6 +6456,116 @@ button.wide { width: 100%; margin-bottom: .6em; }
   });
 
   FX.Deed = Deed;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ---------- core/favor.js ---------- */
+/* ============================================================
+ * favor —— 人情回流（0.11）
+ * 以前替人出力、收留、送药，对方“记下这份人情”，可人情从来不回来。现在会回来，三条路：
+ *  · 遇险求援：遭遇妖物、劫修时，赶得来的故人（欠你人情、离此地二十天路程内、没带重伤）可以传讯请来，
+ *    援手的战力八成算进来；不论胜败，这份人情就算还了；
+ *  · 冲关护法：冲大关（筑基以上）时，欠你人情、修为不比你低太多的人来护法，把握 +8%，成败都算还了；
+ *  · 登门回礼：见 hooks.js 的 favor_return，多半送来你眼下卡关缺的东西，送不起就折成符钱。
+ * ============================================================ */
+(function (G) {
+  'use strict';
+  const FX = (G.FX = G.FX || {});
+  const C = () => FX.CONFIG;
+  const R = FX.RNG;
+  const U = FX.U;
+  const P = () => FX.P;
+  const H = () => FX.H;
+  const W = () => FX.World;
+
+  const Favor = {};
+  const list = (s) => (s.player.favors = s.player.favors || []);
+  const me = (s) => P().player(s);
+  // 欠你人情、还在世的人（先欠的先还）
+  Favor.owed = (s) => list(s).filter((f) => f.kind === 'owed' && P().alive(s.people[f.npc])).sort((a, b) => a.t - b.t);
+  Favor.remove = (s, f) => { const L = list(s), i = L.indexOf(f); if (i >= 0) L.splice(i, 1); };
+  Favor.collect = (s, npc) => { const f = list(s).find((x) => x.kind === 'owed' && x.npc === npc); if (f) Favor.remove(s, f); return !!f; };
+
+  /* ---------- 冲关护法 ---------- */
+  Favor.guardianFor = (s, p) => {
+    if (!P().isPlayer(s, p)) return null;
+    const k = FX.CU.gateKind(p);
+    if (!k || k === 'minor' || k === 'taixi') return null;
+    const mine = P().realmRank(p);
+    const f = Favor.owed(s).filter((x) => { const q = s.people[x.npc]; return q.health.state !== 'heavy' && P().realmRank(q) >= mine - C().favor.guardRankGap; })
+      .sort((a, b) => P().realmRank(s.people[b.npc]) - P().realmRank(s.people[a.npc]) || a.t - b.t)[0];
+    return f ? { fav: f, npc: f.npc, name: s.people[f.npc].name } : null;
+  };
+  Favor.guardian = (s) => Favor.guardianFor(s, me(s));
+  Favor.useGuardian = (s, g, ok) => {
+    Favor.remove(s, g.fav);
+    const q = s.people[g.npc];
+    if (!q) return;
+    P().adjustRelation(s, me(s).id, q.id, 5, '护法');
+    H().add(s, { type: 'social', tags: ['人物', '人情'], actors: [me(s).id, q.id], key: 'favor_guard', pov: true, severity: 3, params: { name: me(s).name, other: q.name, how: ok ? '关成之后，两人相视一笑' : '关虽没过，这份情你记下了' } });
+  };
+
+  /* ---------- 遇险求援 ---------- */
+  Favor.aidFor = (s, placeId) => {
+    const p = me(s);
+    let best = null;
+    for (const f of Favor.owed(s)) {
+      const q = s.people[f.npc];
+      if (q.health.state === 'heavy') continue;
+      const r = q.locationId === placeId ? { days: 0 } : W().route(s, q.locationId, placeId, q);
+      if (!r || r.days > C().favor.aidDays) continue;
+      const pw = P().power(s, q) * C().favor.aidMult;
+      if (!best || pw > best.power) best = { fav: f, npc: q.id, name: q.name, power: Math.round(pw * 10) / 10, days: r.days };
+    }
+    return best && best.power > 0 && p ? best : null;
+  };
+  const aidChance = (s, foePower, ally) => {
+    const E = C().encounter, my = P().power(s, me(s));
+    return Math.round(U.clamp(((my + ally) / (my + ally + foePower)) * 100, E.winChanceMin, E.winChanceMax));
+  };
+  // 遭遇事件里的“传讯求援”选项；foe(s, b) 与 encounters.js 的 beastFoe / npcFoe 一样
+  Favor.aidOpt = (foe) => ({
+    id: 'aid', label: '传讯求援',
+    chance: (s, b) => { const a = Favor.aidFor(s, b.place); const f = foe(s, b); return { chance: a ? aidChance(s, f.power, a.power) : 0, parts: a ? [{ label: '我方战力', value: P().power(s, me(s)) }, { label: a.name + '援手（八成战力）', value: a.power }, { label: '对方战力', value: Math.round(f.power * 10) / 10 }] : [] }; },
+    cost: (s, b) => { const a = Favor.aidFor(s, b.place); return a ? '用掉' + a.name + '欠你的人情' : '无'; },
+    risk: (s, b) => { const a = Favor.aidFor(s, b.place); return a ? `${a.name}赶来（${a.days ? a.days + ' 天路程，先周旋着' : '就在附近'}），合力胜率 ${aidChance(s, foe(s, b).power, a.power)}%；败了也有人护着，伤得轻些` : '没人赶得来'; },
+    outcome: (s, b) => foe(s, b).winText,
+    avail: (s, b) => (Favor.aidFor(s, b.place) ? true : '附近没有欠你人情、赶得来的人'),
+    apply(s, b, ctx) {
+      const a = Favor.aidFor(s, b.place);
+      const f = foe(s, b);
+      const ch = aidChance(s, f.power, a.power);
+      Favor.remove(s, a.fav);
+      const q = s.people[a.npc];
+      P().adjustRelation(s, me(s).id, q.id, 6, '援手');
+      const st = s.player.stats;
+      st.fights++;
+      if (R.next(s.rng) * 100 < ch) {
+        st.wins++;
+        const loot = f.onWin(s, b, ctx);
+        H().add(s, { type: 'fight', tags: ['斗法', '胜', '人情'], actors: [me(s).id, q.id].concat(b.foe ? [b.foe] : []), places: [b.place], key: 'favor_aid_win', pov: true, params: { name: me(s).name, other: q.name, foe: f.name, chance: ch, loot }, severity: 3, causeIds: [ctx.hid] });
+        return { text: `${q.name}赶来援手，合力得胜（${ch}%），${loot}；这份人情算还了`, gain: true };
+      }
+      // 败了有人护着：按对方一半的战力算伤
+      const h = FX.Combat.hurt(s, me(s), f.power * 0.5, f.name, [ctx.hid]);
+      if (b.foe && f.onLose) f.onLose(s, b, ctx);
+      if (!h.died) H().add(s, { type: 'fight', tags: ['斗法', '败', '人情'], actors: [me(s).id, q.id], places: [b.place], key: 'favor_aid_lose', pov: true, params: { name: me(s).name, other: q.name, foe: f.name, chance: ch, hurt: h.text }, severity: 3, causeIds: [ctx.hid] });
+      return { text: `${q.name}赶来援手，仍没敌过（${ch}%），${h.text}` };
+    },
+  });
+
+  /* ---------- 登门回礼：挑一样礼 ---------- */
+  // 你卡关缺的东西（送得起的话），不然折成符钱
+  Favor.giftFor = (s) => {
+    const p = me(s);
+    const cap = C().favor.giftCap * Math.pow(1 + p.realm.major, 2);
+    const needs = FX.Guide ? FX.Guide.needs(s) : [];
+    for (const n of needs) for (const k of n.keys || []) if (C().items[k] && C().items[k].price <= cap) return k;
+    // 冲关可用、还没有的外药（大造元珠这类不是必需、但添把握的）
+    for (const r of FX.CU.requirements(s, p)) if (!r.ok && r.item && C().items[r.item] && C().items[r.item].price <= cap) return r.item;
+    return null;
+  };
+
+  FX.Favor = Favor;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---------- core/propose.js ---------- */
@@ -6545,6 +6909,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const L = [];
     const inv = Object.keys(s.player.inv).filter((k) => s.player.inv[k] > 0).map((k) => W().itemName(k) + '×' + s.player.inv[k]);
     L.push('主角：' + p.name + '，' + P().realmName(p) + '，' + P().factionName(s, p) + '，' + (p.health.state === 'healthy' ? '无伤' : p.health.state === 'heavy' ? '重伤' : '轻伤') + '，符钱 ' + s.player.stone + (p.factionId ? '，' + cf.house.meritName + ' ' + s.player.merit : '') + '。');
+    { const xv = FX.Xin.view(s), ow = FX.Favor.owed(s); L.push('心境 ' + xv.value + '（' + xv.name + '，修炼 ×' + xv.factor + '，冲关 ' + (xv.breakBonus >= 0 ? '+' : '') + xv.breakBonus + '%；闭关耗心境，游历、遇事、交游添心境）' + (ow.length ? '；欠你人情的人：' + ow.slice(0, 4).map((f) => s.people[f.npc].name).join('、') + '（遇险可求援、冲大关会来护法）' : '') + '。'); }
     L.push('行囊：' + (inv.length ? inv.join('、') : '空') + (s.player.manuals.length ? '；功法：' + s.player.manuals.map((t) => '《' + cf.techniques[t].name + '》').join('') : ''));
     L.push('所在：' + pl.name + '（' + cf.world.placeTypes[pl.type].name + '）' + (W().hasMarket(s, pl.id) ? '，有坊市' : ''));
     L.push('相邻：' + pl.links.map((l) => s.places[l.to].name + '（' + l.days + ' 天）').join('、'));
@@ -6685,7 +7050,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
           const m = Act().marketOf(s);
           if (!m) return no('卖' + name, '此地没有坊市');
           if (!((s.player.inv[st.item] || 0) > 0)) return no('卖' + name, '行囊里没有' + name);
-          return { ok: true, label: '在坊市卖掉' + name + ' 一份', days: 0, run: { type: 'sell', item: st.item, qty: 1 } };
+          const n = st.all ? s.player.inv[st.item] : 1;
+          return { ok: true, label: '在坊市卖掉' + name + (n > 1 ? ' ×' + n : ' 一份'), days: 0, run: { type: 'sell', item: st.item, qty: n } };
         }
         const m = Act().marketOf(s);
         const slot = m && m.stock.find((x) => x.item === st.item && x.qty > 0);
@@ -6793,7 +7159,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const items = [];
     for (const k of Object.keys(C().items)) { const n = C().items[k].name; if (n && n.length >= 2 && t.includes(n)) items.push(k); }
     for (const k of Object.keys(C().techniques)) { const n = C().techniques[k].name; if (n && n.length >= 2 && t.includes(n)) items.push('tech:' + k); }
-    return { q: ppl[0] || null, place: places[0] || null, item: items.sort((a, b) => W().itemName(b).length - W().itemName(a).length)[0] || null };
+    const facs = Object.values(s.factions).filter((f) => f.name && f.name.length >= 2 && (t.includes(f.name) || (f.name.length >= 3 && t.includes(f.name.replace(/[派宗门]$/, ''))))).sort((a, b) => b.name.length - a.name.length);
+    return { q: ppl[0] || null, place: places[0] || null, fac: facs[0] || null, item: items.sort((a, b) => W().itemName(b).length - W().itemName(a).length)[0] || null };
   };
   Intent.match = (s, text) => {
     const t = String(text || '');
@@ -6839,13 +7206,61 @@ button.wide { width: 100%; margin-bottom: .6em; }
       add('前往' + m.place.name, [{ k: 'go', to: m.place.id }].concat(tail));
       if (has(t, /打听|情形|怎样|如何/)) add('打听' + m.place.name + '的情形', [dd({ verb: 'inquire', topic: 'place', place: m.place.id })]);
     }
+    // ---- 0.11：常见说法补全（这些说法比“前往某地”具体，排在前面）----
+    const n0 = cands.length;
+    const firstOf = () => { for (let i = n0; i < cands.length; i++) cands[i].pri = 1; };
+    // 拜师、入门：提到门派或门派所在地，就赶过去求入；在场有比你高的熟人，也可以请教
+    if (has(t, /拜师|拜入|入门|加入|投奔|求入|投入|拜.{0,4}为师|当弟子|做弟子/)) {
+      const f = m.fac || (m.place && m.place.factionId && s.factions[m.place.factionId]) || (s.places[p.locationId].factionId && s.factions[s.places[p.locationId].factionId]) || null;
+      if (f && f.type === 'sect' && !p.factionId) add('去' + s.places[f.seatId].name + '求入' + f.name, (f.seatId !== p.locationId ? [{ k: 'go', to: f.seatId }] : []).concat([{ k: 'act', a: { type: 'join', fid: f.id } }]));
+      else if (f && p.factionId === f.id) add('你已是' + f.name + '中人，去长老房看看能请授什么', [dd({ verb: 'inquire', topic: 'way' })]);
+      if (q && P().realmRank(q) > P().realmRank(p)) add('向' + q.name + '请教（拜师先从请教起）', toQ([{ k: 'do', type: 'consult', npc: q.id }]));
+    }
+    // 卖光：行囊里的草药、妖物材料一股脑卖掉
+    if (has(t, /卖光|全卖|都卖|卖了|清仓|全部卖|统统卖|换成符钱|换钱/) && !q && !m.item) {
+      const goods = C().loot.filter((k) => (s.player.inv[k] || 0) > 0).slice(0, Intent.MAX_STEPS);
+      if (goods.length) add('把' + goods.map((k) => W().itemName(k)).join('、') + '都卖掉', goods.map((k) => ({ k: 'do', type: 'sell', item: k, all: true })));
+    }
+    // 治病、行医：给凡人看病，按营生算（凡人国当供奉）
+    if (has(t, /治病|行医|看病|救治|施药|悬壶|医人|救人/)) {
+      const city = m.place && m.place.type === 'city' ? m.place : null;
+      add('行医济世（按营生算' + (city ? '，在' + city.name : '') + '）', (city && city.id !== p.locationId ? [{ k: 'go', to: city.id }] : []).concat([{ k: 'do', type: 'work' }]));
+    }
+    // 道侣：先得有交情
+    if (has(t, /道侣|双修|结为夫妻|成亲|心仪|喜欢|倾心|结缘/)) {
+      if (q) { add('与' + q.name + '多走动（结道侣要先有深交）', toQ([{ k: 'do', type: 'befriend', npc: q.id }])); add('与' + q.name + '叙话', toQ([dd({ verb: 'talk', npc: q.id, aim: 'chat' })])); }
+      else {
+        const here = P().at(s, p.locationId).filter((x) => x.id !== p.id).sort((a, b) => P().relValue(s, p.id, b.id) - P().relValue(s, p.id, a.id) || (a.id < b.id ? -1 : 1))[0];
+        if (here) add('去拜访' + here.name + '（结道侣要先有深交）', [{ k: 'do', type: 'befriend', npc: here.id }]);
+      }
+    }
+    // 没点名的切磋：找在场、修为相近的人
+    if (has(t, /切磋|比试|较量|过招|练练手/) && !q) {
+      const foe = P().at(s, p.locationId).filter((x) => x.id !== p.id && Math.abs(P().realmRank(x) - P().realmRank(p)) <= 3).sort((a, b) => P().relValue(s, p.id, b.id) - P().relValue(s, p.id, a.id) || (a.id < b.id ? -1 : 1))[0];
+      if (foe) add('与' + foe.name + '切磋', [dd({ verb: 'fight', npc: foe.id, mode: 'spar' })]);
+    }
+    // 潜入、偷：潜行只能对人；对地方先去探探情形
+    if (has(t, /潜入|偷|盗|摸进|夜探|混进/) && !q) {
+      const pl = m.place || s.places[p.locationId];
+      add('先去探' + pl.name + '的情形（潜行只能盯人）', (pl.id !== p.locationId ? [{ k: 'go', to: pl.id }] : []).concat([dd({ verb: 'inquire', topic: 'place', place: pl.id })]));
+    }
+    firstOf();
     if (has(t, /冲关|突破|筑基|紫府|金丹|元神/)) add('冲关', [{ k: 'do', type: 'breakthrough' }]);
     if (has(t, /闭关|修炼|打坐|吐纳/)) add('闭关修炼', [{ k: 'do', type: 'cultivate' }]);
-    if (has(t, /游历|历练|逛逛|转转|走走/)) add('在此地游历', [{ k: 'do', type: 'explore' }]);
+    if (has(t, /游历|历练|逛逛|转转|走走|散心|出门|透透气|看看/)) add('在此地游历', [{ k: 'do', type: 'explore' }]);
     if (has(t, /打工|营生|差事|挣钱|赚钱|干活/)) add('做营生挣符钱', [{ k: 'do', type: 'work' }]);
     if (has(t, /养伤|静养|疗伤/)) add('静养', [{ k: 'do', type: 'rest' }]);
     if (has(t, /卡|缺|下一步|怎么办|去哪/)) add('打听眼下卡关的来路', [dd({ verb: 'inquire', topic: 'way' })]);
     if (has(t, /打听|传闻|消息|新鲜事/) && !q && !m.item) add('在此地打听近来的传闻', [dd({ verb: 'inquire', topic: 'rumor' })]);
+    // 一句也没听懂：给最接近的几样（眼下的下一步、出门走走、闭关）
+    if (!cands.length) {
+      const g = FX.Guide && FX.Guide.next(s);
+      if (g && g.need) add('打听眼下卡关的来路', [dd({ verb: 'inquire', topic: 'way' })]);
+      add('在此地游历', [{ k: 'do', type: 'explore' }]);
+      add('闭关修炼', [{ k: 'do', type: 'cultivate' }]);
+      add('在此地打听近来的传闻', [dd({ verb: 'inquire', topic: 'rumor' })]);
+      for (const c of cands) c.guess = true;
+    }
     // 去重，先放走得通的
     const seen = new Set();
     const out = [];
@@ -6856,7 +7271,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       c.check = Intent.preview(s, c.steps);
       out.push(c);
     }
-    out.sort((a, b) => b.check.ok - a.check.ok);
+    out.sort((a, b) => b.check.ok - a.check.ok || (b.pri || 0) - (a.pri || 0));
     return out.slice(0, 3);
   };
 
@@ -6907,7 +7322,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   // 后果白名单
   Hook.EFFECTS = {
     'coin+': '得符钱', 'coin-': '失符钱', 'item+': '得物', 'item-': '失物', 'merit+': '得道功', 'progress+': '小幅修为',
-    hurt: '受伤', 'rel+': '交情升', 'rel-': '交情降', feud: '结仇', favor_owed: '对方欠你人情', favor_owe: '你欠对方人情', repay: '还了人情', intel: '一条消息', followup: '一件后续事',
+    hurt: '受伤', 'rel+': '交情升', 'rel-': '交情降', feud: '结仇', favor_owed: '对方欠你人情', favor_owe: '你欠对方人情', repay: '还了人情', collect: '对方还了人情', intel: '一条消息', followup: '一件后续事',
   };
   const coinAmt = (p, size) => Math.round(10 * Math.pow(1 + p.realm.major, 2) * SIZE[size]);
   const relAmt = (size) => ({ small: 5, mid: 10, big: 20 }[size]);
@@ -6957,6 +7372,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     const owe = favors(s).find((f) => f.kind === 'owe' && P().alive(s.people[f.npc]));
     if (owe) add('self_debt', 3, { npc: owe.npc });
+    // 人情回流：欠你人情的人登门回礼（先欠的先来）；送的多半是你卡关缺的东西
+    const owed = FX.Favor.owed(s)[0];
+    if (owed) { const gift = FX.Favor.giftFor(s); add('favor_return', 3 + Math.min(3, FX.Favor.owed(s).length * 0.5), Object.assign({ npc: owed.npc }, gift ? { item: gift } : {})); }
     // 地方：同住一处的人、山里的妖物
     const nb = P().at(s, place.id).filter((q) => q.id !== p.id && Math.abs(rel(s, q)) < K.friendMin).sort(sortId);
     if (nb.length) add('place_neighbor', 1.2, { npc: nb[R.int(s.rng, 0, nb.length - 1)].id });
@@ -7054,12 +7472,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
       options: [opt('出手清剿', 'fight', 'mid', ['item+', 'merit+'], ['hurt']), opt('闭门不出', 'none', 'small', [])] }),
     saga_after: (s, b, n) => ({ title: '大事余波', text: `「${b._what}」之后，${n.npc}带着伤找上门来，求你收留几日。`, item: 'heal', max: 'mid',
       options: [opt('收留他', 'time', 'small', ['rel+', 'favor_owed']), opt('赠他一颗' + C().items.heal.name, 'none', 'mid', ['item-', 'rel+']), opt('拒之门外', 'none', 'small', ['rel-'])] }),
+    favor_return: (s, b, n) => ({ title: '故人还情', text: b._item ? `${n.npc}登门来了，说当年欠你的那份人情一直记着。听说你正缺${n.item}，特地寻了一份带来。` : `${n.npc}登门来了，说当年欠你的那份人情一直记着，带了些符钱来，权当谢礼。`, item: b._item || undefined, max: 'big',
+      options: [opt('收下', 'none', 'big', [b._item ? 'item+' : 'coin+', 'collect', 'rel+']), opt('人情不必还，留下喝茶论道', 'none', 'mid', ['collect', 'rel+', 'progress+']), opt('请他留着，日后再说', 'none', 'small', [])] }),
     follow: (s, b, n) => ({ title: '旧事后续', text: `${n.npc}又来了，还记着上回「${b._ref}」的事。`, max: 'small',
       options: [opt('叙叙旧', 'none', 'small', ['rel+']), opt('托他打听些消息', 'talk', 'small', ['intel'], []), opt('不见', 'none', 'small', ['rel-'])] }),
   };
   Hook.TPL = TPL;
   Hook.KINDS = Object.keys(TPL);
-  Hook.FAMILY = { friend_hurt: '交情', friend_visit: '交情', foe_probe: '仇怨', foe_hurt: '仇怨', sect_task: '宗门', sect_rival: '宗门', market_buyer: '市面', self_need: '主角', self_hurt: '主角', self_challenge: '主角', self_debt: '主角', place_neighbor: '地方', place_beasts: '地方', place_visitor: '地方', market_peddler: '市面', saga_after: '大事余波', follow: '后续' };
+  Hook.FAMILY = { friend_hurt: '交情', friend_visit: '交情', foe_probe: '仇怨', foe_hurt: '仇怨', sect_task: '宗门', sect_rival: '宗门', market_buyer: '市面', self_need: '主角', self_hurt: '主角', self_challenge: '主角', self_debt: '主角', place_neighbor: '地方', place_beasts: '地方', place_visitor: '地方', market_peddler: '市面', saga_after: '大事余波', follow: '后续', favor_return: '交情' };
 
   // 钩子 → 事件绑定（含模板或 AI 提案）。当事人已不在、条件已变（比如伤好了）就返回 null
   Hook.build = (s, h, ai) => {
@@ -7120,6 +7540,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       case 'favor_owed': return n.npc ? n.npc + '欠你一个人情' : '';
       case 'favor_owe': return n.npc ? '欠' + n.npc + '一个人情' : '';
       case 'repay': return '还了人情';
+      case 'collect': return n.npc ? n.npc + '的人情就算还了' : '';
       case 'intel': return '得一条消息';
       case 'followup': return '日后还有下文';
       default: return '';
@@ -7149,6 +7570,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       case 'favor_owed': if (q) favors(s).push({ npc: q.id, kind: 'owed', t: s.t }); break;
       case 'favor_owe': if (q) favors(s).push({ npc: q.id, kind: 'owe', t: s.t }); break;
       case 'repay': { const f = q && favors(s).find((x) => x.npc === q.id && x.kind === 'owe'); if (f) favors(s).splice(favors(s).indexOf(f), 1); break; }
+      case 'collect': if (q) FX.Favor.collect(s, q.id); break;
       case 'intel': ctx.intel = FX.Deed.intel(s, FX.Guide && FX.Guide.next(s) ? 'way' : 'rumor', {}); break;
       case 'followup': if (q) st(s).queue.push({ id: 'k' + s.nextId++, kind: 'follow', npc: q.id, ref: b._p.title, t: s.t + R.int(s.rng, 1, 3) * C().daysPerYear, ripe: false }); break;
     }
@@ -7616,7 +8038,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
 
   /* ---------- 苦修（与测试里的苦修策略同一套）---------- */
   // 以闭关为主，能突破就突破；无门无派时先去拜入宗门；缺什么先找本门库藏，道功不够就做差事，再不行去墟市买或托人代寻；伤了就养
-  Dir.diligent = (s, rng) => {
+  // o.xinLow：心境低于此就出门游历一趟；o.gateXin：到了关口、心境低于此先出门磨一磨再冲（-1 表示不管心境，死守闭关）
+  Dir.diligent = (s, rng, o) => {
+    o = o || {};
     const Gm = FX.Game;
     const A = Gm.actions(s);
     const ov = Gm.view.overview(s);
@@ -7653,6 +8077,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
     }
     const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
+    // 心境：闭关日久就出门走一趟（野外比城里开阔，太凶险的地方只走十天）；到了关口心境不够，也先出去磨一磨
+    const xin = FX.Xin.get(s), xinLow = o.xinLow !== undefined ? o.xinLow : 45, gateXin = o.gateXin !== undefined ? o.gateXin : 60;
+    if (me.health.state === 'healthy' && (xin < xinLow || (br && xin < gateXin && ov.age < ov.lifespan - 10))) {
+      const ex = ov.place.danger <= 2 ? find((a) => a.type === 'explore' && a.days === 30) : find((a) => a.type === 'explore' && a.days === 10);
+      if (ex) return ex;
+    }
     if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * CF.daysPerYear || ov.age > ov.lifespan - 25)) return br;
     // 冲关要灵机够高之地（结丹四级、元神六级）：修满了就去能用的地方，或到野外开洞府聚灵；太凶险的地方不去
     const qn = P().isFull(who) && FX.Guide.needs(s).find((n) => n.qi);
@@ -7716,7 +8146,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const coin = find((a) => a.type === 'cultivate' && a.coin && a.days === 360);
       if (coin && ov.stone > coin.cost * 3 && CF.cultivation.qiMult[CF.cultivation.coin.qi] > cur) return coin;
     }
-    if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+    if (!o.recluse && rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
   };
@@ -7822,7 +8252,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       case 'learn': case 'sect_learn': return '换一门更好的功法。';
       case 'redeem': case 'order': case 'buy': return a.item === 'qiju' ? '中孚丹快用完了，补上几颗。' : '冲关缺的东西，得先备齐。';
       case 'mission': case 'work': return '道功、符钱不够，先去挣。';
-      case 'explore': return '出去走走，或有机缘。';
+      case 'explore': return FX.Xin.get(s) < 45 ? '闭关久了，心里发闷，出去走走。' : '出去走走，或有机缘。';
       case 'befriend': return '去拜访' + n(a.npc) + '。';
       case 'diyuan': return '地渊开了，去碰碰运气。';
       case 'submit': case 'donate': return '把用不上的折成道功，好换冲关要用的东西。';
@@ -7840,6 +8270,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const ch = (o) => (o.chance && typeof o.chance.chance === 'number' ? o.chance.chance : null);
     const line = { 2: 40, 1: 55, 0: 65, '-1': 75 }[per.bold];
     const brave = opts.filter((o) => ['fight', 'deep'].includes(o.id) && (ch(o) === null ? per.bold >= 2 : ch(o) >= line)).sort((a, b) => (ch(b) || 0) - (ch(a) || 0))[0];
+    // 一个人打不过、有欠我人情的故人赶得来：请他援手
+    const aid = opts.find((o) => o.id === 'aid');
+    const fight = opts.find((o) => o.id === 'fight');
+    if (aid && ch(aid) >= line - 10 && (!brave || ch(aid) - ch(brave) >= 15) && (!fight || ch(fight) < line)) return { id: aid.id, label: aid.label, why: '势单力薄，请故人援手。', via: 'local' };
     if (brave) return { id: brave.id, label: brave.label, why: ch(brave) !== null ? '胜算不小，拼一拼。' : '富贵险中求。', via: 'local' };
     const safe = opts.find((o) => ['safe', 'pay', 'flee'].includes(o.id)) || opts.filter((o) => !o.irreversible)[0] || opts[0];
     const risky = opts.some((o) => ['fight', 'deep'].includes(o.id));
@@ -7960,6 +8394,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const last = Prop().latest(s, 'dir');
     if (!force && via === 'local' && last && last.via === 'local' && last.label === label) return false; // 照旧闭关就不重复记
     Prop().record(s, 'dir', 'd:' + s.t + ':' + d.n, why || '', { label, via, hid: 'h' + s.nextHistId });
+    s.player.ledger = null; // 一个新念头：此后的日常另起一条小结，排在念头后面
     return true;
   };
   Dir.exec = (s, choice) => {
@@ -8291,6 +8726,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
           me: p, age: P.age(s, p), realm: P.realmName(p), realmTitle: P.realmTitle(p), title: P.title(p), need: P.need(p), full: P.isFull(p),
           left: P.lifespanLeft(s, p), lifespan: P.lifespanTotal(p),
           speed: FX.CU.breakdown(s, p, { pill: s.player.qijuUntil > s.t }),
+          xin: FX.Xin.view(s),
+          favors: FX.Favor.owed(s).map((f) => ({ npc: f.npc, name: s.people[f.npc].name, realm: P.realmName(s.people[f.npc]), at: s.places[s.people[f.npc].locationId].name })),
           power: P.powerBreakdown(s, p),
           tech: P.techOf(s, p), lianqi: P.lianqiOf(p), fit: FX.CU.attrFit(s, p, place),
           coinPerYear: FX.CU.coinPerYear(p),
@@ -9280,7 +9717,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
         ${coins.length ? `<div class="act-group"><span class="muted">以符钱修行 <span class="small">· 把符钱炼进去，奢费但不挑地方</span></span><div class="chips long">${coins.map((a) => chip(a, T.dur(a.days) + ' · ' + n0(a.cost) + ' 符钱')).join('')}</div></div>` : ''}
         ${rest.length ? `<div class="row">${rest.map((a) => btn(a)).join('')}</div>` : ''}`;
     } else if (tab) {
-      actBody = `<div class="row">${listOf(tab).map((a) => btn(a)).join('')}</div>${tab === '外出' ? '<p class="muted small" style="margin-bottom:0">游历多半一无所获，偶有遭遇。远路去地图页一键赶过去。</p>' : ''}`;
+      actBody = `<div class="row">${listOf(tab).map((a) => btn(a)).join('')}</div>${tab === '外出' ? '<p class="muted small" style="margin-bottom:0">游历必添心境（野外比城里多，头一回去的地方更多），时有领悟、草药、遭遇；越险越磨人。远路去地图页一键赶过去。</p>' : ''}`;
     }
     // 要紧的事：和你沾边、快到的天下大事；散修能去拜的宗门；长老房白给的功法；元神未入殿。每条带一个直接去办的按钮
     const tips = [];
@@ -9300,6 +9737,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
       if (free.length) tips.push(`长老房可请授${free.map((a) => '《' + esc(CF.techniques[a.tech].name) + '》').join('')}，不收${esc(CF.house.meritName)} <button class="link" data-act="page" data-p="shop" data-tab="books">去请授</button>`);
       if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
     }
+    // 心境：闭关久了提醒出去走走；欠你人情的人
+    if (ov.xin.hint && !s.ended) {
+      const ex = A.find((a) => a.type === 'explore' && a.days === 30 && a.ok) || A.find((a) => a.type === 'explore' && a.ok);
+      tips.push(`<b class="${ov.xin.low ? 'warn' : 'good'}">心境${esc(ov.xin.name)}</b> <span class="muted small">${esc(ov.xin.hint)}</span>${ov.xin.low && ex ? ' ' + btn(ex) : ''}`);
+    }
+    if (ov.favors.length) tips.push(`<b>欠你人情的人</b> <span class="muted small">${ov.favors.slice(0, 4).map((f) => esc(f.name) + '（' + esc(f.realm) + '，在' + esc(f.at) + '）').join('、')}${ov.favors.length > 4 ? ' 等 ' + ov.favors.length + ' 人' : ''}。遇险时可传讯求援，冲大关时会来护法，也会登门回礼</span>`);
     const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
     // 自由输入：说一句想做什么，先看预览再照做
     const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
@@ -9332,6 +9775,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
           <div><span class="muted">寿元</span> <b class="${ov.left < 15 ? 'bad' : ''}">余 ${n0(ov.left)} 年</b></div>
           <div><span class="muted">伤势</span> <b>${health}</b></div>
           <div><span class="muted">${trace('修炼', ov.speed.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${ov.speed.total}/年</b></div>
+          <div><span class="muted">${trace('心境', '闭关、修炼一年耗 ' + CF.xin.decayPerYear + ' 点；游历、赶路、遇事、交游都添心境。心境 60 修炼不加不减，0 时只有五成半，100 时快三成；冲关把握 ' + (ov.xin.breakBonus >= 0 ? '+' : '') + ov.xin.breakBonus + '%')}</span> <b class="${ov.xin.low ? 'bad' : ov.xin.value >= 80 ? 'good' : ''}">${ov.xin.value} ${esc(ov.xin.name)}</b></div>
           <div><span class="muted">${trace('战力', ov.power.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${n1(ov.power.total)}</b></div>
           <div><span class="muted">符钱</span> <b>${n0(ov.stone)}</b></div>
           ${member ? `<div><span class="muted">${esc(CF.house.meritName)}</span> <b>${n0(ov.merit)}</b> <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中' : '长老房'}</button></div>` : ''}
@@ -9865,7 +10309,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
     ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
+    <div class="card"><h3>这一版</h3><p><b>0.11「历练与人情」</b>：闭关会耗心境、心境枯了修得慢，出门游历、遇事、交游添心境，回来修得快、冲关更有把握；游历必有所得；欠你人情的人会来援手、护法、登门回礼；日常流水并成小结，纪事读起来是一个人的一生。</p><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -10099,7 +10543,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const local = () => Game.intent.match(s, text);
       const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
       const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
-      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      if (!useAI) { const pl = local(); pushModal(Object.assign({ type: 'intent', input: text, plans: pl }, pl.length && pl[0].guess ? { note: '没听懂这句话，下面是眼下最接近的几样做法。开了 AI 能听懂更多。', noteCls: 'muted' } : {})); return; }
       UI.sayBusy = true; render();
       let r;
       try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }

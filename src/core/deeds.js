@@ -242,6 +242,7 @@
     if (q && (!P().alive(q) || q.locationId !== p.locationId)) { FX.Act.seek(s, false); return { ok: true, text: '没见着' + q.name }; }
     const win = R.chance(s.rng, (c.chance === null ? 100 : c.chance) / 100);
     FX.Act.seek(s, win);
+    FX.Xin.add(s, C().xin.deed);
     let text = '';
     switch (a.verb) {
       case 'talk': {
