@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="借力">
+<meta name="theme-color" content="#efe6d2">
+<title>借力</title>
+<style>
+:root{
+  --paper:#efe6d2; --paper2:#e6dbc2; --ink:#2a2420; --ink2:#6b5f52; --line:#d4c7ab;
+  --jade:#2f7d7a; --ver:#b8382b; --gold:#c8901e;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);
+  font-family:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC",serif;
+  overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#app{max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 8px) 8px calc(env(safe-area-inset-bottom) + 8px);
+  display:flex;flex-direction:column;align-items:center;gap:6px;min-height:100%}
+header{width:100%;display:flex;align-items:center;gap:8px;font-size:15px}
+#floorLbl{font-weight:700;font-size:17px}
+#goalLbl{color:var(--ink2);flex:1}
+#hp{letter-spacing:1px;font-size:16px;color:var(--ver);white-space:nowrap}
+button{font-family:inherit;color:var(--ink);background:var(--paper2);border:1.5px solid var(--ink);
+  border-radius:10px;padding:8px 12px;font-size:16px;cursor:pointer}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.35}
+#menuBtn{padding:4px 10px;font-size:15px}
+canvas{display:block;touch-action:none;border-radius:6px}
+#info{width:100%;min-height:58px;font-size:14px;line-height:1.5;color:var(--ink);background:#f6f0e2;border:1px solid var(--line);
+  border-radius:8px;padding:6px 10px}
+#info b{color:var(--ver)}
+#info .j{color:var(--jade);font-weight:700}
+#skills{width:100%;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.sk{position:relative;min-width:56px;padding:6px 10px 4px;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.sk .c{font-size:22px;font-weight:700}
+.sk .n{font-size:11px;color:var(--ink2);margin-top:2px}
+.sk.sel{background:var(--ink);color:var(--paper)}
+.sk.sel .n{color:#d9ccb0}
+.sk.cd{opacity:.4}
+#ctl{width:100%;display:flex;gap:8px}
+#ctl button{flex:1;padding:12px;font-size:17px}
+#endBtn{background:var(--ink);color:var(--paper)}
+#endBtn.glow{box-shadow:0 0 0 3px var(--gold)}
+#ov{position:fixed;inset:0;background:var(--paper);display:none;overflow:auto;z-index:10}
+#ov.show{display:block}
+.pane{max-width:460px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 28px) 18px 40px}
+.pane h1{font-size:56px;margin:30px 0 4px;text-align:center;letter-spacing:12px}
+.pane h2{font-size:22px;margin:8px 0 14px;text-align:center}
+.pane .sub{text-align:center;color:var(--ink2);margin-bottom:28px}
+.pane .btns{display:flex;flex-direction:column;gap:10px}
+.pane .btns button{padding:14px;font-size:18px}
+.pane .prim{background:var(--ink);color:var(--paper)}
+.pane p,.pane li{font-size:15px;line-height:1.7}
+.card{border:1.5px solid var(--ink);border-radius:12px;padding:12px 14px;margin:10px 0;background:#f6f0e2;cursor:pointer;display:flex;gap:12px;align-items:center}
+.card:active{background:var(--paper2)}
+.card .big{font-size:30px;font-weight:700;width:46px;height:46px;border-radius:50%;background:var(--ink);color:var(--paper);
+  display:flex;align-items:center;justify-content:center;flex:none}
+.card .big.pas{background:var(--jade)}
+.card .big.heal{background:var(--ver)}
+.card .t{font-weight:700;font-size:17px}
+.card .d{font-size:14px;color:var(--ink2);line-height:1.5}
+.bestiary{display:grid;grid-template-columns:40px 1fr;gap:6px 10px;align-items:center;font-size:14px;line-height:1.5}
+.dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--paper);font-weight:700}
+.stat{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:16px;margin:10px 0 20px}
+.small{font-size:13px;color:var(--ink2);text-align:center;margin-top:18px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="floorLbl">第 1 层</div>
+    <div id="goalLbl"></div>
+    <div id="hp"></div>
+    <button id="menuBtn">☰</button>
+  </header>
+  <canvas id="cv"></canvas>
+  <div id="info"></div>
+  <div id="skills"></div>
+  <div id="ctl"><button id="undoBtn">撤销</button><button id="endBtn">结束回合</button></div>
+</div>
+<div id="ov"></div>
+<script>
+'use strict';
+// ================== 数据 ==================
+const N = 7;
+const DIRS = [[0,-1],[1,0],[0,1],[-1,0]];
+const DIRNAME = ['上','右','下','左'];
+const MAXF = 8;
+const K = {
+  me:    {name:'你',  ch:'我', hp:4, team:'P', col:'#2f7d7a'},
+  dao:   {name:'刀客', ch:'刀', hp:2, mv:3, team:'E', col:'#b8382b', desc:'一刀砍向身前一格，砍到谁算谁。'},
+  gong:  {name:'弓手', ch:'弓', hp:1, mv:2, team:'E', col:'#c25a2a', desc:'朝一个方向放箭，射中路上第一个人（箭能飞过坑）。'},
+  chong: {name:'莽汉', ch:'冲', hp:2, mv:2, team:'E', col:'#9c3b52', desc:'朝一个方向一路冲到底：撞到谁就伤谁并把它撞退一格；路上有坑就自己摔下去。'},
+  bao:   {name:'火童', ch:'爆', hp:1, mv:2, team:'E', col:'#d0611b', desc:'贴近你就点火，下回合炸伤周围八格（连自己一起没了）。被打死时也会当场炸开。'},
+  chui:  {name:'铁锤', ch:'锤', hp:3, mv:1, team:'E', col:'#6e2a22', heavy:true, desc:'推不动，摔不起。一锤砸向身前两格。'},
+  boss:  {name:'铁佛', ch:'佛', hp:10, mv:1, team:'E', col:'#4a1a14', heavy:true, boss:true, desc:'推不动。一掌拍向一条直线三格。每三回合召来两名帮手。你伤不了它，只能让别人撞它、砍它、炸它。'},
+  tong:  {name:'油桶', ch:'桶', hp:1, team:'O', col:'#8a5a2b', desc:'一碰就破，破了就炸，伤及上下左右四格。'},
+};
+const SK = {
+  tui:  {name:'推', cd:0, desc:'把身边一格的人推开一格。撞墙、撞人各伤一点；推进坑里直接摔死。'},
+  shuai:{name:'摔', cd:2, desc:'把身边的人从你头顶摔到身后一格。落进坑里摔死；落点有人，两人各伤一点。'},
+  la:   {name:'拉', cd:2, desc:'把同一直线上 2–3 格外最近的人拉近一格。拉进坑里同样摔死。'},
+  bo:   {name:'拨', cd:2, desc:'拨转身边敌人的身形，让它这一招调头打向反方向。'},
+  sao:  {name:'扫', cd:3, desc:'一记扫堂，把四周相邻的人全部向外推开一格。'},
+  huan: {name:'换', cd:3, desc:'与 3 格内任意一人互换位置（铁佛除外）。'},
+};
+const PAS = {
+  zhen: {name:'震劲', ch:'震', desc:'你推、摔、扫造成的撞击伤害 +1。'},
+  ji:   {name:'轻身', ch:'轻', desc:'每回合可多走 1 格。'},
+  ti:   {name:'筋骨', ch:'骨', desc:'生命上限 +1，并回满生命。'},
+  xie:  {name:'卸力', ch:'卸', desc:'每层第一次受到的伤害化为无形。'},
+  yu:   {name:'余劲', ch:'余', desc:'「推」能把人推出两格。'},
+  lian: {name:'连环', ch:'连', desc:'每回合可以出两招。'},
+};
+const POOL = [['dao',4,1],['gong',3,2],['chong',3,3],['bao',2,4],['chui',2,5]];
+
+// ================== 工具 ==================
+const $ = s => document.querySelector(s);
+const ri = (a,b) => a + Math.floor(Math.random()*(b-a+1));
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const shuffle = a => { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+const inB = (x,y) => x>=0 && y>=0 && x<N && y<N;
+const md = (a,b) => Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+let FAST = false, SIM = false; // 测试用
+const wait = ms => FAST ? Promise.resolve() : new Promise(r => setTimeout(r, ms));
+
+let S = null;          // 当前局面（可序列化）
+let undoStack = [];
+let busy = false;
+let ui = {skill:'tui', infoUnit:null, msg:''};
+const disp = {};       // 显示位置
+let fx = [];
+
+function tile(x,y){ return S.grid[y][x]; }
+function unitAt(x,y){ return S.units.find(u => u.x===x && u.y===y); }
+function P(){ return S.units.find(u => u.id==='P'); }
+function alive(u){ return S.units.includes(u); }
+function enemies(){ return S.units.filter(u => K[u.kind].team==='E'); }
+function isHeavy(u){ return !!K[u.kind].heavy; }
+function power(){ return 1 + (S.pas.zhen ? 1 : 0); }
+function moveRange(){ return 3 + (S.pas.ji ? 1 : 0); }
+function maxActs(){ return S.pas.lian ? 2 : 1; }
+
+function newUnit(kind,x,y){
+  const u = {id: kind + (S.nid++), kind, x, y, hp: K[kind].hp, max: K[kind].hp, dir: null, armed: false};
+  disp[u.id] = {x, y, a:0};
+  return u;
+}
+
+// ================== 音效 ==================
+let AC = null, soundOn = true;
+try{ soundOn = localStorage.getItem('jieli.sound') !== '0'; }catch(e){}
+function sfx(type){
+  if(!soundOn || FAST) return;
+  try{
+    if(!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+    const P_ = {step:[520,0.04,'sine',.05], hit:[180,0.12,'square',.08], bump:[110,0.1,'triangle',.12],
+      boom:[60,0.35,'sawtooth',.14], fall:[300,0.4,'sine',.08], ok:[660,0.15,'sine',.07], swish:[900,0.06,'triangle',.04]}[type];
+    if(!P_) return;
+    o.type = P_[2]; o.frequency.setValueAtTime(P_[0], t);
+    if(type==='fall') o.frequency.exponentialRampToValueAtTime(60, t+P_[1]);
+    if(type==='boom') o.frequency.exponentialRampToValueAtTime(30, t+P_[1]);
+    if(type==='ok') o.frequency.setValueAtTime(880, t+0.07);
+    g.gain.setValueAtTime(P_[3], t); g.gain.exponentialRampToValueAtTime(0.0001, t+P_[1]);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+P_[1]+0.02);
+  }catch(e){}
+}
+function vib(ms){ try{ if(!FAST && navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
+
+// ================== 特效 ==================
+function now(){ return performance.now(); }
+function addText(x,y,text,col){ fx.push({type:'text',x,y,text,col:col||'#b8382b',t0:now(),dur:900}); }
+function addFlash(x,y,col){ fx.push({type:'flash',x,y,col:col||'rgba(184,56,43,.6)',t0:now(),dur:280}); }
+function addBoom(x,y,r){ fx.push({type:'boom',x,y,r,t0:now(),dur:420}); }
+function addLine(x1,y1,x2,y2){ fx.push({type:'line',x1,y1,x2,y2,t0:now(),dur:260}); }
+function addGhost(u,mode){ const d = disp[u.id] || u; fx.push({type:'ghost',u:{...u},x:d.x,y:d.y,mode,t0:now(),dur:mode==='fall'?520:420}); }
+
+// ================== 规则：伤害、推撞 ==================
+async function damage(u,n,cause){
+  if(!alive(u) || n<=0) return;
+  if(u.id==='P' && S.pas.xie && !S.xieUsed){ S.xieUsed = true; addText(u.x,u.y,'卸力','#2f7d7a'); addFlash(u.x,u.y,'rgba(47,125,122,.5)'); return; }
+  u.hp -= n;
+  addText(u.x,u.y,'-'+n); addFlash(u.x,u.y);
+  sfx('hit');
+  if(u.id==='P'){ vib(70); }
+  if(u.hp<=0) await kill(u,cause);
+}
+async function kill(u,cause){
+  if(!alive(u)) return;
+  S.units = S.units.filter(x => x!==u);
+  addGhost(u, cause==='fall' ? 'fall' : 'die');
+  const team = K[u.kind].team;
+  if(team==='E'){
+    S.floorKills++; S.stats.kills++;
+    S.stats.by[cause] = (S.stats.by[cause]||0) + 1;
+    if(cause==='fall') addText(u.x,u.y,'坠','#2a2420');
+  }
+  if(u.kind==='boss') S.bossDead = true;
+  if(u.id==='P'){ S.dead = true; return; }
+  if(cause==='fall'){ sfx('fall'); await wait(120); return; }
+  if(u.kind==='tong') await explode(u.x,u.y,false);
+  else if(u.kind==='bao') await explode(u.x,u.y,true);
+}
+function blastTiles(x,y,eight){
+  const r = [];
+  for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+    if(!dx && !dy) continue;
+    if(!eight && dx && dy) continue;
+    if(inB(x+dx,y+dy)) r.push([x+dx,y+dy]);
+  }
+  return r;
+}
+async function explode(x,y,eight){
+  addBoom(x,y,eight?1.5:1.2); sfx('boom'); vib(40);
+  await wait(200);
+  const victims = blastTiles(x,y,eight).map(([a,b]) => unitAt(a,b)).filter(Boolean);
+  for(const v of victims) await damage(v,1,'boom');
+}
+async function push(u,dir,dist,pw){
+  if(!alive(u)) return;
+  if(isHeavy(u)){ addText(u.x,u.y,'纹丝不动','#2a2420'); return; }
+  for(let i=0;i<dist;i++){
+    if(!alive(u)) return;
+    const nx = u.x+DIRS[dir][0], ny = u.y+DIRS[dir][1];
+    if(!inB(nx,ny) || tile(nx,ny)===1){ sfx('bump'); await damage(u,pw,'bump'); return; }
+    const o = unitAt(nx,ny);
+    if(o){ sfx('bump'); addLine(u.x,u.y,nx,ny); await damage(u,pw,'bump'); await damage(o,pw,'bump'); return; }
+    if(tile(nx,ny)===2){
+      if(u.id==='P'){ sfx('bump'); await damage(u,1,'bump'); return; }
+      u.x = nx; u.y = ny; await wait(150); await kill(u,'fall'); return;
+    }
+    u.x = nx; u.y = ny; sfx('swish'); await wait(130);
+  }
+}
+
+// ================== 敌人招式 ==================
+function hitInfo(u){
+  const r = {tiles:[], targets:[], fall:false};
+  if(!u.armed) return r;
+  const k = u.kind;
+  if(k==='bao'){
+    for(const [x,y] of blastTiles(u.x,u.y,true)){ r.tiles.push([x,y]); const o = unitAt(x,y); if(o) r.targets.push(o); }
+    return r;
+  }
+  const [dx,dy] = DIRS[u.dir];
+  if(k==='dao'){
+    const x=u.x+dx, y=u.y+dy;
+    if(inB(x,y) && tile(x,y)!==1){ r.tiles.push([x,y]); const o = unitAt(x,y); if(o) r.targets.push(o); }
+  } else if(k==='chui' || k==='boss'){
+    const L = k==='boss' ? 3 : 2;
+    for(let i=1;i<=L;i++){
+      const x=u.x+dx*i, y=u.y+dy*i;
+      if(!inB(x,y) || tile(x,y)===1) break;
+      r.tiles.push([x,y]); const o = unitAt(x,y); if(o) r.targets.push(o);
+    }
+  } else if(k==='gong'){
+    let x=u.x+dx, y=u.y+dy;
+    while(inB(x,y) && tile(x,y)!==1){
+      r.tiles.push([x,y]); const o = unitAt(x,y);
+      if(o){ r.targets.push(o); break; }
+      x+=dx; y+=dy;
+    }
+  } else if(k==='chong'){
+    let x=u.x, y=u.y;
+    while(true){
+      const nx=x+dx, ny=y+dy;
+      if(!inB(nx,ny) || tile(nx,ny)===1) break;
+      const o = unitAt(nx,ny);
+      r.tiles.push([nx,ny]);
+      if(o){ r.targets.push(o); break; }
+      if(tile(nx,ny)===2){ r.fall = true; break; }
+      x=nx; y=ny;
+    }
+  }
+  return r;
+}
+async function doIntent(u){
+  if(!alive(u) || !u.armed) return;
+  const k = u.kind;
+  fx.push({type:'pulse',id:u.id,t0:now(),dur:300});
+  await wait(160);
+  if(k==='bao'){ await kill(u,'boom'); return; }
+  const [dx,dy] = DIRS[u.dir];
+  if(k==='chong'){
+    while(true){
+      const nx=u.x+dx, ny=u.y+dy;
+      if(!inB(nx,ny) || tile(nx,ny)===1) break;
+      const o = unitAt(nx,ny);
+      if(o){ await damage(o,1,'ally'); if(alive(o)) await push(o,u.dir,1,1); break; }
+      u.x=nx; u.y=ny; sfx('swish'); await wait(90);
+      if(tile(nx,ny)===2){ await kill(u,'fall'); return; }
+    }
+    u.armed = false; return;
+  }
+  const info = hitInfo(u);
+  if(info.tiles.length){
+    const last = info.tiles[info.tiles.length-1];
+    addLine(u.x,u.y,last[0],last[1]);
+    for(const [x,y] of info.tiles) addFlash(x,y,'rgba(184,56,43,.35)');
+  }
+  sfx('swish');
+  await wait(140);
+  for(const t of info.targets) await damage(t,1,'ally');
+  if(alive(u)) u.armed = false;
+}
+
+// ================== 敌人 AI ==================
+function reachable(sx,sy,range,isPlayer){
+  const seen = new Map(); seen.set(sx+','+sy,0);
+  const q = [[sx,sy,0]], out = [[sx,sy]];
+  while(q.length){
+    const [x,y,d] = q.shift();
+    if(d>=range) continue;
+    for(const [dx,dy] of DIRS){
+      const nx=x+dx, ny=y+dy, key=nx+','+ny;
+      if(!inB(nx,ny) || seen.has(key) || tile(nx,ny)!==0 || unitAt(nx,ny)) continue;
+      if(!isPlayer && S.markers.some(m => m.x===nx && m.y===ny)) continue;
+      seen.set(key,d+1); q.push([nx,ny,d+1]); out.push([nx,ny]);
+    }
+  }
+  return out;
+}
+function planEnemy(u){
+  const p = P(); if(!p) return;
+  const def = K[u.kind];
+  const ox=u.x, oy=u.y;
+  const opts = reachable(u.x,u.y,def.mv,false);
+  let best = null;
+  const consider = (x,y,dir,armed) => {
+    u.x=x; u.y=y; u.dir=dir; u.armed=armed;
+    const info = hitInfo(u);
+    let s;
+    const hitsP = info.targets.includes(p);
+    const allies = info.targets.filter(t => t!==u && K[t.kind].team==='E').length;
+    const objs = info.targets.filter(t => K[t.kind].team==='O').length;
+    const dist = Math.abs(x-p.x)+Math.abs(y-p.y);
+    if(hitsP) s = 100 - allies*30 - objs*8 + (u.kind==='gong' && dist>=2 ? 8 : 0);
+    else s = -dist*3 - allies*10;
+    if(u.kind==='chong' && info.fall) s -= 60;
+    s += Math.random()*4;
+    if(!best || s>best.s) best = {s,x,y,dir,armed};
+  };
+  for(const [x,y] of opts){
+    if(u.kind==='bao'){
+      const near = Math.max(Math.abs(x-p.x),Math.abs(y-p.y))<=1;
+      consider(x,y,null,near);
+    } else {
+      for(let d=0;d<4;d++) consider(x,y,d,true);
+    }
+  }
+  u.x=ox; u.y=oy;
+  if(best){ u.x=best.x; u.y=best.y; u.dir=best.dir; u.armed=best.armed; }
+}
+function pickKind(f){
+  const pool = POOL.filter(e => f>=e[2]);
+  let tot = pool.reduce((a,e)=>a+e[1],0), r = Math.random()*tot;
+  for(const e of pool){ r-=e[1]; if(r<0) return e[0]; }
+  return 'dao';
+}
+function freeTiles(minDist){
+  const p = P(), out = [];
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    if(tile(x,y)!==0 || unitAt(x,y) || S.markers.some(m=>m.x===x&&m.y===y)) continue;
+    if(p && Math.abs(x-p.x)+Math.abs(y-p.y) < minDist) continue;
+    out.push([x,y]);
+  }
+  return out;
+}
+function addMarker(kind){
+  const ft = freeTiles(2); if(!ft.length) return;
+  const [x,y] = pick(ft);
+  S.markers.push({x,y,kind});
+}
+function scheduleSpawns(){
+  if(S.floor===MAXF){
+    if(!S.bossDead && S.turn>0 && S.turn%3===0){ addMarker(pickKind(6)); addMarker(pickKind(6)); }
+    return;
+  }
+  const need = S.goal - S.floorKills;
+  const onb = enemies().length, have = onb + S.markers.length;
+  // 场上至少比还差的人数多留一个，免得最后只剩一个推不动的铁锤卡死
+  if(have < Math.min(S.cap, need + 1)){
+    addMarker(pickKind(S.floor));
+    if(onb===0 && need-have>=2 && have+1<S.cap) addMarker(pickKind(S.floor));
+  }
+}
+async function doSpawns(){
+  const ms = S.markers; S.markers = [];
+  for(const m of ms){
+    const o = unitAt(m.x,m.y);
+    if(o){ addText(m.x,m.y,'挤住了','#2a2420'); await damage(o,1,'spawn'); continue; }
+    if(tile(m.x,m.y)!==0) continue;
+    S.units.push(newUnit(m.kind,m.x,m.y));
+    addFlash(m.x,m.y,'rgba(42,36,32,.4)');
+    await wait(120);
+  }
+}
+async function enemyPhase(){
+  for(const u of enemies()){
+    if(!alive(u)) continue;
+    const ox=u.x, oy=u.y;
+    planEnemy(u);
+    if(u.x!==ox || u.y!==oy) await wait(150);
+  }
+  scheduleSpawns();
+}
+
+// ================== 关卡 ==================
+function genFloor(f){
+  const keep = S.units ? P() : null;
+  for(let tries=0; tries<300; tries++){
+    S.grid = Array.from({length:N},()=>Array(N).fill(0));
+    S.units = []; S.markers = [];
+    const start = [3,5];
+    const nw = ri(2,4), np = f===MAXF ? ri(1,2) : ri(2,3) + (f>=4?1:0);
+    const cells = shuffle([...Array(N*N).keys()].map(i=>[i%N,Math.floor(i/N)]))
+      .filter(([x,y]) => Math.abs(x-start[0])+Math.abs(y-start[1])>1 && !(f===MAXF && x===3 && y<=2));
+    for(let i=0;i<nw;i++){ const [x,y]=cells.pop(); S.grid[y][x]=1; }
+    for(let i=0;i<np;i++){ const [x,y]=cells.pop(); S.grid[y][x]=2; }
+    // 连通检查
+    let floorCount = 0; for(let y=0;y<N;y++) for(let x=0;x<N;x++) if(S.grid[y][x]===0) floorCount++;
+    const seen = new Set([start.join()]), q=[start];
+    while(q.length){ const [x,y]=q.shift(); for(const [dx,dy] of DIRS){ const nx=x+dx,ny=y+dy,k=nx+','+ny; if(inB(nx,ny)&&S.grid[ny][nx]===0&&!seen.has(k)){seen.add(k);q.push([nx,ny]);} } }
+    if(seen.size !== floorCount) continue;
+    // 玩家
+    const p = keep ? {...keep, x:start[0], y:start[1], dir:null, armed:false} : {id:'P',kind:'me',x:start[0],y:start[1],hp:4,max:4,dir:null,armed:false};
+    S.units.push(p); disp.P = {x:p.x,y:p.y,a:1};
+    // 油桶
+    const nb = f===MAXF ? 3 : ri(1,2);
+    for(let i=0;i<nb;i++){ const ft = freeTiles(2).filter(([x,y])=>y>0&&y<N-1&&x>0&&x<N-1); if(ft.length){ const [x,y]=pick(ft); S.units.push(newUnit('tong',x,y)); } }
+    if(f===MAXF){
+      S.units.push(newUnit('boss',3,1));
+      for(let i=0;i<2;i++){ const ft=freeTiles(3); if(ft.length){ const [x,y]=pick(ft); S.units.push(newUnit('dao',x,y)); } }
+      S.goal = 1; S.cap = 6;
+    } else {
+      const n0 = f<=1 ? 2 : f<=3 ? 3 : 4;
+      S.cap = f<=1 ? 2 : f<=3 ? 3 : f<=5 ? 4 : 5;
+      S.goal = 3 + Math.ceil(f*0.85);
+      for(let i=0;i<n0;i++){
+        const ft = freeTiles(3); if(!ft.length) break;
+        const [x,y] = pick(ft);
+        const kind = (f===1) ? 'dao' : (i===0 && f>=2 ? POOL.filter(e=>e[2]===Math.min(f,5))[0]?.[0] || pickKind(f) : pickKind(f));
+        S.units.push(newUnit(kind,x,y));
+      }
+    }
+    return;
+  }
+}
+function newRun(){
+  S = {floor:0, turn:0, nid:1, grid:null, units:null, markers:[], moved:false, acts:1,
+       skills:['tui'], pas:{}, cds:{}, xieUsed:false, floorKills:0, goal:4, cap:3, bossDead:false, dead:false,
+       stats:{kills:0, turns:0, by:{}}};
+  nextFloor(true);
+}
+function nextFloor(first){
+  S.floor++; S.turn = 0; S.floorKills = 0; S.bossDead = false; S.xieUsed = false;
+  for(const k in S.cds) S.cds[k] = 0;
+  if(first) S.units = null;
+  fx = [];
+  genFloor(S.floor);
+  for(const u of S.units) disp[u.id] = {x:u.x,y:u.y,a:1};
+  for(const u of enemies()) planEnemy(u);
+  for(const u of S.units) disp[u.id] = {x:u.x,y:u.y,a:1};
+  scheduleSpawns();
+  startPlayerTurn();
+  ui.msg = S.floor===MAXF ? '<b>铁佛</b>在此。它推不动，你也伤不了它。让它的帮手砍它，把人撞到它身上，或者在它身边引爆油桶。'
+    : S.floor===1 ? '第一层。看清<b>红色</b>格子：那是敌人下回合要打的地方。打中谁算谁——包括它们自己人。' : '';
+  showOverlay(null);
+  render();
+}
+function floorCleared(){
+  return S.floor===MAXF ? S.bossDead : S.floorKills >= S.goal;
+}
+
+// ================== 回合 ==================
+function startPlayerTurn(){
+  S.turn++; S.stats.turns++;
+  for(const k in S.cds) if(S.cds[k]>0) S.cds[k]--;
+  S.moved = false; S.acts = maxActs();
+  undoStack = [];
+  if(!canUse(ui.skill)) ui.skill = 'tui';
+  save();
+}
+function canUse(s){ return S.skills.includes(s) && !(S.cds[s]>0); }
+async function endTurn(){
+  if(busy || !S || S.dead) return;
+  busy = true; undoStack = []; ui.infoUnit = null; ui.msg = ''; render();
+  const order = enemies().filter(u => u.armed);
+  for(const u of order){
+    if(S.dead) break;
+    await doIntent(u);
+    await wait(100);
+  }
+  if(!S.dead) await doSpawns();
+  if(S.dead){ busy=false; return gameOver(); }
+  if(floorCleared()){ busy=false; return floorClear(); }
+  await enemyPhase();
+  startPlayerTurn();
+  busy = false;
+  render();
+}
+async function afterAction(){
+  if(SIM) return;
+  if(S.dead){ busy=false; return gameOver(); }
+  if(floorCleared()){ busy=false; return floorClear(); }
+}
+function snapshot(){ undoStack.push(JSON.stringify(S)); }
+function undo(){
+  if(busy || !undoStack.length) return;
+  S = JSON.parse(undoStack.pop());
+  ui.infoUnit = null; ui.msg = '';
+  for(const u of S.units) if(!disp[u.id]) disp[u.id] = {x:u.x,y:u.y,a:1};
+  fx = fx.filter(f => f.type==='text');
+  render();
+}
+
+// ================== 玩家招式 ==================
+function adj(p){ return DIRS.map(([dx,dy],d)=>({d,x:p.x+dx,y:p.y+dy})).filter(o=>inB(o.x,o.y)); }
+function targets(skill){
+  const p = P(); if(!p || !canUse(skill) || S.acts<=0) return [];
+  const out = [];
+  if(skill==='tui'){
+    for(const a of adj(p)){ const o = unitAt(a.x,a.y); if(o && !isHeavy(o)) out.push({x:a.x,y:a.y,d:a.d,u:o}); }
+  } else if(skill==='shuai'){
+    for(const a of adj(p)){
+      const o = unitAt(a.x,a.y); if(!o || isHeavy(o)) continue;
+      const lx = p.x - DIRS[a.d][0], ly = p.y - DIRS[a.d][1];
+      if(!inB(lx,ly) || tile(lx,ly)===1) continue;
+      out.push({x:a.x,y:a.y,d:a.d,u:o,lx,ly});
+    }
+  } else if(skill==='la'){
+    for(let d=0;d<4;d++){
+      for(let i=1;i<=3;i++){
+        const x=p.x+DIRS[d][0]*i, y=p.y+DIRS[d][1]*i;
+        if(!inB(x,y) || tile(x,y)===1) break;
+        const o = unitAt(x,y);
+        if(o){ if(i>=2 && !isHeavy(o)) out.push({x,y,d,u:o}); break; }
+      }
+    }
+  } else if(skill==='bo'){
+    for(const a of adj(p)){ const o = unitAt(a.x,a.y); if(o && K[o.kind].team==='E' && o.armed && o.dir!==null) out.push({x:a.x,y:a.y,d:a.d,u:o}); }
+  } else if(skill==='sao'){
+    if(adj(p).some(a => { const o=unitAt(a.x,a.y); return o && !isHeavy(o); })) out.push({x:p.x,y:p.y,u:p});
+  } else if(skill==='huan'){
+    for(const o of S.units){ if(o.id==='P' || o.kind==='boss') continue; if(md(o,p)<=3) out.push({x:o.x,y:o.y,u:o}); }
+  }
+  return out;
+}
+async function useSkill(skill,t){
+  snapshot(); busy = true; ui.infoUnit = null;
+  const p = P(), pw = power();
+  S.acts--; if(SK[skill].cd) S.cds[skill] = SK[skill].cd;
+  fx.push({type:'pulse',id:'P',t0:now(),dur:260});
+  if(skill==='tui'){
+    await push(t.u, t.d, S.pas.yu ? 2 : 1, pw);
+  } else if(skill==='shuai'){
+    const u = t.u; sfx('swish');
+    const o = unitAt(t.lx,t.ly);
+    if(o){ addLine(u.x,u.y,t.lx,t.ly); await damage(u,pw,'bump'); await damage(o,pw,'bump'); }
+    else { u.x=t.lx; u.y=t.ly; await wait(220); if(tile(u.x,u.y)===2) await kill(u,'fall'); else { sfx('bump'); addFlash(u.x,u.y,'rgba(42,36,32,.3)'); } }
+  } else if(skill==='la'){
+    const u = t.u, nx = u.x - DIRS[t.d][0], ny = u.y - DIRS[t.d][1];
+    u.x = nx; u.y = ny; sfx('swish'); await wait(160);
+    if(tile(nx,ny)===2) await kill(u,'fall');
+  } else if(skill==='bo'){
+    t.u.dir = (t.u.dir+2)%4; addText(t.u.x,t.u.y,'调头','#2f7d7a'); sfx('ok'); await wait(150);
+  } else if(skill==='sao'){
+    const vs = adj(p).map(a => ({a, o:unitAt(a.x,a.y)})).filter(v => v.o && !isHeavy(v.o));
+    // 先推外侧，避免互相挡住的顺序问题：逐个推
+    for(const v of vs) if(alive(v.o)) await push(v.o, v.a.d, 1, pw);
+  } else if(skill==='huan'){
+    const u = t.u, x=u.x, y=u.y; u.x=p.x; u.y=p.y; p.x=x; p.y=y; sfx('swish'); await wait(200);
+  }
+  busy = false;
+  await afterAction();
+  if(S.acts<=0 || !canUse(ui.skill)) ui.skill = canUse('tui') ? 'tui' : ui.skill;
+  render();
+}
+function doMove(x,y){
+  snapshot();
+  const p = P(); p.x = x; p.y = y; S.moved = true; sfx('step'); ui.infoUnit = null;
+  render();
+}
+
+// ================== 输入 ==================
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let CS = 60, W = 420, DPR = 1;
+function resize(){
+  const vw = Math.min(window.innerWidth, 520) - 16;
+  const vh = window.innerHeight - 290;
+  W = Math.max(260, Math.min(vw, vh, 480));
+  CS = W / N;
+  DPR = window.devicePixelRatio || 1;
+  cv.style.width = W+'px'; cv.style.height = W+'px';
+  cv.width = Math.round(W*DPR); cv.height = Math.round(W*DPR);
+}
+window.addEventListener('resize', resize);
+cv.addEventListener('pointerdown', e => {
+  if(busy || !S || S.dead || $('#ov').classList.contains('show')) return;
+  const r = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / (r.width/N)), y = Math.floor((e.clientY - r.top) / (r.height/N));
+  if(!inB(x,y)) return;
+  tapCell(x,y);
+});
+function tapCell(x,y){
+  const ts = targets(ui.skill);
+  const t = ts.find(o => o.x===x && o.y===y);
+  if(t){ useSkill(ui.skill, t); return; }
+  const p = P();
+  if(!S.moved && !(p.x===x && p.y===y) && reachable(p.x,p.y,moveRange(),true).some(([a,b])=>a===x&&b===y)){ doMove(x,y); return; }
+  const u = unitAt(x,y);
+  ui.infoUnit = u ? u.id : null;
+  ui.msg = '';
+  if(!u){
+    const m = S.markers.find(m=>m.x===x&&m.y===y);
+    if(m) ui.msg = `下回合这里会冒出一名<b>${K[m.kind].name}</b>。站上去能挡住它，但你会被挤伤一点。`;
+    else if(tile(x,y)===2) ui.msg = '深坑。推下去的人直接摔死（你自己不会掉下去）。';
+    else if(tile(x,y)===1) ui.msg = '石墙。撞上去伤一点。';
+  }
+  render();
+}
+$('#endBtn').onclick = () => endTurn();
+$('#undoBtn').onclick = () => undo();
+$('#menuBtn').onclick = () => showMenu();
+
+// ================== 绘制 ==================
+function dirArrow(cx,cy,d,len,col,w){
+  const [dx,dy] = DIRS[d];
+  const ex = cx+dx*len, ey = cy+dy*len;
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke();
+  const s = w*2.2, px = -dy, py = dx;
+  ctx.beginPath(); ctx.moveTo(ex+dx*s,ey+dy*s); ctx.lineTo(ex+px*s,ey+py*s); ctx.lineTo(ex-px*s,ey-py*s); ctx.closePath(); ctx.fill();
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawUnit(u,x,y,alpha,scale){
+  const def = K[u.kind];
+  const cx = (x+.5)*CS, cy = (y+.5)*CS, R = CS*.36*scale;
+  ctx.globalAlpha = alpha;
+  if(u.kind==='tong'){
+    roundRect(cx-R*.8,cy-R*.95,R*1.6,R*1.9,R*.35); ctx.fillStyle = def.col; ctx.fill();
+    ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 1.5; ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fillStyle = def.col; ctx.fill();
+    if(def.boss){ ctx.strokeStyle = '#c8901e'; ctx.lineWidth = 3; ctx.stroke(); }
+    else if(def.heavy){ ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 3; ctx.stroke(); }
+  }
+  ctx.fillStyle = '#f6f0e2';
+  ctx.font = `700 ${Math.round(R*1.05)}px "Songti SC","STSong","Noto Serif SC",serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(def.ch, cx, cy+1);
+  // 血
+  if(u.kind!=='tong' && scale>=1){
+    const n = u.max, pw = Math.min(CS*.12, (CS*.8)/n), py = cy + R + CS*.07;
+    for(let i=0;i<n;i++){
+      const px = cx - (n*pw)/2 + i*pw + pw/2;
+      ctx.beginPath(); ctx.arc(px,py,pw*.36,0,Math.PI*2);
+      ctx.fillStyle = i<u.hp ? (u.id==='P' ? '#2f7d7a' : '#b8382b') : 'rgba(42,36,32,.18)'; ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+function render(){ renderHud(); }
+function draw(){
+  const t = now();
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,W);
+  ctx.fillStyle = '#f3ecdc'; ctx.fillRect(0,0,W,W);
+  if(!S || !S.grid){ requestAnimationFrame(draw); return; }
+  // 地块
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    const tt = S.grid[y][x], X = x*CS, Y = y*CS;
+    if((x+y)%2===0){ ctx.fillStyle = '#ece3cf'; ctx.fillRect(X,Y,CS,CS); }
+    if(tt===1){
+      roundRect(X+2,Y+2,CS-4,CS-4,5); ctx.fillStyle = '#5b5047'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1;
+      for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(X+4,Y+i*CS/4); ctx.lineTo(X+CS-4,Y+i*CS/4); ctx.stroke(); }
+    } else if(tt===2){
+      const g = ctx.createRadialGradient(X+CS/2,Y+CS/2,CS*.05,X+CS/2,Y+CS/2,CS*.55);
+      g.addColorStop(0,'#000'); g.addColorStop(1,'#3a3029');
+      roundRect(X+3,Y+3,CS-6,CS-6,CS*.3); ctx.fillStyle = g; ctx.fill();
+    }
+  }
+  ctx.strokeStyle = 'rgba(120,100,70,.18)'; ctx.lineWidth = 1;
+  for(let i=1;i<N;i++){ ctx.beginPath(); ctx.moveTo(i*CS,0); ctx.lineTo(i*CS,W); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,i*CS); ctx.lineTo(W,i*CS); ctx.stroke(); }
+  const playerPhase = !busy && !S.dead && !$('#ov').classList.contains('show');
+  const p = P();
+  // 移动范围
+  if(playerPhase && p && !S.moved){
+    ctx.fillStyle = 'rgba(47,125,122,.2)';
+    for(const [x,y] of reachable(p.x,p.y,moveRange(),true)){ if(x===p.x&&y===p.y) continue; roundRect(x*CS+4,y*CS+4,CS-8,CS-8,6); ctx.fill(); }
+  }
+  // 敌人意图格
+  const armed = enemies().filter(u=>u.armed);
+  const danger = new Set();
+  for(const u of armed){
+    const info = hitInfo(u);
+    for(const [x,y] of info.tiles){
+      danger.add(x+','+y);
+      ctx.fillStyle = 'rgba(200,52,40,.2)'; ctx.fillRect(x*CS+1,y*CS+1,CS-2,CS-2);
+      ctx.strokeStyle = 'rgba(184,56,43,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+      ctx.strokeRect(x*CS+3,y*CS+3,CS-6,CS-6); ctx.setLineDash([]);
+    }
+  }
+  // 增援标记
+  for(const m of S.markers){
+    const cx=(m.x+.5)*CS, cy=(m.y+.5)*CS;
+    ctx.setLineDash([5,4]); ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx,cy,CS*.32,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(42,36,32,.35)'; ctx.font = `700 ${Math.round(CS*.3)}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(K[m.kind].ch, cx, cy+1);
+  }
+  // 招式目标
+  if(playerPhase){
+    const ts = targets(ui.skill);
+    for(const o of ts){
+      ctx.strokeStyle = '#c8901e'; ctx.lineWidth = 3;
+      roundRect(o.x*CS+3,o.y*CS+3,CS-6,CS-6,8); ctx.stroke();
+      if(o.d!==undefined && (ui.skill==='tui')) dirArrow((o.x+.5)*CS+DIRS[o.d][0]*CS*.3,(o.y+.5)*CS+DIRS[o.d][1]*CS*.3,o.d,CS*.12,'#c8901e',3);
+      if(ui.skill==='shuai'){ ctx.fillStyle='rgba(200,144,30,.25)'; ctx.fillRect(o.lx*CS+6,o.ly*CS+6,CS-12,CS-12); }
+    }
+  }
+  // 单位（平滑位置）
+  const k = 0.28;
+  for(const u of S.units){
+    const d = disp[u.id] || (disp[u.id] = {x:u.x,y:u.y,a:0});
+    d.x += (u.x-d.x)*k; d.y += (u.y-d.y)*k; d.a = Math.min(1,(d.a||0)+0.12);
+  }
+  const order = {}; armed.forEach((u,i)=>order[u.id]=i+1);
+  for(const u of S.units){
+    const d = disp[u.id];
+    let sc = 1;
+    const pulse = fx.find(f=>f.type==='pulse'&&f.id===u.id);
+    if(pulse){ const q=(t-pulse.t0)/pulse.dur; sc = 1 + Math.sin(Math.min(1,q)*Math.PI)*.15; }
+    if(u.id==='P' && danger.has(u.x+','+u.y) && playerPhase){
+      ctx.beginPath(); ctx.arc((d.x+.5)*CS,(d.y+.5)*CS,CS*.45,0,Math.PI*2);
+      ctx.strokeStyle = `rgba(184,56,43,${.5+.4*Math.sin(t/180)})`; ctx.lineWidth = 3; ctx.stroke();
+    }
+    if(ui.infoUnit===u.id){ ctx.beginPath(); ctx.arc((d.x+.5)*CS,(d.y+.5)*CS,CS*.46,0,Math.PI*2); ctx.strokeStyle='#2a2420'; ctx.lineWidth=2; ctx.stroke(); }
+    drawUnit(u,d.x,d.y,d.a,sc);
+  }
+  // 意图箭头 + 序号
+  for(const u of armed){
+    const d = disp[u.id], cx=(d.x+.5)*CS, cy=(d.y+.5)*CS;
+    if(u.dir!==null) dirArrow(cx+DIRS[u.dir][0]*CS*.3, cy+DIRS[u.dir][1]*CS*.3, u.dir, CS*.16, '#b8382b', 3);
+    else { ctx.fillStyle = `rgba(208,97,27,${.6+.4*Math.sin(t/120)})`; ctx.font=`700 ${Math.round(CS*.3)}px serif`; ctx.textAlign='center'; ctx.fillText('！',cx,cy-CS*.42); }
+    const bx = cx+CS*.3, by = cy-CS*.3;
+    ctx.beginPath(); ctx.arc(bx,by,CS*.13,0,Math.PI*2); ctx.fillStyle='#2a2420'; ctx.fill();
+    ctx.fillStyle='#f3ecdc'; ctx.font=`700 ${Math.round(CS*.18)}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(order[u.id], bx, by+1);
+  }
+  // 特效
+  fx = fx.filter(f => t - f.t0 < f.dur);
+  for(const f of fx){
+    const q = (t-f.t0)/f.dur;
+    if(f.type==='flash'){ ctx.fillStyle = f.col; ctx.globalAlpha = 1-q; ctx.fillRect(f.x*CS,f.y*CS,CS,CS); ctx.globalAlpha = 1; }
+    else if(f.type==='boom'){
+      ctx.beginPath(); ctx.arc((f.x+.5)*CS,(f.y+.5)*CS,CS*f.r*(.3+q),0,Math.PI*2);
+      ctx.fillStyle = `rgba(230,120,30,${.55*(1-q)})`; ctx.fill();
+      ctx.strokeStyle = `rgba(184,56,43,${1-q})`; ctx.lineWidth = 3; ctx.stroke();
+    }
+    else if(f.type==='line'){
+      ctx.strokeStyle = `rgba(184,56,43,${1-q})`; ctx.lineWidth = 4; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo((f.x1+.5)*CS,(f.y1+.5)*CS); ctx.lineTo((f.x2+.5)*CS,(f.y2+.5)*CS); ctx.stroke(); ctx.lineCap='butt';
+    }
+    else if(f.type==='ghost'){
+      if(f.mode==='fall') drawUnit(f.u, f.x, f.y, 1-q, Math.max(.05,1-q));
+      else drawUnit(f.u, f.x, f.y-q*.3, 1-q, 1);
+    }
+  }
+  for(const f of fx){
+    if(f.type!=='text') continue;
+    const q = (t-f.t0)/f.dur;
+    ctx.globalAlpha = q<.7 ? 1 : (1-q)/.3;
+    ctx.font = `700 ${Math.round(CS*.32)}px "Songti SC","Noto Serif SC",serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.lineWidth = 4; ctx.strokeStyle = '#f3ecdc';
+    const yy = (f.y+.15)*CS - q*CS*.4;
+    ctx.strokeText(f.text,(f.x+.5)*CS,yy); ctx.fillStyle = f.col; ctx.fillText(f.text,(f.x+.5)*CS,yy);
+    ctx.globalAlpha = 1;
+  }
+  requestAnimationFrame(draw);
+}
+
+// ================== HUD ==================
+function intentText(u){
+  if(!u.armed) return u.kind==='bao' ? '还没点火。' : '这回合不出手。';
+  if(u.kind==='bao') return '已经点火，下回合炸开周围八格！';
+  const info = hitInfo(u);
+  const who = info.targets.length ? info.targets.map(t=>K[t.kind].name).join('、') : '空处';
+  const verb = {dao:'砍',gong:'射',chong:'冲撞',chui:'砸',boss:'拍'}[u.kind];
+  return `准备向<b>${DIRNAME[u.dir]}</b>${verb}，眼下会打中：<b>${who}</b>。`;
+}
+function renderHud(){
+  if(!S) return;
+  $('#floorLbl').textContent = S.floor===MAXF ? '第 8 层 · 铁佛' : `第 ${S.floor} 层`;
+  $('#goalLbl').textContent = S.floor===MAXF ? `回合 ${S.turn}` : `击倒 ${Math.min(S.floorKills,S.goal)}/${S.goal} · 回合 ${S.turn}`;
+  const p = P();
+  if(p) $('#hp').textContent = '●'.repeat(Math.max(0,p.hp)) + '○'.repeat(Math.max(0,p.max-p.hp));
+  if(S.pas.xie && !S.xieUsed) $('#hp').textContent += ' 卸';
+  // 招式栏
+  const box = $('#skills'); box.innerHTML = '';
+  for(const s of S.skills){
+    const b = document.createElement('button');
+    const cd = S.cds[s]||0;
+    b.className = 'sk' + (ui.skill===s ? ' sel' : '') + (cd>0 || S.acts<=0 ? ' cd' : '');
+    b.innerHTML = `<span class="c">${SK[s].name}</span><span class="n">${cd>0 ? '调息 '+cd : (s==='tui'?'无冷却':'冷却 '+SK[s].cd)}</span>`;
+    b.onclick = () => { if(busy) return; ui.skill = s; ui.infoUnit = null; ui.msg = ''; render(); };
+    box.appendChild(b);
+  }
+  for(const k in S.pas){
+    const b = document.createElement('button'); b.className = 'sk'; b.style.borderStyle = 'dashed';
+    b.innerHTML = `<span class="c" style="color:#2f7d7a">${PAS[k].ch}</span><span class="n">${PAS[k].name}</span>`;
+    b.onclick = () => { ui.infoUnit = null; ui.msg = `<span class="j">${PAS[k].name}</span>（被动）：${PAS[k].desc}`; render(); };
+    box.appendChild(b);
+  }
+  $('#undoBtn').disabled = busy || !undoStack.length;
+  $('#endBtn').disabled = busy;
+  $('#endBtn').classList.toggle('glow', !busy && S.moved && S.acts<=0);
+  // 信息栏
+  let h = '';
+  if(busy) h = '敌人出手……';
+  else if(ui.msg) h = ui.msg;
+  else if(ui.infoUnit){
+    const u = S.units.find(x=>x.id===ui.infoUnit);
+    if(u){
+      const def = K[u.kind];
+      h = u.id==='P' ? `<span class="j">你</span>：生命 ${u.hp}/${u.max}。你没有攻击力，只能借力。`
+        : `<b>${def.name}</b>（${u.hp}/${u.max}）：${def.desc}` + (def.team==='E' ? '<br>'+intentText(u) : '');
+    }
+  }
+  if(!h){
+    const acts = S.acts>0 ? `还能出 ${S.acts} 招` : '招已出完';
+    const mv = S.moved ? '已走过' : `可走 ${moveRange()} 格（青色）`;
+    const ts = targets(ui.skill);
+    h = `<span class="j">${SK[ui.skill].name}</span>：${SK[ui.skill].desc}<br>${mv} · ${acts}` + (S.acts>0 && canUse(ui.skill) ? (ts.length ? ' · 点金框出手' : ' · 身边没有可用目标') : '');
+  }
+  $('#info').innerHTML = h;
+}
+
+// ================== 界面层 ==================
+function showOverlay(html){
+  const ov = $('#ov');
+  if(html===null){ ov.classList.remove('show'); ov.innerHTML=''; return; }
+  ov.innerHTML = `<div class="pane">${html}</div>`; ov.classList.add('show'); ov.scrollTop = 0;
+}
+function helpHtml(){
+  const best = (()=>{ const order=['dao','gong','chong','bao','chui','boss','tong']; return order.map(k=>`<div class="dot" style="background:${K[k].col};${k==='tong'?'border-radius:8px':''}">${K[k].ch}</div><div><b>${K[k].name}</b> ${K[k].hp>0&&k!=='tong'?'（'+K[k].hp+' 血）':''}：${K[k].desc}</div>`).join(''); })();
+  return `<h2>怎么玩</h2>
+  <ol>
+   <li>你<b>没有攻击力</b>。每回合能<b>走一次</b>（青色格）和<b>出一招</b>，先后随意，然后点「结束回合」。</li>
+   <li>敌人会把下回合要打的格子标成<b style="color:#b8382b">红色</b>，角上的数字是出手顺序。它们<b>打中谁就伤谁</b>，自己人也不例外。</li>
+   <li>敌人的招式<b>跟着它的身子走</b>：把它推开一格，它这一刀就砍到别处去了。</li>
+   <li>伤敌的办法：推进<b>坑</b>里、撞上<b>墙</b>或别人（各伤一点）、推到同伴<b>刀口</b>下、在旁边弄破<b>油桶</b>。</li>
+   <li>虚线圈是下回合的<b>增援</b>，站上去能堵住，但会被挤伤。</li>
+   <li>击倒够数就下一层，并回一点血、学一样本事。第 8 层是铁佛。</li>
+   <li>想错了就点「撤销」，结束回合前随便试。</li>
+  </ol>
+  <h2 style="margin-top:20px">敌人</h2>
+  <div class="bestiary">${best}</div>`;
+}
+function titleScreen(){
+  let saved = null, best = null;
+  try{ saved = localStorage.getItem('jieli.run'); best = JSON.parse(localStorage.getItem('jieli.best')||'null'); }catch(e){}
+  showOverlay(`<h1>借力</h1><div class="sub">你不会出手，只会借力。</div>
+   <div class="btns">
+    ${saved ? '<button class="prim" id="bCont">继续这一局</button>' : ''}
+    <button class="${saved?'':'prim'}" id="bNew">${saved?'重新开一局':'开始'}</button>
+    <button id="bHelp">怎么玩</button>
+   </div>
+   ${best ? `<div class="small">最好成绩：到过第 ${best.floor} 层 · 胜 ${best.wins||0} 次</div>` : ''}
+   <div class="small">提示：在浏览器菜单里「添加到主屏幕」，断网也能玩。</div>`);
+  if(saved) $('#bCont').onclick = () => { try{ S = JSON.parse(saved); for(const u of S.units) disp[u.id]={x:u.x,y:u.y,a:1}; fx=[]; undoStack=[]; ui={skill:'tui',infoUnit:null,msg:''}; showOverlay(null); render(); }catch(e){ newRun(); } };
+  $('#bNew').onclick = () => { ui={skill:'tui',infoUnit:null,msg:''}; newRun(); };
+  $('#bHelp').onclick = () => { showOverlay(helpHtml() + '<div class="btns" style="margin-top:20px"><button class="prim" id="bBack">知道了</button></div>'); $('#bBack').onclick = titleScreen; };
+}
+function showMenu(){
+  if(busy) return;
+  showOverlay(`<h2>暂停</h2><div class="btns">
+    <button class="prim" id="mBack">回到棋盘</button>
+    <button id="mHelp">怎么玩 / 敌人图鉴</button>
+    <button id="mSound">音效：${soundOn?'开':'关'}</button>
+    <button id="mQuit">放弃这一局</button></div>`);
+  $('#mBack').onclick = () => { showOverlay(null); render(); };
+  $('#mHelp').onclick = () => { showOverlay(helpHtml() + '<div class="btns" style="margin-top:20px"><button class="prim" id="bBack">回到棋盘</button></div>'); $('#bBack').onclick = () => { showOverlay(null); render(); }; };
+  $('#mSound').onclick = () => { soundOn = !soundOn; try{ localStorage.setItem('jieli.sound', soundOn?'1':'0'); }catch(e){} showMenu(); };
+  $('#mQuit').onclick = () => { if(confirm('放弃这一局？')){ S.dead = true; clearSave(); recordBest(false); titleScreen(); } };
+}
+function rewardOptions(){
+  const opts = [];
+  for(const s of Object.keys(SK)) if(!S.skills.includes(s)) opts.push({type:'sk', k:s});
+  for(const k of Object.keys(PAS)) if(!S.pas[k] && !(k==='lian' && S.floor<3)) opts.push({type:'pas', k});
+  shuffle(opts);
+  const out = opts.slice(0,3);
+  const p = P();
+  if(p.hp < p.max-1 || out.length<3) out[out.length<3 ? out.length : 2] = {type:'heal'};
+  return out;
+}
+function floorClear(){
+  busy = true;
+  const p = P();
+  if(p.hp < p.max){ p.hp++; }
+  sfx('ok');
+  if(S.floor===MAXF){ setTimeout(() => winScreen(), FAST?0:700); return; }
+  setTimeout(() => {
+    busy = false;
+    const opts = rewardOptions();
+    S.pendingReward = opts; save();
+    showReward(opts);
+  }, FAST?0:650);
+}
+function showReward(opts){
+  const p = P();
+  const html = opts.map((o,i) => {
+    if(o.type==='sk') return `<div class="card" data-i="${i}"><div class="big">${SK[o.k].name}</div><div><div class="t">新招「${SK[o.k].name}」 <span style="font-weight:400;font-size:13px;color:#6b5f52">冷却 ${SK[o.k].cd}</span></div><div class="d">${SK[o.k].desc}</div></div></div>`;
+    if(o.type==='pas') return `<div class="card" data-i="${i}"><div class="big pas">${PAS[o.k].ch}</div><div><div class="t">${PAS[o.k].name}</div><div class="d">${PAS[o.k].desc}</div></div></div>`;
+    return `<div class="card" data-i="${i}"><div class="big heal">息</div><div><div class="t">调息</div><div class="d">生命回满（现在 ${p.hp}/${p.max}）。</div></div></div>`;
+  }).join('');
+  showOverlay(`<h2>第 ${S.floor} 层 · 过</h2><div class="sub" style="margin-bottom:10px">生命 ${p.hp}/${p.max}。挑一样带下去：</div>${html}`);
+  document.querySelectorAll('.card').forEach(c => c.onclick = () => chooseReward(opts[+c.dataset.i]));
+}
+function chooseReward(o){
+  const p = P();
+  if(o.type==='sk'){ S.skills.push(o.k); ui.skill = o.k; }
+  else if(o.type==='pas'){ S.pas[o.k] = true; if(o.k==='ti'){ p.max++; p.hp = p.max; } }
+  else p.hp = p.max;
+  delete S.pendingReward;
+  nextFloor(false);
+}
+function gameOver(){
+  busy = true;
+  clearSave(); recordBest(false);
+  setTimeout(() => {
+    busy = false;
+    showOverlay(`<h2>倒下了</h2><div class="sub">第 ${S.floor} 层，第 ${S.turn} 回合。</div>${statsHtml()}
+      <div class="btns"><button class="prim" id="gAgain">再来一局</button><button id="gTitle">回到开头</button></div>`);
+    $('#gAgain').onclick = () => { ui={skill:'tui',infoUnit:null,msg:''}; newRun(); };
+    $('#gTitle').onclick = titleScreen;
+  }, FAST?0:900);
+}
+function winScreen(){
+  busy = false;
+  clearSave(); recordBest(true);
+  showOverlay(`<h1 style="font-size:44px">借力打力</h1><div class="sub">铁佛倒了。你一拳也没出。</div>${statsHtml()}
+    <div class="btns"><button class="prim" id="gAgain">再来一局</button><button id="gTitle">回到开头</button></div>`);
+  $('#gAgain').onclick = () => { ui={skill:'tui',infoUnit:null,msg:''}; newRun(); };
+  $('#gTitle').onclick = titleScreen;
+}
+function statsHtml(){
+  const b = S.stats.by;
+  return `<div class="stat">
+   <div>击倒敌人</div><div>${S.stats.kills}</div>
+   <div>· 借刀（被同伴打死）</div><div>${b.ally||0}</div>
+   <div>· 撞死</div><div>${b.bump||0}</div>
+   <div>· 坠坑</div><div>${b.fall||0}</div>
+   <div>· 炸死</div><div>${b.boom||0}</div>
+   <div>用了回合</div><div>${S.stats.turns}</div>
+   <div>学会</div><div>${S.skills.map(s=>SK[s].name).join(' ')} ${Object.keys(S.pas).map(k=>PAS[k].name).join(' ')}</div></div>`;
+}
+function save(){ try{ if(S && !S.dead) localStorage.setItem('jieli.run', JSON.stringify(S)); }catch(e){} }
+function clearSave(){ try{ localStorage.removeItem('jieli.run'); }catch(e){} }
+function recordBest(win){
+  try{
+    const b = JSON.parse(localStorage.getItem('jieli.best')||'null') || {floor:0,wins:0};
+    b.floor = Math.max(b.floor, S.floor); if(win) b.wins = (b.wins||0)+1;
+    localStorage.setItem('jieli.best', JSON.stringify(b));
+  }catch(e){}
+}
+
+// ================== 启动 ==================
+resize();
+requestAnimationFrame(draw);
+(function boot(){
+  let saved = null;
+  try{ saved = localStorage.getItem('jieli.run'); }catch(e){}
+  if(saved){
+    try{
+      const s = JSON.parse(saved);
+      if(s.pendingReward){ S = s; for(const u of S.units) disp[u.id]={x:u.x,y:u.y,a:1}; render(); showReward(s.pendingReward); return; }
+    }catch(e){}
+  }
+  titleScreen();
+})();
+// 测试钩子
+window.__jl = { get S(){return S;}, set S(v){S=v;}, doIntent, enemies, floorCleared, set FAST(v){FAST=v;}, set SIM(v){SIM=v;}, get busy(){return busy;}, targets, useSkill, doMove, endTurn, reachable, chooseReward, newRun, P, moveRange };
+</script>
+</body>
+</html>
