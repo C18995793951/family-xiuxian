@@ -1,173 +1,226 @@
-// 界面冒烟测试：用 Playwright 打开单文件，开局、推进 100 年、处理事件、存读档，检查控制台错误与手机宽度横向滚动。
-// 用法：node test/ui-smoke.js [截图输出目录]
+// 界面冒烟测试：用 Playwright 打开单文件，开局、过几十年、处理遭遇、翻遍各页、存读档，
+// 检查控制台错误、网络请求与手机宽度横向滚动。用法：node test/ui-smoke.js [截图输出目录]
 'use strict';
 const path = require('path');
 const { chromium } = require('playwright');
-// 处理掉所有弹窗（事件按第一个可选项）
-async function drain(page) {
-  for (let i = 0; i < 30 && (await page.$('.modal')); i++) {
-    const b = (await page.$('.modal [data-act="confirmYes"]')) || (await page.$('.modal [data-act="choose"]:not([disabled])')) || (await page.$('.modal [data-act="close"]'));
-    if (b) await b.click(); else break;
-  }
-}
+
 (async () => {
   const out = process.argv[2] || path.join(__dirname, 'out');
   require('fs').mkdirSync(out, { recursive: true });
   const browser = await chromium.launch();
   const errors = [];
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
-  // 无 key 时不得有任何网络请求（只允许 file:// 与 data:）
   const net = [];
   ctx.on('request', (r) => { if (!/^(file|data|blob):/.test(r.url())) net.push(r.url()); });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   await page.goto('file://' + path.join(__dirname, '..', 'dist', 'family-xiuxian.html'));
-  await page.click('[data-act="pickOrigin"][data-k="hermit"]');
+  await page.screenshot({ path: path.join(out, 'start.png'), fullPage: true });
+  await page.click('[data-act="pickOrigin"][data-k="clan"]');
   await page.fill('#in-surname', '沈');
+  await page.fill('#in-given', '青');
   await page.fill('#in-seed', 'ui-smoke');
   await page.click('[data-act="newGame"]');
-  await page.screenshot({ path: path.join(out, 'hall.png'), fullPage: true });
-  let events = 0;
+  const name = await page.evaluate(() => FX.P.player(FX.UI.s).name);
+  if (name !== '沈青') throw new Error('自定姓名未生效：' + name);
+  await page.screenshot({ path: path.join(out, 'now.png'), fullPage: true });
+
+  // 依次点按钮过日子：先往外走，再游历、修炼，遇事就选第一个可选项
+  let events = 0, steps = 0;
+  const startYear = await page.evaluate(() => FX.UI.s.year);
   for (let i = 0; i < 400; i++) {
-    const st = await page.evaluate(() => ({ y: FX.UI.s.year, ended: !!FX.UI.s.ended, pending: FX.UI.s.pending.length }));
-    if (st.ended || st.y > 101) break;
-    if (await page.$('[data-act="confirmYes"]')) { await page.click('[data-act="confirmYes"]'); continue; }
+    const st = await page.evaluate(() => ({ y: FX.UI.s.year, ended: !!FX.UI.s.ended }));
+    if (st.ended || st.y - startYear >= 40) break;
     const choose = await page.$('.modal [data-act="choose"]:not([disabled])');
     if (choose) { if (events === 0) await page.screenshot({ path: path.join(out, 'event.png') }); events++; await choose.click(); continue; }
-    if (await page.$('.modal [data-act="close"]')) { await page.click('.modal [data-act="close"]'); continue; }
-    if (i % 5 === 0) { await page.click('[data-act="page"][data-p="cult"]'); const sg = await page.$('[data-act="suggest"][data-all="0"]:not([disabled])'); if (sg) await sg.click(); await page.click('[data-act="page"][data-p="hall"]'); }
-    await page.click('[data-act="advance"]');
+    const close = await page.$('.modal [data-act="close"]');
+    if (close) { await close.click(); continue; }
+    if (await page.$('.modal')) { await page.click('.modal-bg', { position: { x: 5, y: 5 } }); continue; }
+    steps++;
+    const pick = await page.evaluate((k) => {
+      const A = FX.Game.actions(FX.UI.s);
+      const want = k % 6 === 0 ? 'travel' : k % 3 === 0 ? 'explore' : 'cultivate';
+      const i = A.findIndex((a) => a.ok && a.type === want && (want !== 'cultivate' || a.days === 360));
+      return i;
+    }, i);
+    const btn = pick >= 0 ? await page.$(`main [data-act="do"][data-i="${pick}"]`) : null;
+    if (btn) await btn.click(); else await page.click('main [data-act="do"]:not([disabled])');
   }
-  for (let i = 0; i < 20 && (await page.$('.modal')); i++) {
-    const b = (await page.$('.modal [data-act="confirmYes"]')) || (await page.$('.modal [data-act="choose"]:not([disabled])')) || (await page.$('.modal [data-act="close"]'));
-    if (b) await b.click();
+  // 收尾：眼前还有待决的事（找上门的事会在行动后到），先处理掉
+  for (let k = 0; k < 10; k++) {
+    const c = await page.$('.modal [data-act="choose"]:not([disabled])');
+    if (c) { await c.click(); events++; continue; }
+    const x = await page.$('.modal [data-act="close"]');
+    if (x) { await x.click(); continue; }
+    break;
   }
   const year = await page.evaluate(() => FX.UI.s.year);
-  for (const p of ['roster', 'cult', 'econ', 'chron', 'tree', 'fac', 'rules', 'hall']) {
+
+  for (const p of ['map', 'shop', 'bag', 'chron', 'sys', 'now']) {
     await page.click(`nav.side [data-act="page"][data-p="${p}"]`);
     await page.screenshot({ path: path.join(out, 'page-' + p + '.png'), fullPage: true });
   }
-  // 人物卡
-  await page.click('[data-act="page"][data-p="roster"]');
-  await page.click('main [data-act="person"]');
-  await page.screenshot({ path: path.join(out, 'person.png') });
+  // 地图点地点
+  await page.click('nav.side [data-act="page"][data-p="map"]');
+  await page.click('svg.map .node:not(.here)');
+  await page.screenshot({ path: path.join(out, 'place.png') });
   await page.keyboard.press('Escape');
+  // 传闻里插手：出预览卡
+  await page.click('nav.side [data-act="page"][data-p="chron"]');
+  await page.click('[data-act="chronFilter"][data-k="rumor"]');
+  const ra = await page.$('main [data-act="rumorAct"]');
+  if (!ra) throw new Error('传闻里没有能插手的事');
+  await ra.click();
+  await page.waitForSelector('.modal .say-quote');
+  await page.screenshot({ path: path.join(out, 'rumor-act.png') });
+  await page.keyboard.press('Escape');
+  // 人物卡
+  await page.click('nav.side [data-act="page"][data-p="chron"]');
+  await page.click('main [data-act="page"][data-p="people"]');
+  const pbtn = await page.$('main [data-act="person"]');
+  if (pbtn) { await pbtn.click(); await page.screenshot({ path: path.join(out, 'person.png') }); await page.keyboard.press('Escape'); }
+
   // 刷新后状态不丢
   const h1 = await page.evaluate(() => FX.Game.save.hash(FX.UI.s));
-  const j1 = await page.evaluate(() => JSON.stringify(FX.UI.s));
   await page.waitForTimeout(600);
   await page.reload();
-  await page.waitForSelector('[data-act="continue"]:not([disabled])');
   await page.click('[data-act="continue"]');
   await page.waitForFunction(() => FX.UI.s);
   const h2 = await page.evaluate(() => FX.Game.save.hash(FX.UI.s));
-  const j2 = await page.evaluate(() => JSON.stringify(FX.UI.s));
-  if (j1 !== j2) { let i = 0; while (j1[i] === j2[i]) i++; console.log('DIFF', j1.slice(i - 200, i + 80), '\n|||\n', j2.slice(i - 200, i + 80)); }
-  // 导出文本再导入
-  await page.click('nav.side [data-act="page"][data-p="rules"]');
-  await page.click('main [data-act="openSaves"]');
-  await page.click('[data-act="exportText"]');
-  await page.waitForSelector('.modal textarea[readonly]');
-  const txt = await page.$eval('.modal textarea[readonly]', (e) => e.value);
-  await page.fill('#in-text', txt);
-  await page.evaluate(() => { FX.UI.s.__marker = 1; });
-  await page.click('[data-act="importText"]');
-  await page.waitForFunction(() => FX.UI.s && !FX.UI.s.__marker);
-  const h3 = await page.evaluate(() => FX.Game.save.hash(FX.UI.s));
-  await drain(page);
-  const offlineRequests = net.length;
-  // AI 润色：拦截 DeepSeek 接口（不发真实请求），回声返回一行事实
-  const KEY = 'sk-SMOKE-0123456789abcdefSECRET';
-  const sent = [];
-  await ctx.route('https://api.deepseek.com/**', async (route) => {
-    const req = route.request();
-    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
-    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
-    const body = JSON.parse(req.postData());
-    sent.push({ auth: req.headers().authorization, body: req.postData() });
-    const user = body.messages[body.messages.length - 1].content;
-    if (body.response_format) { // AI 家主托管：事件选第一个可选项，回合安排挑前两个操作
-      const pick = (head) => user.split(head)[1].split('\n').slice(1).filter((x) => x.includes('｜')).map((x) => x.split('｜')[0]);
-      const j = /待决事件/.test(user) ? { id: pick('可选项')[0], why: '冒烟测试' } : { actions: pick('可选操作').slice(0, 2).map((id) => ({ id, why: '冒烟测试' })), summary: '冒烟测试' };
-      return route.fulfill({ status: 200, headers: Object.assign({ 'Content-Type': 'application/json' }, cors), body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(j) } }] }) });
+  if (h1 !== h2) throw new Error('刷新后状态不一致');
+
+  // 手机宽度：无横向滚动
+  const m = await browser.newContext({ viewport: { width: 375, height: 780 } });
+  const mp = await m.newPage();
+  mp.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
+  await mp.goto('file://' + path.join(__dirname, '..', 'dist', 'family-xiuxian.html'));
+  await mp.click('[data-act="newGame"]');
+  const overflow = [];
+  for (const p of ['now', 'dir', 'shop', 'map', 'bag', 'sect', 'chron', 'people', 'sagas', 'sys']) {
+    await mp.click(['people', 'sagas'].includes(p) ? `main [data-act="page"][data-p="${p}"]` : `nav.bottom [data-act="page"][data-p="${p}"]`);
+    const w = await mp.evaluate(() => document.documentElement.scrollWidth);
+    if (w > 376) overflow.push(p + ':' + w);
+    if (p === 'now') await mp.screenshot({ path: path.join(out, 'mobile-now.png'), fullPage: true });
+  }
+  // 自由输入（AI 没开）：说一句，出预览卡，照做
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  const sayIntent = async (text, wantAI) => {
+    await mp.fill('#say-in', text);
+    await mp.press('#say-in', 'Enter');
+    await mp.waitForSelector('.modal .intent-plan [data-act="intentGo"]', { timeout: 10000 });
+    const txt = await mp.textContent('.modal');
+    if (wantAI && !/AI 的理解/.test(txt)) throw new Error('预览卡里没有 AI 的理解：' + txt.slice(0, 120));
+    const w = await mp.evaluate(() => document.documentElement.scrollWidth);
+    if (w > 376) overflow.push('intent:' + w);
+    await mp.screenshot({ path: path.join(out, wantAI ? 'mobile-intent-ai.png' : 'mobile-intent.png') });
+    const t0 = await mp.evaluate(() => FX.UI.s.t);
+    await mp.click('.modal [data-act="intentGo"]');
+    const t1 = await mp.evaluate(() => FX.UI.s.t);
+    if (t1 <= t0) throw new Error('照做以后时间没走：' + text);
+    while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
+  };
+  await sayIntent('在这里游历几天', false);
+  // AI：手机宽度下开启、填 key、测试连接，过几步看纪事叙述和小传；DeepSeek 用假回声顶替，不发真实请求
+  const KEY = 'sk-UI-SMOKE-0123456789-SECRET';
+  const aiNet = [];
+  let dirAsks = 0;
+  await mp.route('https://api.deepseek.com/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    aiNet.push({ auth: route.request().headers().authorization, model: body.model });
+    const user = (body.messages || []).slice(-1)[0].content || '';
+    // 导演模式：照“按常理”的编号走；眼前的事选第一个选项
+    if (/你就是这位修士本人/.test(body.messages[0].content)) {
+      dirAsks++;
+      let reply;
+      if (/你怎么办/.test(user)) { const m = /可选（id｜做法｜代价｜风险｜成算）：\n([^｜\n]+)｜/.exec(user); reply = { id: m ? m[1] : 'safe', think: '我稳妥些。' }; }
+      else { const m = /按常理的下一步：a(\d+)/.exec(user); reply = { think: '我照常行事。', steps: [{ act: 'a' + (m ? m[1] : '1') }] }; }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }], usage: { total_tokens: 100 } }) });
+      return;
     }
-    const content = /原文：/.test(user) ? user.split('原文：')[1].split('\n')[0] : user.split('\n').slice(1).filter((x) => x && !x.startsWith('【')).slice(0, 2).join('\n') || '通';
-    await route.fulfill({ status: 200, headers: Object.assign({ 'Content-Type': 'application/json' }, cors), body: JSON.stringify({ choices: [{ message: { content } }] }) });
+    if (/意图解析器/.test(body.messages[0].content)) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: '{"say":"你想在此地游历","steps":[{"do":"游历"}]}' } }], usage: { total_tokens: 100 } }) });
+      return;
+    }
+    let content = /请只回复/.test(user) ? '通' : /原文：/.test(user) ? user.split('原文：')[1].split('\n')[0] : '';
+    if (!content) { for (const l of user.split('\n').slice(1).filter(Boolean)) { if ((content + l).length > 300) break; content += (content ? '\n' : '') + l; } }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 100 } }) });
   });
-  await page.click('nav.side [data-act="page"][data-p="rules"]');
-  await page.check('#in-aion');
-  await page.fill('#in-aikey', KEY);
-  await page.click('[data-act="aiKey"]');
-  const keyEcho = await page.$eval('#in-aikey', (e) => e.value);
-  await page.click('[data-act="aiTest"]');
-  await page.waitForFunction(() => /测试连接：成功/.test(document.body.innerText), null, { timeout: 5000 }).catch(() => errors.push('AI 测试连接未成功'));
-  await page.click('nav.side [data-act="page"][data-p="hall"]');
-  for (let i = 0; i < 20 && !(await page.$('.modal .ai-tag')); i++) {
-    if (await page.$('[data-act="confirmYes"]')) { await page.click('[data-act="confirmYes"]'); continue; }
-    const c = await page.$('.modal [data-act="choose"]:not([disabled])');
-    if (c) { await c.click(); continue; }
-    if (await page.$('.modal')) { await page.waitForTimeout(300); if (await page.$('.modal .ai-tag')) break; await page.click('.modal [data-act="close"]'); continue; }
-    if (await page.evaluate(() => !!FX.UI.s.ended)) break;
-    await page.click('[data-act="advance"]');
-    await page.waitForTimeout(300);
+  await mp.click('nav.bottom [data-act="page"][data-p="sys"]');
+  if (!(await mp.$('.ai-form'))) throw new Error('设置页没有 AI 卡片');
+  await mp.fill('#ai-key', KEY);
+  await mp.click('[data-act="aiKey"]');
+  await mp.click('[data-act="aiToggle"]');
+  await mp.click('[data-act="aiTest"]');
+  await mp.waitForFunction(() => FX.AI.status && FX.AI.status.kind === 'test');
+  const aiStatus = await mp.evaluate(() => FX.AI.statusText());
+  if (!/成功/.test(aiStatus)) throw new Error('测试连接没通：' + aiStatus);
+  const wAi = await mp.evaluate(() => document.documentElement.scrollWidth);
+  if (wAi > 376) overflow.push('sys+ai:' + wAi);
+  await mp.screenshot({ path: path.join(out, 'mobile-ai.png'), fullPage: true });
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  let notes = 0;
+  for (let i = 0; i < 60 && !notes; i++) {
+    const yes = await mp.$('.modal [data-act="confirmYes"]');
+    if (yes) { await yes.click(); continue; }
+    const choose = await mp.$('.modal [data-act="choose"]:not([disabled])');
+    if (choose) { await mp.waitForTimeout(50); await choose.click(); continue; }
+    if (await mp.$('.modal')) { await mp.keyboard.press('Escape'); continue; }
+    const q = await mp.$('.qbar button.primary:not([disabled])');
+    if (q) await q.click(); else await mp.click('main [data-act="do"]:not([disabled])');
+    await mp.waitForTimeout(80);
+    notes = (await mp.$$('main .ai-note')).length;
   }
-  const aiShown = !!(await page.$('.modal .ai-tag'));
-  if (aiShown) {
-    await page.screenshot({ path: path.join(out, 'ai-report.png') });
-    await page.click('.modal [data-act="aiRaw"]');
-    if (!(await page.$('.modal .log'))) errors.push('看原文 未切回模板');
-  } else errors.push('回合摘要未出现 AI 润色');
-  await drain(page);
-  const hAi0 = await page.evaluate(() => FX.Game.save.hash(FX.UI.s));
-  await page.click('nav.side [data-act="page"][data-p="hall"]');
-  await page.click('[data-act="aiPolish"][data-kind="advice"]');
-  await page.waitForFunction(() => /AI 建议/.test(document.body.innerText), null, { timeout: 5000 }).catch(() => errors.push('军师建议未出现'));
-  await page.click('nav.side [data-act="page"][data-p="chron"]');
-  await page.click('main [data-act="history"]');
-  await page.click('.modal [data-act="aiPolish"][data-kind="history"]');
-  await page.waitForSelector('.modal .ai-tag', { timeout: 5000 }).catch(() => errors.push('家史润色未出现'));
-  await page.screenshot({ path: path.join(out, 'ai-history.png') });
-  await drain(page);
-  // 润色只改显示：军师与家史两次调用前后状态哈希一致（逐年对照见 test/ai-tests.js A5）
-  const hAi1 = await page.evaluate(() => FX.Game.save.hash(FX.UI.s));
-  const exported = await page.evaluate(() => FX.Game.save.serialize(FX.UI.s, Date.now()));
-  const aiCheck = { aiShown, requests: sent.length, keyEcho: keyEcho === '', keyOnlyInHeader: sent.every((x) => x.auth === 'Bearer ' + KEY && !x.body.includes(KEY)), keyNotInSave: !exported.includes(KEY), hashStable: hAi1 === hAi0 };
-  if (!aiCheck.keyEcho || !aiCheck.keyOnlyInHeader || !aiCheck.keyNotInSave || !aiCheck.hashStable || !sent.length) errors.push('AI 检查失败：' + JSON.stringify(aiCheck));
-  // AI 家主托管 1 回合
-  await page.click('nav.side [data-act="page"][data-p="hall"]');
-  const agentT0 = await page.evaluate(() => FX.UI.s.turn);
-  await page.click('[data-act="agentRun"][data-n="1"]');
-  await page.waitForFunction(() => !FX.Agent.running && FX.Agent.status, null, { timeout: 15000 }).catch(() => errors.push('托管未结束'));
-  const agent = await page.evaluate(() => ({ status: FX.Agent.status, turn: FX.UI.s.turn, notes: FX.UI.s.history.filter((e) => e.type === 'agent').length, ended: !!FX.UI.s.ended }));
-  if (!(agent.turn > agentT0 || agent.ended) || !agent.notes) errors.push('托管未推进或未记理由：' + JSON.stringify(agent));
-  await page.screenshot({ path: path.join(out, 'agent.png'), fullPage: true });
-  await drain(page);
-  // 关掉 AI，后续不再发请求
-  await drain(page);
-  await page.click('nav.side [data-act="page"][data-p="rules"]');
-  await page.uncheck('#in-aion');
-  const sentBefore = sent.length;
-  await page.click('nav.side [data-act="page"][data-p="hall"]');
-  if (await page.$('[data-act="advance"]:not([disabled])')) { await page.click('[data-act="advance"]'); await page.waitForTimeout(500); }
-  if (sent.length !== sentBefore) errors.push('关闭 AI 后仍发请求');
-  await page.evaluate(() => { localStorage.removeItem('family-xiuxian:ai'); localStorage.removeItem('family-xiuxian:ai-key'); });
-  // 手机宽度
-  const m = await ctx.newPage();
-  await m.setViewportSize({ width: 400, height: 860 });
-  m.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
-  await m.goto('file://' + path.join(__dirname, '..', 'dist', 'family-xiuxian.html'));
-  await m.waitForSelector('[data-act="continue"]:not([disabled])');
-  await m.click('[data-act="continue"]');
-  await m.waitForFunction(() => FX.UI.s);
-  await drain(m);
-  const overflow = {};
-  for (const p of ['hall', 'roster', 'cult', 'econ', 'chron']) {
-    await m.click(`nav.bottom [data-act="page"][data-p="${p}"]`);
-    overflow[p] = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    await m.screenshot({ path: path.join(out, 'mobile-' + p + '.png'), fullPage: false });
+  if (!notes) throw new Error('过了 60 步，此刻页没出现 AI 叙述');
+  await mp.screenshot({ path: path.join(out, 'mobile-ai-now.png'), fullPage: true });
+  // 最后一步可能刚好遇事：先把弹窗处理掉
+  while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
+  await mp.click('nav.bottom [data-act="page"][data-p="sys"]');
+  await mp.click('[data-act="life"]');
+  await mp.click('.modal [data-act="aiLife"]');
+  await mp.waitForSelector('.modal .ai-note');
+  await mp.waitForTimeout(400);
+  await mp.screenshot({ path: path.join(out, 'mobile-ai-life.png') });
+  await mp.keyboard.press('Escape');
+  await mp.click('nav.bottom [data-act="page"][data-p="now"]');
+  await sayIntent('四处走走看看', true);
+  // 导演模式（AI 已开，假 DeepSeek）：开始、极速走一阵、暂停后不再走、接管回到此刻页
+  await mp.click('nav.bottom [data-act="page"][data-p="dir"]');
+  await mp.click('[data-act="dirMode"][data-k="key"]');
+  await mp.click('[data-act="dirSpeed"][data-k="max"]');
+  const dirT0 = await mp.evaluate(() => FX.UI.s.t);
+  await mp.click('[data-act="dirStart"]');
+  await mp.waitForFunction((t0) => FX.UI.s.t - t0 > 360 * 15 || FX.UI.s.ended, dirT0, { timeout: 60000 });
+  await mp.waitForFunction(() => document.querySelectorAll('.dir-log .dir-think').length >= 3, null, { timeout: 20000 });
+  await mp.dispatchEvent('[data-act="dirPause"]', 'pointerdown'); // 跑得快时按钮不停重画，暂停在按下时就办
+  await mp.waitForFunction(() => !FX.Director.busy, null, { timeout: 20000 });
+  const dirT1 = await mp.evaluate(() => FX.UI.s.t);
+  await mp.waitForTimeout(500);
+  if ((await mp.evaluate(() => FX.UI.s.t)) !== dirT1) throw new Error('导演暂停后还在走');
+  const dirAI = await mp.evaluate(() => FX.UI.s.aiLog.filter((r) => r.kind === 'dir' && r.via === 'ai').length);
+  if (!dirAsks || !dirAI) throw new Error('导演模式没问过 AI（' + dirAsks + ' 次请求，' + dirAI + ' 条 AI 心声）');
+  const wDir = await mp.evaluate(() => document.documentElement.scrollWidth);
+  if (wDir > 376) overflow.push('dir:' + wDir);
+  await mp.screenshot({ path: path.join(out, 'mobile-director.png'), fullPage: true });
+  // 暂停时若眼前有事会弹出来；继续导演时由导演接着处理。这一生已结束就不再接管
+  if (!(await mp.evaluate(() => FX.UI.s.ended))) {
+    await mp.evaluate(() => document.querySelector('main [data-act="dirStart"]').click());
+    await mp.dispatchEvent('.mtop [data-act="dirStop"]', 'pointerdown');
+    await mp.waitForFunction(() => !FX.Director.running && FX.UI.page === 'now');
   }
+  while (await mp.$('.modal')) { const c = await mp.$('.modal [data-act="choose"]:not([disabled])'); if (c) await c.click(); else await mp.keyboard.press('Escape'); }
+  const leak = await mp.evaluate((k) => {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) { const n = localStorage.key(i); if (n !== 'family-xiuxian:ai-key' && String(localStorage.getItem(n)).includes(k)) out.push(n); }
+    if (FX.Game.save.serialize(FX.UI.s, 1).includes(k)) out.push('存档');
+    return out;
+  }, KEY);
+  if (leak.length) throw new Error('key 出现在：' + leak.join('、'));
+  if (aiNet.some((r) => r.auth !== 'Bearer ' + KEY)) throw new Error('请求头里的 key 不对');
+  const aiLog = await mp.evaluate(() => FX.UI.s.aiLog.map((r) => r.kind));
   await browser.close();
-  console.log(JSON.stringify({ year, events, reloadSame: h1 === h2, importSame: h2 === h3, offlineRequests, ai: aiCheck, agent, overflow, errors }, null, 1));
-  process.exit(errors.length || offlineRequests || h1 !== h2 || h2 !== h3 || Object.values(overflow).some((x) => x > 0) ? 1 : 0);
-})();
+  const report = { years: year - startYear, steps, events, errors, net, overflow, ai: { requests: aiNet.length, notes, aiLog: aiLog.length } };
+  console.log(JSON.stringify(report, null, 2));
+  if (errors.length || net.length || overflow.length) process.exit(1);
+  console.log('✓ 界面冒烟测试通过：' + (year - startYear) + ' 年、' + steps + ' 次行动、' + events + ' 件遭遇，无报错、无网络请求、手机宽度无横向滚动，刷新后状态一致；开启 AI（假 DeepSeek）后测试连接通过、此刻页出现叙述、小传写成、自由输入（有无 AI）预览后照做，导演模式走了 ' + Math.round((dirT1 - dirT0) / 360) + ' 年（问 AI ' + dirAsks + ' 回）、暂停即停、可接管，key 只在请求头里');
+})().catch((e) => { console.error(e); process.exit(1); });

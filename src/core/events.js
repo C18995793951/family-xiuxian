@@ -1,28 +1,31 @@
 /* ============================================================
- * events —— 事件抽取、绑定、决策、延迟队列与引用校验
- * 事件定义（数据）在 events-data.js
+ * events —— 待决事件：绑定、选项视图、结算、延迟后续、引用校验
+ * 事件定义（数据）在 encounters.js。阶段 3 起 AI 生成的事件提案
+ * 经规则验证后也走这里结算。
  * ============================================================ */
 (function (G) {
   'use strict';
   const FX = (G.FX = G.FX || {});
-  const C = () => FX.CONFIG;
   const R = FX.RNG;
   const U = FX.U;
   const P = () => FX.P;
   const H = () => FX.H;
 
   const Ev = {};
-  Ev.defs = () => FX.EVENTS;
   Ev.def = (id) => FX.EVENTS[id];
+  // 数据事件（钩子长出来的事）的标题、选项随实例而定
+  Ev.title = (s, inst) => { const d = Ev.def(inst.defId); return d ? (typeof d.name === 'function' ? d.name(s, inst.bound) : d.name) : inst.defId; };
+  Ev.opts = (s, inst) => { const d = Ev.def(inst.defId); return typeof d.options === 'function' ? d.options(s, inst.bound) : d.options; };
+  const isPid = (v) => typeof v === 'string' && /^p\d+$/.test(v);
 
-  // 绑定对象有效性：人物需存活且在族内；势力需存在
+  // 绑定对象有效性：人物需在世，势力与地点需存在
   Ev.valid = (s, b) => {
     for (const k in b) {
       const v = b[k];
-      if (typeof v !== 'string') continue;
+      if (k.startsWith('_')) continue;
       if (k === 'faction') { if (!s.factions[v]) return false; continue; }
-      if (k === 'dead' || k.startsWith('_')) continue;
-      if (/^p\d+$/.test(v) && !P().alive(s.people[v])) return false;
+      if (k === 'place') { if (!s.places[v]) return false; continue; }
+      if (isPid(v) && !P().alive(s.people[v])) return false;
     }
     return true;
   };
@@ -31,99 +34,52 @@
     const n = {};
     for (const k in b) {
       const v = b[k];
-      if (typeof v === 'string' && /^p\d+$/.test(v)) n[k] = s.people[v] ? s.people[v].name : '（已不在）';
+      if (isPid(v)) n[k] = s.people[v] ? s.people[v].name : '（已不在）';
       else if (k === 'faction' && s.factions[v]) n[k] = s.factions[v].name;
+      else if (k === 'place' && s.places[v]) n[k] = s.places[v].name;
       else n[k] = v;
     }
     return n;
   };
 
   Ev.spawn = (s, defId, bound, causeIds) => {
-    const def = Ev.def(defId);
-    if (!def) return null;
-    if (!Ev.valid(s, bound)) return null;
-    const inst = { id: 'e' + s.nextId++, defId, bound: bound || {}, turn: s.turn, year: s.year, causeIds: (causeIds || []).filter(Boolean), status: 'pending' };
+    if (!Ev.def(defId) || !Ev.valid(s, bound || {})) return null;
+    const inst = { id: 'e' + s.nextId++, defId, bound: bound || {}, t: s.t, causeIds: (causeIds || []).filter(Boolean) };
     s.pending.push(inst);
     return inst;
   };
 
-  Ev.schedule = (s, defId, afterTurns, bound, causeIds, chance) => {
-    const q = { id: 'd' + s.nextId++, defId, bound: bound || {}, fireTurn: s.turn + afterTurns, chance: chance === undefined ? 1 : chance, causeIds: (causeIds || []).filter(Boolean), status: 'scheduled' };
+  Ev.schedule = (s, defId, afterDays, bound, causeIds, chance) => {
+    const q = { id: 'd' + s.nextId++, defId, bound: bound || {}, fireT: s.t + afterDays, chance: chance === undefined ? 1 : chance, causeIds: (causeIds || []).filter(Boolean) };
     s.eventQueue.push(q);
     return q;
   };
 
-  // 开年：处理到期的延迟效果与后续事件
+  // 到期的后续：引用失效就写明原因后取消
   Ev.processQueue = (s) => {
-    const due = s.eventQueue.filter((q) => q.status === 'scheduled' && q.fireTurn <= s.turn);
+    const due = s.eventQueue.filter((q) => q.fireT <= s.t);
+    if (!due.length) return;
+    s.eventQueue = s.eventQueue.filter((q) => q.fireT > s.t);
     for (const q of due) {
       const def = Ev.def(q.defId);
-      q.status = 'done';
       if (!def) continue;
-      let b = q.bound;
-      if (!Ev.valid(s, b)) {
-        const nb = def.rebind ? def.rebind(s, b) : null;
-        if (nb && Ev.valid(s, nb)) b = nb;
-        else {
-          q.status = 'cancelled';
-          const who = Object.values(b).filter((v) => typeof v === 'string' && /^p\d+$/.test(v) && !P().alive(s.people[v])).map((v) => P().name(s, v));
-          H().add(s, { type: 'event', tags: ['事件', '终止'], actors: [], key: 'event', params: { title: def.name, choice: '后续终止', result: '因' + (who.join('、') || '当事人') + '已不在族中，此事不了了之' }, severity: 1, causeIds: q.causeIds });
-          continue;
-        }
-      }
-      if (def.cond && !def.cond(s, b)) { q.status = 'cancelled'; continue; }
+      if (!Ev.valid(s, q.bound)) continue;
+      if (def.cond && !def.cond(s, q.bound)) continue;
       if (!R.chance(s.rng, q.chance)) continue;
       if (def.auto) {
-        const txt = def.auto(s, b, q.causeIds);
-        H().add(s, { type: 'event', tags: ['事件'].concat(def.tags || []), actors: Object.values(b).filter((v) => /^p\d+$/.test(v)), key: 'event', params: { title: def.name, choice: '后续', result: txt }, severity: def.severity || 3, causeIds: q.causeIds });
-      } else Ev.spawn(s, q.defId, b, q.causeIds);
+        const txt = def.auto(s, q.bound, q.causeIds);
+        if (txt) H().add(s, { type: 'event', tags: ['事件'], actors: Object.values(q.bound).filter(isPid), key: 'event', params: { title: def.name, choice: '后续', result: txt }, severity: def.severity || 3, pov: true, causeIds: q.causeIds });
+      } else Ev.spawn(s, q.defId, q.bound, q.causeIds);
     }
-    s.eventQueue = s.eventQueue.filter((q) => q.status === 'scheduled');
   };
 
-  // 开年抽取 0 到 2 件重要事件
-  Ev.draw = (s) => {
-    const D = C().eventDraw, r = s.rng;
-    const originMods = C().origins[s.family.origin].eventMods || {};
-    const cands = [];
-    for (const id of Object.keys(FX.EVENTS).sort()) {
-      const def = FX.EVENTS[id];
-      if (!def.draw) continue;
-      if ((s.eventCooldowns[id] || -1) > s.turn) continue;
-      if (s.pending.some((x) => x.defId === id)) continue;
-      const b = def.bind(s);
-      if (!b) continue;
-      let w = def.weight * (def.wmod ? def.wmod(s, b) : 1) * (originMods[id] || 1);
-      const recent = s.recentCategories.slice(-D.repeatCategoryHalve);
-      if (recent.length === D.repeatCategoryHalve && recent.every((c) => c === def.category)) w *= 0.5;
-      if (s.dryTurns >= D.dryTurns) w *= D.dryBoost;
-      if (w > 0) cands.push({ id, b, w, def });
-    }
-    const out = [];
-    const ch = [D.chanceFirst * (s.dryTurns >= D.dryTurns ? 1.3 : 1), D.chanceSecond];
-    for (let i = 0; i < D.maxPerTurn; i++) {
-      if (!cands.length || !R.chance(r, ch[i])) break;
-      const pick = R.weighted(r, cands, (x) => x.w);
-      if (!pick) break;
-      cands.splice(cands.indexOf(pick), 1);
-      const inst = Ev.spawn(s, pick.id, pick.b, pick.b._cause ? [pick.b._cause] : []);
-      if (inst) { out.push(inst); s.recentCategories.push(pick.def.category); }
-    }
-    if (s.recentCategories.length > 6) s.recentCategories = s.recentCategories.slice(-6);
-    s.dryTurns = out.length ? 0 : s.dryTurns + 1;
-    return out;
-  };
-
-  // 待决事件引用失效时：按备用方案转交替代者，或取消并写明原因
+  // 待决事件引用失效（例如对手先一步死了）：取消并写明原因
   Ev.prune = (s) => {
     for (const inst of s.pending.slice()) {
       if (Ev.valid(s, inst.bound)) continue;
-      const def = Ev.def(inst.defId);
-      const nb = def && def.rebind ? def.rebind(s, inst.bound) : null;
-      if (nb && Ev.valid(s, nb)) { inst.bound = nb; continue; }
       s.pending = s.pending.filter((x) => x !== inst);
-      const who = Object.entries(inst.bound).filter(([k, v]) => k !== 'dead' && typeof v === 'string' && /^p\d+$/.test(v) && !P().alive(s.people[v])).map(([, v]) => P().name(s, v));
-      H().add(s, { type: 'event', tags: ['事件', '终止'], key: 'event', params: { title: def ? def.name : inst.defId, choice: '未及处置', result: '因' + (who.join('、') || '当事人') + '已不在族中而终止' }, severity: 1, causeIds: inst.causeIds });
+      const def = Ev.def(inst.defId);
+      H().add(s, { type: 'event', tags: ['事件', '终止'], key: 'event', params: { title: def ? Ev.title(s, inst) : inst.defId, choice: '未及处置', result: '当事人已不在，事情自行了结' }, severity: 1, pov: true, causeIds: inst.causeIds });
     }
   };
 
@@ -133,19 +89,19 @@
     return {
       id: inst.id,
       defId: inst.defId,
-      name: def.name,
+      name: Ev.title(s, inst),
       category: def.category,
-      chain: def.chain || null,
       text: typeof def.text === 'function' ? def.text(s, inst.bound, n) : U.fill(def.text, n),
-      people: Object.entries(inst.bound).filter(([k, v]) => typeof v === 'string' && /^p\d+$/.test(v) && k !== 'dead').map(([, v]) => v),
+      people: Object.entries(inst.bound).filter(([k, v]) => !k.startsWith('_') && isPid(v)).map(([, v]) => v),
       causes: inst.causeIds.map((c) => H().get(s, c)).filter(Boolean).map((e) => H().text(e)),
-      options: def.options.map((o) => {
+      options: Ev.opts(s, inst).map((o) => {
         const av = o.avail ? o.avail(s, inst.bound) : true;
         return {
           id: o.id, label: o.label,
           cost: o.cost ? o.cost(s, inst.bound, n) : '无',
           risk: o.risk ? o.risk(s, inst.bound, n) : '无明显风险',
           outcome: o.outcome ? o.outcome(s, inst.bound, n) : '',
+          chance: o.chance ? o.chance(s, inst.bound) : null,
           irreversible: !!o.irreversible,
           available: av === true, reason: av === true ? '' : av,
         };
@@ -157,33 +113,25 @@
     const inst = s.pending.find((x) => x.id === instId);
     if (!inst) return { ok: false, error: '事件不存在或已处理' };
     const def = Ev.def(inst.defId);
-    let opt = def.options.find((o) => o.id === optId);
+    const opt = Ev.opts(s, inst).find((o) => o.id === optId);
     if (!opt) return { ok: false, error: '无此选项' };
-    if (!Ev.valid(s, inst.bound)) {
-      // 绑定的人在等待期间出事（例如同一年里死亡）：按备用方案取消
-      s.pending = s.pending.filter((x) => x !== inst);
-      H().add(s, { type: 'event', tags: ['事件', '终止'], key: 'event', params: { title: def.name, choice: '未及处置', result: '当事人已不在，事情自行了结' }, severity: 1, causeIds: inst.causeIds });
-      return { ok: true, result: '当事人已不在，事件取消' };
-    }
+    if (!Ev.valid(s, inst.bound)) { Ev.prune(s); return { ok: true, result: '当事人已不在，事件取消' }; }
     const av = opt.avail ? opt.avail(s, inst.bound) : true;
     if (av !== true) return { ok: false, error: av };
     s.pending = s.pending.filter((x) => x !== inst);
-    const n = Ev.names(s, inst.bound);
     // 先写决策记录，让后果可以引用它作为前因
     const hid = H().add(s, {
-      type: 'event', tags: ['事件', def.category].concat(def.tags || []),
-      actors: Object.entries(inst.bound).filter(([k, v]) => typeof v === 'string' && /^p\d+$/.test(v)).map(([, v]) => v),
-      factions: inst.bound.faction ? [inst.bound.faction] : [],
-      key: 'event', params: { title: def.name, choice: opt.label, result: '' },
-      severity: def.severity || 3, causeIds: inst.causeIds,
+      type: 'event', tags: ['事件', def.category], actors: Object.entries(inst.bound).filter(([k, v]) => !k.startsWith('_') && isPid(v)).map(([, v]) => v),
+      places: inst.bound.place ? [inst.bound.place] : [], key: 'event', params: { title: Ev.title(s, inst), choice: opt.label, result: '' },
+      severity: def.severity || 2, pov: true, causeIds: inst.causeIds,
     });
-    const result = opt.apply(s, inst.bound, { hid, names: n, inst }) || '';
+    const out = opt.apply(s, inst.bound, { hid, names: Ev.names(s, inst.bound), inst }) || {};
+    const result = typeof out === 'string' ? out : out.text || '';
     const e = H().get(s, hid);
     e.params.result = result;
-    e.params.defId = def.id;
-    s.eventCooldowns[def.id] = s.turn + (def.cooldown || 2);
-    FX.Econ.clampAll(s);
-    return { ok: true, result, hid };
+    e.params.defId = inst.defId;
+    if (inst.bound._kind) e.params.kind = inst.bound._kind;
+    return { ok: true, result, hid, gain: !!out.gain, days: out.days || 0 };
   };
 
   FX.Ev = Ev;

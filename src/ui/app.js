@@ -4,49 +4,56 @@
 (function (G) {
   'use strict';
   const FX = G.FX;
-  const Game = FX.Game, CF = FX.CONFIG, P = FX.P;
+  const Game = FX.Game, CF = FX.CONFIG, P = FX.P, T = FX.T;
 
   const UI = {
-    s: null, page: 'hall', modals: [], more: false,
-    roster: { q: '', sort: 'realm', dir: -1, showGone: false },
-    cult: { filterDuty: '', batchDuty: 'seclusion', batchCond: 'attention' },
-    chron: { type: '', open: null },
-    start: { origin: 'market', surname: '', seed: '' },
-    storeKind: 'none', lastSaveWarn: null,
-    aiRaw: new Set(), aiDirty: false, // 看原文的条目；输入框聚焦时延后刷新
+    s: null, page: 'now', modals: [], more: false,
+    start: { origin: 'loose', surname: '', given: '', sex: '', seed: '' },
+    chron: { filter: 'pov' },
+    people: { tab: 'here' },
+    storeKind: 'none', lastSaveWarn: null, hasAuto: false, fontScale: 1,
+    fold: {}, sectTab: 'main', bagTab: 'items',
   };
   const $ = (sel) => document.querySelector(sel);
   const esc = (x) => String(x === undefined || x === null ? '' : x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const n1 = (x) => (Math.round(x * 10) / 10).toLocaleString('zh-CN');
   const n0 = (x) => Math.round(x).toLocaleString('zh-CN');
-  const sign = (x) => (x > 0 ? '+' : '') + n1(x);
+  const n1 = (x) => (Math.round(x * 10) / 10).toLocaleString('zh-CN');
   const pl = (id) => { const p = UI.s.people[id]; return p ? `<button class="link" data-act="person" data-id="${p.id}">${esc(p.name)}</button>` : '—'; };
+  const placeLink = (id) => { const p = UI.s.places[id]; return p ? `<button class="link" data-act="place" data-id="${p.id}">${esc(p.name)}</button>` : '—'; };
   const bar = (v, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></div>`;
   const trace = (label, parts) => `<span class="trace" data-act="trace" data-t="${esc(parts)}" title="${esc(parts)}">${label}</span>`;
-  const unfinished = (t) => `<div class="unfinished">${esc(t)}</div>`;
-  const AI = FX.AI, Agent = FX.Agent;
-  // AI 润色块：模板先行，润色到达后替换显示，可切回原文；失败只给一行灰字
-  function aiBlock(key, templateHtml, opt) {
-    opt = opt || {};
-    const text = AI.get(key);
-    const raw = UI.aiRaw.has(key);
-    if (text && !raw) {
-      const body = opt.html ? opt.html(text) : esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('');
-      return `<div class="ai-text">${body}</div><div class="ai-bar"><span class="tag ai-tag" title="由大模型依据真实记录改写，不影响游戏结果">AI 润色</span><button class="link" data-act="aiRaw" data-k="${esc(key)}">看原文</button></div>`;
-    }
-    let bar = '';
-    if (text) bar = `<span class="tag">原文</span><button class="link" data-act="aiRaw" data-k="${esc(key)}">看润色</button>`;
-    else if (AI.isPending(key)) bar = '<span class="muted">AI 润色中…（先显示原文）</span>';
-    else if (opt.kind) {
-      const fail = AI.failure(key);
-      const rd = AI.ready();
-      if (fail) bar = `<span class="muted">AI 润色未采用：${esc(fail)}，已显示原文。</span>` + (rd.ok ? ` <button class="link" data-act="aiPolish" data-kind="${opt.kind}" data-t="${opt.arg || ''}">重试</button>` : '');
-      else if (rd.ok && !opt.auto) bar = `<button class="link" data-act="aiPolish" data-kind="${opt.kind}" data-t="${opt.arg || ''}">${opt.label || 'AI 润色'}</button>`;
-    }
-    return templateHtml + (bar ? `<div class="ai-bar">${bar}</div>` : '');
-  }
-  const BR = { main: '嫡系', side: '旁支' };
-  const ORIGIN_P = { native: '本家', married_in: '嫁入/入赘', guest: '客卿' };
+  const stars = (n, max) => '●'.repeat(n) + '○'.repeat(Math.max(0, (max || 5) - n));
+  const DANGER = ['太平', '偶有妖物', '有些凶险', '凶险', '十分凶险', '九死一生', '金丹也会殒命', '元神方可涉足'];
+  const QI = ['稀薄', '稀薄', '平平', '尚可', '浓郁', '极浓', '灵窟', '洞天'];
+  const realmOf = (realm) => P.realmName({ realm });
+  const ART_TYPES = { atk: '攻伐', def: '护身', dun: '遁法', xiu: '辅修' };
+  const typeLine = (t) => t.type.map((x) => ART_TYPES[x]).join('、');
+  // 一门道术眼下的威能（按进境）
+  const artEff = (p, k) => {
+    const t = CF.techniques[k], A = FX.Ars, out = [];
+    if (t.type.includes('atk')) out.push('战力 +' + Math.round(A.artVal(p, k, 'atk') * 100) + '%');
+    if (t.type.includes('def')) out.push('战力 +' + Math.round(A.artVal(p, k, 'def') * 100) + '%、落败重伤少 ' + Math.round(A.artVal(p, k, 'defHurt') * 100) + '%');
+    if (t.type.includes('dun')) out.push('逃遁 +' + Math.round(A.artVal(p, k, 'dunFlee')) + '、赶路省 ' + Math.round(A.artVal(p, k, 'dunTravel') * 100) + '%');
+    return out.join('；');
+  };
+  const gearEff = (p, g) => {
+    const A = FX.Ars, v = (k) => A.gearValFor(p, g, k);
+    const weak = A.useF(p, g) < 1 ? '（境界不够，驱策吃力）' : '';
+    if (g.slot === 'atk') return '战力 ×' + Math.round(v('atk') * 100) / 100 + weak;
+    if (g.slot === 'def') return '战力 ×' + Math.round(v('def') * 100) / 100 + '、落败重伤少 ' + Math.round(v('defHurt') * 100) + '%' + weak;
+    return '逃遁 +' + Math.round(v('dunFlee')) + '、赶路省 ' + Math.round(v('dunTravel') * 100) + '%' + weak;
+  };
+  const techLine = (t) => t.kind === 'shu' ? `${CF.shuRankNames[t.rank]} · ${typeLine(t)}` : t.kind === 'lianqi' ? `练炁术 · 成「${t.qi || t.name}」${FX.P.qiGrade(t)} · ${t.any ? '诸般灵气都采得' : '采「' + t.attrs.join('」「') + '」气，忌「' + t.opp.join('」「') + '」'}` : t.kind === 'kaifu' ? `开府真法 · ${CF.gradeNames[t.grade]}` : t.kind === 'dao' ? `道书 · ${CF.gradeNames[t.grade]} · 金丹以后修行 ×${t.mult}` : '';
+  // 返虚关隘前的三条道途：各自的成功率、劫关数、将来渡三灾的好处
+  const fanxuPaths = (A) => {
+    const FP = CF.realms.fanxuPaths;
+    const rows = CF.realms.fanxuPathOrder.map((k) => {
+      const fp = FP[k], a = A.find((x) => x.type === 'breakthrough' && x.path === k);
+      return `<div class="stat"><span><b>${esc(fp.name)}</b> <span class="muted">${fp.gates.length} 关 · 每关基础 ${fp.base}% · 失败身死约 ${Math.round(fp.death * 1000) / 10}% · 修为折 ${Math.round(fp.need * 100)}%${fp.zai ? ' · 渡三灾 +' + fp.zai : ''}</span><br><span class="muted">${esc(fp.desc)}</span>${a && !a.ok && a.reason && !/修为未圆满|休养|重伤|洞天/.test(a.reason) ? `<br><span class="bad">${esc(a.reason)}</span>` : ''}</span>${a ? `<button style="white-space:nowrap" data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || '')}">选它</button>` : ''}</div>`;
+    }).join('');
+    return `<p class="muted" style="margin-bottom:.3em">返虚能自判关隘：道劫总量不增不减，关数越少每一关越酷烈，却越省时日。冲关成败与道途无关，选定后不能再改。</p>${rows}`;
+  };
+  const progLabel = (m) => (m === 0 ? '气感' : m === 1 ? '胎息' : m === 7 ? '修为（感悟）' : '修为');
 
   function toast(msg, ms) {
     let box = document.getElementById('toasts');
@@ -54,35 +61,47 @@
     const el = document.createElement('div');
     el.className = 'toast'; el.textContent = msg;
     box.appendChild(el);
-    while (box.children.length > 4) box.firstChild.remove();
+    while (box.children.length > 2) box.firstChild.remove(); // 连点时只留最近两条，免得盖住按钮
     setTimeout(() => el.remove(), ms || 2600);
-  }
-  function result(r, okMsg) {
-    if (!r) return false;
-    if (r.ok === false) { toast('✗ ' + r.error); return false; }
-    if (okMsg) toast(okMsg);
-    if (r.note) toast(r.note, 3500);
-    afterAction();
-    return true;
   }
 
   /* ---------- 存档 ---------- */
   let saveTimer = null;
-  function afterAction() { scheduleSave(); render(); }
+  function afterAction() {
+    scheduleSave();
+    if (UI.s && UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
+    else if (UI.s && UI.s.pending.length && !dirOn() && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
+    render();
+    focusModal();
+    aiAfter();
+  }
+  const dirOn = () => !!(FX.Director && FX.Director.running && FX.Director.s === UI.s);
+  /* ---------- AI：行动以后写一段叙述（不等它；回来了再刷新）---------- */
+  // UI.aiMark 记着上回看到的纪事位置；读档、开局时对齐，免得把以前的事都写一遍
+  function aiAfter() {
+    if (!UI.s || !FX.AI) return;
+    const mark = UI.aiMark;
+    UI.aiMark = Game.ai.mark(UI.s);
+    if (mark && mark !== UI.aiMark) FX.AI.narrate(UI.s, mark);
+    FX.AI.hookPrefetch(UI.s);
+  }
+  const aiOn = (what) => !!(FX.AI && FX.AI.on(what));
+  const narrOf = () => (UI.s && aiOn('narrate') ? Game.ai.narrations(UI.s) : {});
+  const aiNote = (text) => `<p class="ai-note">${esc(text)}<span class="src">AI 叙述</span></p>`;
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 300); }
   async function autosave() {
     if (!UI.s) return;
-    const text = Game.save.serialize(UI.s, Date.now());
-    const r = await FX.Store.put('auto', text);
+    const r = await FX.Store.put('auto', Game.save.serialize(UI.s, Date.now()));
     if (r && r.warn && UI.lastSaveWarn !== r.warn) { UI.lastSaveWarn = r.warn; toast(r.warn, 4000); }
     FX.Store.delSync('auto');
   }
   async function readSave(text) {
     const r = Game.save.deserialize(text);
     if (!r.ok) { toast('读取失败：' + r.error, 5000); return false; }
-    UI.s = r.state; UI.modals = []; UI.page = 'hall';
+    if (FX.Director) FX.Director.reset();
+    UI.s = r.state; UI.modals = []; UI.page = 'now'; UI.aiMark = Game.ai.mark(UI.s);
     afterAction();
-    openPendingIfAny();
+    if (G.scrollTo) G.scrollTo(0, 0);
     return true;
   }
   async function loadAuto() {
@@ -91,458 +110,945 @@
     const pick = [a, b].filter(Boolean).map((t) => { try { return { t, at: JSON.parse(t).meta.savedAt || 0 }; } catch (e) { return null; } }).filter(Boolean).sort((x, y) => y.at - x.at)[0];
     return pick ? pick.t : null;
   }
+  const storeLabel = () => ({ idb: 'IndexedDB', ls: 'localStorage（降级）', none: '不可用，请用导出' }[UI.storeKind] || UI.storeKind);
 
   /* ---------- 模态 ---------- */
-  function pushModal(m) { UI.modals.push(m); render(); setTimeout(() => { const f = document.querySelector('.modal [autofocus], .modal button:not(:disabled)'); if (f) f.focus(); }, 0); }
+  function focusModal() { setTimeout(() => { const f = document.querySelector('.modal [autofocus], .modal button:not(:disabled)'); if (f) f.focus(); }, 0); }
+  function pushModal(m) { UI.modals.push(m); render(); focusModal(); }
   function popModal() { UI.modals.pop(); render(); }
-  function openPendingIfAny() {
-    if (UI.s && UI.s.pending.length && !UI.modals.some((m) => m.type === 'event')) pushModal({ type: 'event' });
-  }
 
   /* ================= 渲染 ================= */
+  // 导航按要办的事分：修行在此刻，买东西都在采买，跑图在地图；纪事、人物、天下大事合成见闻
+  const PAGES = [
+    { id: 'now', name: '此刻' },
+    { id: 'dir', name: '导演' },
+    { id: 'shop', name: '采买' },
+    { id: 'map', name: '地图' },
+    { id: 'bag', name: '行囊' },
+    { id: 'sect', name: '宗门' },
+    { id: 'chron', name: '见闻', also: ['people', 'sagas'] },
+    { id: 'sys', name: '存档与设置', short: '设置' },
+  ];
+  const navOn = (p) => UI.page === p.id || (p.also || []).includes(UI.page);
   function render() {
     const root = $('#app');
     if (!UI.s) { root.innerHTML = renderStart() + renderModals(); return; }
-    const pages = PAGES();
     const ov = Game.view.overview(UI.s);
-    const nav = pages.map((p) => `<button class="${UI.page === p.id ? 'on' : ''}" data-act="page" data-p="${p.id}">${p.name}${p.badge ? `<span class="badge">${p.badge}</span>` : ''}</button>`).join('');
-    const mainPages = ['hall', 'roster', 'cult', 'econ', 'chron'];
-    const bottom = mainPages.map((id) => { const p = pages.find((x) => x.id === id); return `<button class="${UI.page === id ? 'on' : ''}" data-act="page" data-p="${id}">${p.short || p.name}${p.badge ? `<span class="badge">${p.badge}</span>` : ''}</button>`; }).join('') + `<button data-act="more" class="${mainPages.includes(UI.page) ? '' : 'on'}">更多</button>`;
-    const more = UI.more ? `<div class="more-menu">${pages.filter((p) => !mainPages.includes(p.id)).map((p) => `<button data-act="page" data-p="${p.id}">${p.name}</button>`).join('')}</div>` : '';
+    const nav = PAGES.map((p) => `<button class="${navOn(p) ? 'on' : ''}" data-act="page" data-p="${p.id}">${p.name}</button>`).join('');
+    const bottom = PAGES.map((p) => `<button class="${navOn(p) ? 'on' : ''}" data-act="page" data-p="${p.id}">${p.short || p.name}</button>`).join('');
     root.innerHTML = `
       <div class="app">
-        <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(ov.surname)}氏 · 第 ${ov.year} 年</div>${nav}</nav>
-        <main id="main">${pages.find((p) => p.id === UI.page).render(ov)}</main>
-        <aside class="right" aria-label="提醒与纪事">${renderAside(ov)}</aside>
+        <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(CF.world.region)}</div><div class="sub">${esc(ov.me.name)} · ${esc(ov.date)}</div>${nav}</nav>
+        <main id="main" class="p-${UI.page}"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${dirOn() ? ' · <button class="link" data-act="page" data-p="dir">导演中</button> <button class="link" data-act="dirStop">接管</button>' : UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
+        <aside class="right" aria-label="最近经历">${renderAside()}</aside>
       </div>
-      <nav class="bottom" aria-label="底部导航">${bottom}</nav>${more}
+      <nav class="bottom" aria-label="底部导航">${bottom}</nav>
       ${renderModals()}`;
+    if (UI.page === 'map' && UI.centerMap) { UI.centerMap = false; centerMap(); }
   }
 
-  function PAGES() {
-    const s = UI.s;
-    const att = FX.Sim.needsAttention(s).length;
-    return [
-      { id: 'hall', name: '宗祠', render: pageHall, badge: s.pending.length || '' },
-      { id: 'roster', name: '族人名册', short: '名册', render: pageRoster },
-      { id: 'cult', name: '修炼安排', short: '安排', render: pageCult, badge: att || '' },
-      { id: 'econ', name: '产业经营', short: '产业', render: pageEcon },
-      { id: 'chron', name: '年代纪事', short: '纪事', render: pageChron },
-      { id: 'tree', name: '族谱', render: pageTree },
-      { id: 'fac', name: '势力外交', render: pageFac },
-      { id: 'rules', name: '家规与设置', render: pageRules },
-    ];
+  function feedHtml(list) {
+    const nr = narrOf();
+    return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>';
   }
-
-  function renderAside(ov) {
+  const aiWaiting = (key) => (FX.AI && FX.AI.isPending(key) ? '<p class="ai-wait">AI 执笔中…</p>' : '');
+  function renderAside() {
     const s = UI.s;
-    const items = [];
-    if (s.pending.length) items.push(`<p class="warn">⚑ ${s.pending.length} 件事待决断 <button class="link" data-act="openEvent">处理</button></p>`);
-    if (ov.attention) items.push(`<p>☐ ${ov.attention} 人差事需处理 <button class="link" data-act="page" data-p="cult">去安排</button></p>`);
-    if (ov.requests) items.push(`<p>✉ ${ov.requests} 条族人请求 <button class="link" data-act="page" data-p="hall">查看</button></p>`);
-    if (ov.deficit) items.push(`<p class="bad">入不敷出：商铺、洞府、炼丹房效率减半</p>`);
-    const ch = FX.H.chronicle(s, s.turn).concat(s.turn > 1 ? FX.H.chronicle(s, s.turn - 1) : []).sort((a, b) => b.year - a.year).slice(0, 12);
-    return `<h3>提醒</h3>${items.join('') || '<p class="muted">暂无</p>'}<h3>最近纪事</h3><div class="log">${ch.map((e) => `<p><span class="y">${e.year}年</span>${esc(e.text)}</p>`).join('') || '<p class="muted">尚无</p>'}</div>`;
+    const warn = s.pending.length ? `<p class="warn">⚑ 眼前有事要决断 <button class="link" data-act="openEvent">处理</button></p>` : '';
+    return `<h3>最近经历</h3>${warn}<div class="log">${feedHtml(Game.view.feed(s, 18))}</div>`;
   }
 
   /* ---------- 开局 ---------- */
   function renderStart() {
-    const o = CF.origins;
-    const st = UI.start;
+    const o = CF.origins, st = UI.start;
     return `<div class="start">
       <h1 style="text-align:center">家族修仙录</h1>
-      <p class="muted" style="text-align:center">经营一个可能延续数百年、也可能一夜覆灭的修仙家族。</p>
+      <p class="muted" style="text-align:center">${esc(CF.world.region)}，东弥州有名的穷土，灵机匮乏，没有大派。<br>你只是一个十六岁的少年。世界不会等你，也不保证你走运。</p>
       <div class="card"><h3>继续</h3><div class="row">
         <button class="primary" data-act="continue" ${UI.hasAuto ? '' : 'disabled'}>继续上次（自动存档）</button>
         <button data-act="openSaves">读取存档 / 导入</button>
       </div><p class="muted" style="margin:.5em 0 0">存储：${storeLabel()}</p></div>
-      <div class="card"><h3>新建家族</h3>
+      ${FX.PWA && FX.PWA.web && !FX.PWA.standalone ? phoneCard() : ''}
+      <div class="card"><h3>新的一生</h3>
         <div class="grid">${Object.keys(o).map((k) => `<div class="card origin ${st.origin === k ? 'sel' : ''}" data-act="pickOrigin" data-k="${k}" tabindex="0" role="button" aria-pressed="${st.origin === k}">
           <h3>${o[k].name}</h3><p class="muted">${o[k].blurb}</p>
-          <div class="stat"><span>老祖</span><b>炼气${CF.realms.stageNames[1][o[k].elderStage - 1]}，50 岁</b></div>
-          <div class="stat"><span>族人</span><b>${2 + o[k].family.adults + o[k].family.youths} 人</b></div>
-          <div class="stat"><span>灵石 / 灵谷</span><b>${o[k].resources.stone} / ${o[k].resources.grain}</b></div>
-          <div class="stat"><span>功法</span><b>${CF.techniques[o[k].technique].name}</b></div>
-          <div class="stat"><span>家规</span><b>${CF.rules.succession[o[k].rules.succession].name}·${CF.rules.allocation[o[k].rules.allocation].name}·${CF.rules.foreign[o[k].rules.foreign].name}</b></div>
+          <div class="stat"><span>起点</span><b>${realmOf(o[k].realm)}</b></div>
+          <div class="stat"><span>符钱</span><b>${o[k].stone}</b></div>
+          <div class="stat"><span>练炁术</span><b>${o[k].technique ? CF.techniques[o[k].technique].name : '无'}</b></div>
+          <div class="stat"><span>身家</span><b>${Object.entries(o[k].inv).map(([i, n]) => CF.items[i].name + '×' + n).join('、') || '无'}</b></div>
         </div>`).join('')}</div>
         <div class="row" style="margin-top:1em">
-          <label>姓氏 <input type="text" maxlength="2" id="in-surname" value="${esc(st.surname)}" placeholder="留空随机" style="width:6em"></label>
-          <label>种子 <input type="text" id="in-seed" value="${esc(st.seed)}" placeholder="留空随机" style="width:10em"></label>
-          <button class="primary" data-act="newGame">开宗立族</button>
+          <label>姓 <input type="text" id="in-surname" maxlength="2" value="${esc(st.surname)}" placeholder="随机" style="width:5em"></label>
+          <label>名 <input type="text" id="in-given" maxlength="3" value="${esc(st.given)}" placeholder="随机" style="width:6em"></label>
+          <label>性别 <select id="in-sex"><option value="">随机</option><option value="M" ${st.sex === 'M' ? 'selected' : ''}>男</option><option value="F" ${st.sex === 'F' ? 'selected' : ''}>女</option></select></label>
+          <label>种子 <input type="text" id="in-seed" value="${esc(st.seed)}" placeholder="随机" style="width:9em"></label>
+          <button class="primary" data-act="newGame">踏入仙途</button>
+          <button data-act="newGame" data-dir="1">交给导演（全程 AI）</button>
         </div>
-      </div>
-      <p class="muted">当前为阶段 1（可玩核心）。外交、危机战斗、交互族谱、完整事件链等尚未完成，界面中均有标注，详见“家规与设置 → 未完成功能”。</p>
-    </div>`;
-  }
-  const storeLabel = () => ({ idb: 'IndexedDB（浏览器本地数据库）', ls: 'localStorage（降级模式）', none: '不可用，请用导出保存' }[UI.storeKind]);
-
-  /* ---------- 宗祠 ---------- */
-  function pageHall(ov) {
-    const s = UI.s;
-    const anc = ov.ancestor;
-    const fc = ov.forecast;
-    const res = ov.resources;
-    const r1 = (k, label, extra) => `<div class="stat"><span>${label}</span><b class="num">${n1(res[k])}${extra || ''}</b></div>`;
-    const ancWarn = anc && anc.left <= 15 ? 'bad' : anc && anc.left <= 30 ? 'warn' : '';
-    const succ = ov.successors.map((p) => `${pl(p.id)}（${esc(p.realm)}，余寿 ${p.left}）`).join('、') || '<span class="bad">无</span>';
-    const hasZhuji = P.living(s).some((p) => p.realm.major >= 2);
-    const edgeParts = ov.edgeTarget.parts.map((x) => x.label + ' ' + n1(x.value)).join('；');
-    const defParts = ov.defense.parts.map((x) => x.label + ' ' + x.value).join('；');
-    const heirAcc = s.family.heirId ? FX.Family.acceptance(s, s.family.heirId, s.family.headId) : null;
-    const reqs = s.family.requests.map((q) => `<div class="stat"><span>${pl(q.personId)}：${esc(q.what)} <span class="muted">（${esc(q.why)}；代价：${esc(FX.Family.requestCost(s, q))}）</span></span><span class="row"><button data-act="req" data-id="${q.id}" data-a="1">准</button><button data-act="req" data-id="${q.id}" data-a="0">驳</button></span></div>`).join('');
-    const ended = s.ended ? `<div class="card hl"><h2>${esc(s.ended.what)}</h2><p>第 ${s.ended.year} 年 · 评级 <b class="big">${s.ended.rating.grade}</b> ${esc(s.ended.rating.title)} ${esc(s.ended.rating.why)}（${s.ended.rating.total} 分）</p><p class="muted">${s.ended.rating.parts.map((x) => x.label + ' ' + x.value).join('，')}</p><div class="row"><button class="primary" data-act="history">查看《${esc(s.family.surname)}氏家史》</button><button data-act="newRun">再开一局</button></div>${unfinished('当前家史为简版（按章节摘录真实记录）；完整家史与导出属于阶段 4。')}</div>` : '';
-    const lr = s.lastReport;
-    return `${ended}
-      <div class="row between"><h1>${esc(ov.surname)}氏宗祠</h1><div class="row">
-        <span class="muted">第 ${ov.turn} 回合 · 第 ${ov.year} 年${ov.phase === 'advancing' ? '（推进中，第 ' + (ov.yearInTurn + 1) + ' 年待续）' : ''}</span>
-        <button class="primary" data-act="advance" ${s.ended || s.pending.length || Agent.running ? 'disabled' : ''}>${ov.phase === 'advancing' ? '继续推进' : '推进五年'}</button>
-      </div></div>
-      ${s.pending.length ? `<div class="card hl"><b>有 ${s.pending.length} 件事等家主决断：</b>${s.pending.map((i) => esc(FX.Ev.def(i.defId).name)).join('、')} <button data-act="openEvent" ${Agent.running ? 'disabled' : ''}>处理</button></div>` : ''}
-      ${pageAgent()}
-      <div class="grid">
-        <div class="card ${ancWarn ? 'hl' : ''}"><h3>老祖寿元</h3>
-          ${anc ? `<div class="big ${ancWarn}">${anc.left} 年</div><p>${pl(anc.id)} · ${esc(anc.realm)} · ${trace('战力 ' + anc.power, '最高战力者即老祖/太上长老')}</p>
-          <p>可顶上的后继：${succ}</p>${!hasZhuji ? '<p class="muted">族中尚无筑基修士。老祖寿尽而无筑基后继，将群狼环伺。</p>' : ''}` : '<p class="bad">族中已无修士</p>'}
-        </div>
-        <div class="card"><h3>家主</h3>
-          ${ov.head ? `<p>${pl(ov.head.id)} · ${esc(ov.head.realm)} · ${ov.head.age} 岁</p>
-          <div class="stat"><span>${trace('家主威望', '来源：功绩、修为、年龄、处置公正；处置不公、决策失败、改家规会折损。低于 50 时重大决定易遇阻')}</span><b class="num">${ov.head.prestige}</b></div>${bar(ov.head.prestige)}
-          <div class="stat"><span>${trace('嫡系支持度', '受继承制度、资源分配、家主出身、威望影响；低于 25 将出现抗议与出走')}</span><b class="num">${n0(ov.branches.main.support)}</b></div>${bar(ov.branches.main.support, ov.branches.main.support < 25 ? 'bad' : 'good')}
-          <div class="stat"><span>旁支支持度</span><b class="num">${n0(ov.branches.side.support)}</b></div>${bar(ov.branches.side.support, ov.branches.side.support < 25 ? 'bad' : 'good')}
-          <p>继承人：${ov.heir ? pl(ov.heir.id) + `（接受度 ${heirAcc.value}，${{ high: '高', mid: '中', low: '低' }[heirAcc.level]}）` : '<span class="muted">未指定</span>'}
-          <button data-act="heirPicker" ${s.ended ? 'disabled' : ''}>指定</button> <button data-act="abdicate" ${!ov.heir || s.ended ? 'disabled' : ''}>退位</button></p>` : '<p class="bad">无家主</p>'}
-        </div>
-        <div class="card"><h3>家族</h3>
-          <div class="stat"><span>人口（本家血脉）</span><b class="num">${ov.population}（${ov.natives}）</b></div>
-          <div class="stat"><span>家族声望</span><b class="num">${ov.prestige}</b></div>
-          <div class="stat"><span>${trace('锋芒', '目标 ' + ov.edgeTarget.total + '：' + edgeParts + '。每年最多变化 3 点；高于 60 被盯上（阶段 3 起影响外部事件）')}</span><b class="num">${n1(ov.edge)}</b></div>${bar(ov.edge, ov.edge > 60 ? 'bad' : '')}
-          <div class="stat"><span>${trace('护族战力', defParts || '无')}</span><b class="num">${ov.defense.total}</b></div>
-          <div class="stat"><span>里程碑</span><b>${s.family.milestones.length}</b></div>
-        </div>
-      </div>
-      <div class="card"><h3>资源</h3><div class="grid">
-        <div>${r1('stone', '灵石', ` <span class="${fc.netStone >= 0 ? 'good' : 'bad'}">${trace('(' + sign(fc.netStone) + '/年)', fc.parts.map((x) => x.label + '：' + x.text).join('；') + '。另有商铺售货与炼丹收支未计入')}</span>`)}${r1('grain', '灵谷', ` <span class="${fc.netGrain >= 0 ? 'good' : 'bad'}">(${sign(fc.netGrain)}/年)</span>`)}${r1('herb', '灵药')}${r1('ore', '矿材')}</div>
-        <div>${r1('qiju', '聚气丹')}${r1('heal', '疗伤丹')}${r1('zhuji', '筑基丹')}${r1('rareHerb', '稀有灵药')}${res.yanshou ? r1('yanshou', '延寿丹') : ''}${res.ningdan ? r1('ningdan', '凝丹丹药') : ''}</div>
-      </div></div>
-      ${reqs ? `<div class="card"><h3>族人请求</h3>${reqs}<p class="muted">未处理的请求在下回合结束时按驳回处理。</p></div>` : ''}
-      ${lr ? `<div class="card"><h3>上回合摘要（第 ${lr.fromYear}–${lr.toYear} 年）</h3><p class="muted">灵石 ${sign(lr.delta.stone)}，灵谷 ${sign(lr.delta.grain)}，人口 ${lr.population[0]} → ${lr.population[1]}</p>${lr.entries.length ? aiBlock(AI.turnKey(s, lr.turn), `<div class="log">${lr.entries.slice(-10).map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('')}</div>`, { kind: 'turn', arg: lr.turn }) : '<p class="muted">五年无大事。</p>'}<button data-act="page" data-p="chron">查看全部纪事</button></div>` : ''}
-      ${pageAdvisor()}
-      <div class="row"><button class="danger" data-act="seal" ${s.ended ? 'disabled' : ''}>封存族史（结束本局）</button></div>`;
+        <p class="muted">交给导演：主角自己过这一生，按性格与本心修炼、游历、插手传闻、遇事拿主意，你只看；随时可暂停、调速、接管。开了 AI 就由 DeepSeek 替他想，没开就按本地策略走。</p>
+        <p class="muted">资质与世界由种子决定。种子相同、选择相同，这一生就逐位相同。修道家族子弟的家族会以你的姓氏命名。</p>
+        <p class="muted">世界与设定取自鹓扶君《仙业》的东弥州南域：胎息、练炁、筑基、紫府、洞玄、金丹，玄真派、五光宗、花神府、金谷墟市、地渊。</p>
+      </div></div>`;
   }
 
-  /* ---------- 名册 ---------- */
-  function pageRoster() {
-    const s = UI.s, R = UI.roster;
-    let list = Object.values(s.people).filter((p) => R.showGone || p.status === 'alive');
-    if (R.q) list = list.filter((p) => p.name.includes(R.q) || p.traits.some((t) => t.includes(R.q)) || P.realmName(p).includes(R.q) || FX.Sim.dutyStatus(s, p).includes(R.q));
-    const key = {
-      name: (p) => p.name, branch: (p) => p.branch, realm: (p) => P.realmRank(p) * 10000 + p.progress, age: (p) => P.age(s, p), left: (p) => P.lifespanLeft(s, p),
-      loyalty: (p) => p.loyalty, ambition: (p) => p.ambition, duty: (p) => FX.Sim.dutyStatus(s, p), apt: (p) => p.aptitude,
-    }[R.sort] || ((p) => p.id);
-    list.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * R.dir; });
-    const th = (k, l) => `<th data-act="sort" data-k="${k}" aria-sort="${R.sort === k ? (R.dir > 0 ? 'ascending' : 'descending') : 'none'}">${l}${R.sort === k ? (R.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-    return `<h1>族人名册</h1>
-      <div class="row"><input type="text" id="in-rq" placeholder="搜索姓名、性格、境界、差事" value="${esc(R.q)}" data-input="rq" style="flex:1;min-width:12em">
-      <label><input type="checkbox" data-chg="showGone" ${R.showGone ? 'checked' : ''}> 显示已故/离族</label><span class="muted">${list.length} 人</span></div>
-      <table class="resp"><thead><tr>${th('name', '姓名')}${th('branch', '分支')}${th('realm', '境界')}${th('apt', '资质')}${th('age', '年龄')}${th('left', '寿元')}${th('loyalty', '忠诚')}${th('ambition', '野心')}${th('duty', '差事')}<th>性格</th></tr></thead><tbody>
-      ${list.map((p) => `<tr class="${p.status !== 'alive' ? 'dead' : p.attention ? 'attn' : ''}">
-        <td data-l="姓名">${pl(p.id)}${p.id === s.family.headId ? ' <span class="tag t-warn">家主</span>' : ''}${s.family.elderIds.includes(p.id) ? ' <span class="tag t-good">太上</span>' : ''}${p.origin !== 'native' ? ` <span class="tag">${ORIGIN_P[p.origin]}</span>` : ''}</td>
-        <td data-l="分支">${BR[p.branch]}</td><td data-l="境界">${esc(P.realmName(p))}</td><td data-l="资质" class="num">${p.aptitude}</td>
-        <td data-l="年龄" class="num">${p.status === 'dead' ? p.deathYear - p.birthYear : P.age(s, p)}</td><td data-l="寿元" class="num">${p.status === 'alive' ? P.lifespanLeft(s, p) : '—'}</td>
-        <td data-l="忠诚" class="num ${p.loyalty < 30 ? 'bad' : ''}">${p.loyalty}</td><td data-l="野心" class="num">${p.ambition}</td>
-        <td data-l="差事">${esc(FX.Sim.dutyStatus(s, p))}</td><td data-l="性格">${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</td></tr>`).join('')}
-      </tbody></table>`;
-  }
+  /* ---------- 此刻 ---------- */
+  const PAGE = {};
+  const autoPillBtn = () => {
+    const on = UI.s.player.autoPill !== false;
+    return `<button class="link" data-act="autoPill" data-v="${on ? 0 : 1}" title="闭关、修炼时药力一尽就从行囊里续服一颗；点一下切换">${on ? '自动续服（开）' : '自动续服（关）'}</button>`;
+  };
+  // 天下大事：日期开局就排好，提前几年有风声；正在进行的高亮
+  const sagaCard = (s) => {
+    // 和你沾边的排前面；沾不上边的折成一行
+    const all = Game.view.sagas(s).filter((x) => x.known);
+    const list = all.filter((x) => x.relevant);
+    const far = all.filter((x) => !x.relevant);
+    if (!all.length) return '';
+    return `<div class="card"><h3>天下大事</h3>${far.length ? `<p class="muted" style="margin:.2em 0">与你无关：${far.map((x) => esc(x.name) + '（' + (x.open ? '正在进行' : x.year + ' 年') + '）').join('、')}</p>` : ''}${list.map((x) => {
+      const when = x.open ? (x.done ? '<span class="muted">这回你已经去过了</span>' : `<span class="good">正在进行</span>，到 ${x.until} 年为止`) : x.year === s.year ? '今年' : `${x.year} 年（还有 ${x.year - s.year} 年）`;
+      return `<div class="saga"><div class="row between"><b>${esc(x.name)}</b><span>${when}</span></div><div class="muted">${esc(x.hint)}</div></div>`;
+    }).join('')}</div>`;
+  };
+  // 可折叠的一段：状态记在 UI.fold 里（重绘不丢）
+  const isOpen = (k, def) => (UI.fold[k] === undefined ? !!def : UI.fold[k]);
+  const foldBtn = (k, def, label, n) => `<button class="link fold" data-act="fold" data-k="${k}" data-def="${def ? 1 : 0}" aria-expanded="${isOpen(k, def)}">${isOpen(k, def) ? '收起' : esc(label || '展开')}${n !== undefined && !isOpen(k, def) ? '（' + n + '）' : ''}</button>`;
+  const desc = (x) => `<span class="desc clamp" data-act="unclamp" title="${esc(x)}">${esc(x)}</span>`;
+  const subTabs = (key, tabs) => `<div class="row tabs sub">${tabs.map(([k, n]) => `<button class="${UI[key] === k ? 'on' : ''}" data-act="subTab" data-key="${key}" data-k="${k}">${n}</button>`).join('')}</div>`;
 
-  /* ---------- 修炼安排 ---------- */
-  function pageCult() {
-    const s = UI.s, U2 = UI.cult;
-    const adults = P.adults(s).sort((a, b) => (!!b.attention - !!a.attention) || (P.realmRank(b) - P.realmRank(a)));
-    const att = FX.Sim.needsAttention(s);
-    const dutyOpts = (p) => Object.keys(CF.duties).map((k) => { const ok = FX.Sim.dutyAllowed(s, p, k); return `<option value="${k}" ${p.duty.type === k ? 'selected' : ''} ${ok !== true ? 'disabled' : ''}>${CF.duties[k].name}${ok !== true ? '（' + ok + '）' : ''}</option>`; }).join('');
-    const gates = P.living(s).map((p) => ({ p, b: Game.breakthroughPreview(s, p.id) })).filter((x) => x.b && x.b.kind && (x.b.can.ok || P.isFull(x.p)));
-    const conc = s.family.rules.allocation === 'concentrate';
-    const cands = P.living(s).filter((p) => P.hasRoot(p) && p.realm.major > 0).sort((a, b) => b.aptitude - a.aptitude);
-    return `<h1>修炼安排</h1>
-      <div class="card ${att.length ? 'hl' : ''}"><div class="row between"><div>差事默认沿用上回合。${att.length ? `<b class="warn">${att.length} 人需要处理</b>（新成年、伤愈、被撤职、新入族等，已高亮）` : '无人需要处理。'}</div>
-        <div class="row"><button data-act="suggest" data-all="0" ${!att.length ? 'disabled' : ''}>按建议安排需处理者</button><button data-act="suggest" data-all="1">全族按建议重排</button></div></div>
-        <div class="row" style="margin-top:.6em">批量：把
-          <select data-chg="batchCond"><option value="attention" ${U2.batchCond === 'attention' ? 'selected' : ''}>需处理者</option><option value="none" ${U2.batchCond === 'none' ? 'selected' : ''}>无差事者</option>${Object.keys(CF.duties).map((k) => `<option value="d:${k}" ${U2.batchCond === 'd:' + k ? 'selected' : ''}>当前「${CF.duties[k].name}」者</option>`).join('')}<option value="mortal" ${U2.batchCond === 'mortal' ? 'selected' : ''}>所有凡人</option><option value="lowapt" ${U2.batchCond === 'lowapt' ? 'selected' : ''}>资质低于 45 的修士</option></select>
-          改派为 <select data-chg="batchDuty">${Object.keys(CF.duties).filter((k) => !CF.duties[k].locked).map((k) => `<option value="${k}" ${U2.batchDuty === k ? 'selected' : ''}>${CF.duties[k].name}</option>`).join('')}</select>
-          <button data-act="batch">执行</button></div>
-      </div>
-      <div class="card"><h3>差事</h3><table class="resp"><thead><tr><th>族人</th><th>境界 / 修为</th><th>${trace('修炼速度', '点击个人速度可看到各项系数')}</th><th>状态</th><th>差事</th><th></th></tr></thead><tbody>
-      ${adults.map((p) => { const sp = FX.CU.breakdown(s, p); return `<tr class="${p.attention ? 'attn' : ''}">
-        <td data-l="族人">${pl(p.id)}${p.attention ? ` <span class="tag t-warn">${esc(p.attention)}</span>` : ''}${s.family.focusIds.includes(p.id) ? ' <span class="tag t-good">重点</span>' : ''}</td>
-        <td data-l="境界">${esc(P.realmName(p))}${p.realm.major > 0 ? ` <span class="muted num">${n0(p.progress)}/${P.need(p) === Infinity ? '—' : P.need(p)}</span>` : ''}</td>
-        <td data-l="修炼速度" class="num">${trace(sp.total + '/年', sp.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</td>
-        <td data-l="状态">${p.health.state === 'healthy' ? '健康' : `<span class="bad">${p.health.state === 'heavy' ? '重伤' : '轻伤'}（${Math.ceil(p.health.recoverYears / 5)} 回合）</span>`}</td>
-        <td data-l="差事"><select data-chg="duty" data-id="${p.id}" aria-label="${esc(p.name)}的差事" ${p.health.state === 'heavy' ? 'disabled' : ''}>${p.duty.type ? '' : '<option value="">— 待安排 —</option>'}${dutyOpts(p)}</select></td>
-        <td>${p.attention ? `<button data-act="keepDuty" data-id="${p.id}" title="确认沿用当前差事">沿用</button>` : ''}</td></tr>`; }).join('')}
-      </tbody></table></div>
-      <div class="card"><h3>重点培养对象</h3>
-        ${conc ? `<p class="muted">集中培养：至多 2 人，修炼 ×1.25、丹药优先；其余修士 ×0.9，且忠诚缓降。</p><div class="row">${cands.slice(0, 12).map((p) => `<label class="tag ${s.family.focusIds.includes(p.id) ? 't-good' : ''}"><input type="checkbox" data-chg="focus" data-id="${p.id}" ${s.family.focusIds.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}（资质 ${p.aptitude}）</label>`).join('')}</div>` : `<p class="muted">现行资源分配为「${CF.rules.allocation[s.family.rules.allocation].name}」，不设重点对象。改为集中培养可在“家规与设置”。</p>`}
-      </div>
-      <div class="card"><h3>突破</h3>
-        <p class="muted">炼气一至八层修满自动晋升。筑基小瓶颈${s.family.settings.autoMinor ? '已设为自动尝试' : '需手动尝试'}（<button class="link" data-act="toggleSet" data-k="autoMinor">切换</button>）。大关需要家主决定。</p>
-        ${gates.length ? gates.map(({ p, b }) => `<div class="opt"><div class="row between"><b>${pl(p.id)} 冲击${esc(b.target)}</b><span class="big num ${b.chance >= 60 ? 'good' : b.chance < 30 ? 'bad' : ''}">${b.chance}%</span></div>
-          <div class="meta">${b.parts.map((x) => `${esc(x.label)} <b>${typeof x.value === 'number' ? sign(x.value) : x.value}</b>`).join('；')}（上限 ${b.max}%）</div>
-          <div class="meta">失败：${b.kind === 'minor' ? '损失一成修为' : `修为跌落 30–50%、重伤，身死概率 <b class="bad">${b.death}%</b>`}；之后休养一回合，下次 -5%。</div>
-          <div class="row" style="margin-top:.4em">${b.can.ok ? `<button class="primary" data-act="tryBreak" data-id="${p.id}">尝试突破</button>` : `<span class="muted">${esc(b.can.reason)}</span>`}${b.kind === 'zhuji' && !s.family.resources.zhuji ? '<span class="muted">提示：坊市偶有筑基丹出售（产业经营）。</span>' : ''}</div></div>`).join('') : '<p class="muted">暂无人修为圆满。</p>'}
+  // 此刻页的行动页签；“再来一次”记的是上一个可重复的行动
+  const ACT_TABS = ['修炼', '外出', '营生', '宗门', '物品'];
+  const LAST_KEYS = ['type', 'days', 'to', 'npc', 'item', 'tech', 'fid', 'gid', 'n', 'path', 'zf', 'hall', 'coin', 'until'];
+  const repeatable = (a) => ['修炼', '外出', '营生', '宗门'].includes(a.group) && !['breakthrough', 'travel', 'leave', 'join', 'hall', 'learn', 'dongfu', 'dongtian', 'sect_learn'].includes(a.type);
+  const sameAct = (a, L) => LAST_KEYS.every((k) => (L.until && k === 'days') || a[k] === L[k]);
+  const remember = (k, v) => { try { localStorage.setItem('family-xiuxian:' + k, JSON.stringify(v)); } catch (e) { /* 忽略 */ } };
+
+  PAGE.now = (ov) => {
+    const s = UI.s, me = ov.me;
+    const A = Game.actions(s);
+    const grp = (g) => A.filter((a) => a.group === g);
+    const btn = (a, cls) => `<button class="${cls || ''}" data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || '')}">${esc(a.label)}</button>`;
+    const need = ov.need === Infinity ? 0 : ov.need;
+    const prog = need ? Math.min(100, (me.progress / need) * 100) : 0;
+    const health = me.health.state === 'healthy' ? '<span class="good">无恙</span>' : `<span class="bad">${me.health.state === 'heavy' ? '重伤' : '轻伤'}</span> <span class="muted">${T.dur(me.health.days)}</span>`;
+    const bt = ov.breakthrough;
+    const place = ov.place;
+    const pv = Game.view.place(s, place.id);
+    const travel = place.links.map((l) => { const to = s.places[l.to]; const a = A.find((x) => x.type === 'travel' && x.to === l.to); return `<button data-act="do" data-i="${a ? A.indexOf(a) : -1}" ${a && a.ok ? '' : 'disabled'} title="${esc(a ? a.reason : '')}">${esc(to.name)} <span class="muted">${a ? a.days : l.days} 天 · ${DANGER[to.danger]}${to.region && to.region !== place.region ? ' · ' + esc(to.region) : ''}${s.player.visited.includes(to.id) ? '' : ' · 未去过'}${a && !a.ok ? ' · ' + esc(CF.realms.names[l.minMajor] || '') + '以后才过得去' : ''}</span></button>`; }).join('');
+    // 缺的东西就地给出来路：此地货架买、长老房换、托人代寻，或赶去有货的地方
+    const route = routeMemo(s);
+    const go = (id, text) => { if (!id || id === me.locationId) return ''; const r = route(id); return r ? `<button class="link" data-act="goto" data-id="${id}">${esc(text || '赶过去')} ${r.days} 天</button>` : ''; };
+    // 卡关时的“下一步”：核心 Guide 照世界状态算出的几条路，每条落到一个按钮上
+    const gd = FX.Guide.next(s);
+    const gIdx = (a) => A.findIndex((x) => x.type === a.type && LAST_KEYS.every((k) => x[k] === a[k]));
+    const gBtn = (w, cls) => {
+      const st = w && w.step;
+      if (!st) return '';
+      if (st.act) { const i = gIdx(st.act); return i < 0 ? '' : st.qty ? `<button class="${cls || ''}" data-act="doN" data-i="${i}" data-n="${st.qty}">捐 ${n0(st.qty * A[i].cost)} 符钱</button>` : `<button class="${cls || ''}" data-act="do" data-i="${i}">${esc(A[i].label)}</button>`; }
+      if (st.buy) return `<button class="${cls || ''}" data-act="buy" data-k="${esc(st.buy)}" data-n="1">买下</button>`;
+      if (st.goto) { const r = route(st.goto); return `<button class="${cls || ''}" data-act="goto" data-id="${st.goto}">去${esc(s.places[st.goto].name)}${r ? ' · ' + r.days + ' 天' : ''}</button>`; }
+      return '';
+    };
+    const guideHtml = (g) => !g ? '' : g.best ? `<div class="guide"><div><b class="warn">下一步</b> ${esc(g.best.text)}</div><div class="row src">${gBtn(g.best, 'primary')}</div>${g.ways.length > 1 ? `<div class="muted small">也可以：${g.ways.slice(1, 3).map((w) => esc(w.text) + ' ' + gBtn(w)).join('；')}</div>` : ''}</div>`
+      : `<div class="guide bad small">眼下想不出去哪弄到，去采买页看看 <button class="link" data-act="page" data-p="shop">采买</button></div>`;
+    const reqSrc = (r) => {
+      if (!r.ok && !r.optional && gd && !gd.need.soon && gd.need.label === r.label) return guideHtml(gd);
+      if (r.ok) { const u = r.item && A.find((a) => a.type === 'use' && a.item === r.item && a.ok); return u ? `<div class="row src"><button data-act="do" data-i="${A.indexOf(u)}">${esc(u.label)}</button></div>` : ''; }
+      if (r.item && CF.items[r.item]) { const b = srcBtns(s, A, r.item, sourcesOf(s, A, r.item, route)); return (b.html ? `<div class="row src">${b.html}</div>` : '') + (b.why.length && !b.ready ? `<div class="muted small">${esc(b.why.join('；'))}</div>` : ''); }
+      if (r.kaifu) {
+        // 开府真法：手里有的直接研习，长老房能请授的、此地货架有的直接给按钮
+        const kf = (t) => CF.techniques[t] && CF.techniques[t].kind === 'kaifu';
+        const ready = A.filter((a) => (a.type === 'learn' || a.type === 'sect_learn') && a.ok && kf(a.tech)).slice(0, 2)
+          .map((a) => `<button data-act="do" data-i="${A.indexOf(a)}">${a.type === 'learn' ? '研习' : a.cost ? '换' : '请授'}《${esc(CF.techniques[a.tech].name)}》${a.cost ? ' · ' + n0(a.cost) + ' ' + esc(CF.house.meritName) : ''}</button>`);
+        const m = FX.World.hasMarket(s, me.locationId) ? s.markets[me.locationId] : null;
+        if (!ready.length && m) m.stock.filter((x) => x.qty > 0 && x.item.startsWith('tech:') && kf(x.item.slice(5)) && x.price <= s.player.stone).slice(0, 2)
+          .forEach((x) => ready.push(`<button data-act="buy" data-k="${esc(x.item)}" data-n="1">买《${esc(CF.techniques[x.item.slice(5)].name)}》 · ${n0(x.price)} 符钱</button>`));
+        return `<div class="row src">${ready.join('')}<button data-act="page" data-p="shop" data-tab="need">${ready.length ? '别的来路' : '去采买看来路'}</button></div>`;
+      }
+      if (r.items && r.items.length) return `<div class="row src"><button data-act="page" data-p="shop" data-tab="need">去采买看来路</button></div>`;
+      return '';
+    };
+    const reqList = (list) => `<div class="reqs">${list.map((r) => `<div class="${r.ok ? 'good' : r.optional ? 'muted' : 'bad'}">${r.ok ? '✓' : r.optional ? '·' : '✗'} ${esc(r.label)}${r.note && !(r.ok && r.item) && !(gd && !gd.need.soon && gd.need.label === r.label && !r.ok) ? ' <span class="muted">' + esc(r.note) + '</span>' : ''}${reqSrc(r)}</div>`).join('')}</div>`;
+    const fit = ov.fit;
+    const disabled = s.ended || s.pending.length;
+    const member = ov.faction && (ov.faction.type === 'sect' || ov.faction.type === 'clan');
+    // 手机上看不到右栏的“最近经历”，在顶上留两三条
+    const recent = Game.view.feed(s, 12).filter((e) => e.pov).slice(0, 3);
+    const recentCard = recent.length ? `<div class="card recent narrow-only"><div class="row between"><b class="warn">刚才</b><button class="link" data-act="page" data-p="chron">全部纪事</button></div>${aiWaiting('n:' + recent[0].id)}${feedHtml(recent)}</div>` : '';
+    // 冲关：成功率、要什么、按钮放在一处
+    const btActs = A.filter((a) => a.type === 'breakthrough' && !a.path);
+    const failInfo = bt ? FX.CU.failInfo(s, P.player(s)) : null;
+    // 冲关不只看运气：把还能稳稳添上的几分把握点出来
+    const upTips = [];
+    if (bt && !['minor', 'taixi', 'zhangguan'].includes(bt.kind) && bt.chance < bt.max) {
+      const B = CF.breakthrough;
+      const acc = (bt.parts.find((x) => /^圆满后积累/.test(x.label)) || { value: 0 }).value;
+      const y1 = A.find((a) => a.type === 'cultivate' && a.days === 360 && !a.until && !a.coin);
+      if (need && me.progress >= need && acc < B.accumMax) upTips.push(`圆满后接着闭关打磨，每年 +${B.accumPerYear}%，至多 +${B.accumMax}%${acc ? '（已 +' + acc + '%）' : ''}${y1 && y1.ok ? ` <button class="link" data-act="do" data-i="${A.indexOf(y1)}">闭关 1 年</button>` : ''}`);
+      const fm = FX.Sect.mine(s), seat = fm && s.places[fm.seatId];
+      if (!bt.parts.some((x) => /^灵机/.test(x.label))) upTips.push(`到灵机 ${B.qiBonusMin} 级以上的地方冲关 +${B.qiBonus}%${seat && seat.qi >= B.qiBonusMin && me.locationId !== seat.id ? '，山门' + esc(seat.name) + '就是 ' + go(seat.id, '回山门') : ''}`);
+      if (bt.kind === 'zifu' && bt.kaifu && CF.techniques[bt.kaifu].grade < 3) {
+        const better = Object.keys(CF.techniques).filter((t) => CF.techniques[t].kind === 'kaifu' && CF.techniques[t].grade > CF.techniques[bt.kaifu].grade && techWhere(s, t));
+        upTips.push(`开府真法品第越高越好，有了就算，不必改修：${better.map((t) => `${esc(CF.gradeNames[CF.techniques[t].grade])}《${esc(CF.techniques[t].name)}》${B.yixiangMod[CF.techniques[t].grade] > 0 ? '+' : ''}${B.yixiangMod[CF.techniques[t].grade]}%（${esc(techWhere(s, t))}）`).join('；')}`);
+      }
+    }
+    const btCard = bt ? `<div class="card ${bt.can.ok ? 'hl' : ''}"><h3>${bt.kind === 'taixi' ? '参悟胎息' : esc(bt.verb + bt.target)}</h3>
+        <p style="margin:.2em 0">成功率 <b class="big">${bt.chance}%</b>${bt.death ? ` · <span class="bad">失败时约 ${bt.death}% 身死${bt.kind === 'mizhang' ? '（失道之祸）' : bt.tianfa ? '（天罚）' : ''}</span>` : bt.kind === 'zhangguan' ? ' · <span class="good">没破开也无祸患</span>' : ''} · 需 ${T.dur(bt.days)}</p>
+        ${bt.kind !== 'fanxu' && failInfo ? `<p class="small muted" style="margin:.1em 0 .4em">失败的代价：${esc(failInfo.join('；'))}</p>` : ''}
+        ${btActs.length ? `<div class="row">${btActs.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div>` : ''}
+        ${bt.kind === 'fanxu' ? fanxuPaths(A) : ''}
+        ${reqList(ov.reqs)}
+        ${bt.can.ok ? '' : `<p class="bad" style="margin:.3em 0">暂不能${bt.kind === 'taixi' ? '参悟' : '冲关'}：${esc(bt.can.reason)}</p>`}
+        ${upTips.length ? `<div class="up-tips small"><span class="muted">还能添把握：</span>${upTips.map((t) => `<div>· ${t}</div>`).join('')}</div>` : ''}
+        <div>${foldBtn('btParts', false, '成功率怎么算')}</div>${isOpen('btParts', false) ? `<p class="muted">${bt.parts.map((x) => esc(x.label) + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；')}</p>` : ''}</div>`
+      : ov.reqs.length ? `<div class="card"><h3>转入练炁</h3>${reqList(ov.reqs)}<p class="muted">练炁没有关隘：两样齐了，胎息便自然转入练炁一层。</p></div>` : '';
+    // 做什么：按类分页签；修炼页里“闭关到圆满”在最前，时长做成小格子；大事放在页签上面
+    const until = A.find((a) => a.type === 'cultivate' && a.until);
+    const listOf = (g) => {
+      // 换不了的功法（道基已成等）只在采买页说明，不占做什么里的位置
+      let list = grp(g).filter((a) => (g !== '宗门' || a.ok || !/^要回到/.test(a.reason)) && (a.type !== 'learn' || a.ok));
+      if (bt) list = list.filter((a) => a.type !== 'breakthrough');
+      return list;
+    };
+    const big = listOf('大事').filter((a) => a.ok || !/已经/.test(a.reason)); // 这回已经办过的不再占位
+    const tabs = ACT_TABS.filter((g) => listOf(g).length);
+    const tab = tabs.includes(UI.actTab) ? UI.actTab : tabs[0];
+    const chip = (a, text) => `<button class="chip" data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || a.label)}">${esc(text)}</button>`;
+    let actBody = '';
+    if (tab === '修炼') {
+      const L = listOf('修炼');
+      const durs = L.filter((a) => a.type === 'cultivate' && !a.until && !a.coin);
+      const coins = L.filter((a) => a.type === 'cultivate' && a.coin);
+      const rests = L.filter((a) => a.type === 'rest');
+      const rest = L.filter((a) => a.type !== 'cultivate' && a.type !== 'rest');
+      const verb = durs.length ? durs[0].label.split(' ')[0] : '修炼';
+      actBody = `${rests.length ? `<div class="act-group"><span class="bad">有伤在身，先静养</span><div class="chips">${rests.map((a) => chip(a, T.dur(a.days))).join('')}</div></div>` : ''}
+        ${until ? `<button class="primary wide" data-act="do" data-i="${A.indexOf(until)}" ${until.ok ? '' : 'disabled'} title="${esc(until.reason || '')}">${esc(until.label)}</button>` : ''}
+        ${durs.length ? `<div class="act-group"><span class="muted">${esc(verb)} <span class="small">· 一年以上是闭关，可能被打扰，被打扰就停下</span></span><div class="chips">${durs.map((a) => chip(a, T.dur(a.days))).join('')}</div></div>` : ''}
+        ${coins.length ? `<div class="act-group"><span class="muted">以符钱修行 <span class="small">· 把符钱炼进去，奢费但不挑地方</span></span><div class="chips long">${coins.map((a) => chip(a, T.dur(a.days) + ' · ' + n0(a.cost) + ' 符钱')).join('')}</div></div>` : ''}
+        ${rest.length ? `<div class="row">${rest.map((a) => btn(a)).join('')}</div>` : ''}`;
+    } else if (tab) {
+      actBody = `<div class="row">${listOf(tab).map((a) => btn(a)).join('')}</div>${tab === '外出' ? '<p class="muted small" style="margin-bottom:0">游历多半一无所获，偶有遭遇。远路去地图页一键赶过去。</p>' : ''}`;
+    }
+    // 要紧的事：和你沾边、快到的天下大事；散修能去拜的宗门；长老房白给的功法；元神未入殿。每条带一个直接去办的按钮
+    const tips = [];
+    if (gd && gd.need.soon && gd.best) tips.push(`<b class="warn">${esc(gd.need.label)}</b> ${esc(gd.best.text)}${gd.ways.length > 1 ? '；也可以' + esc(gd.ways[1].text) : ''}`);
+    for (const x of Game.view.sagas(s)) {
+      if (!x.known || !x.relevant || x.done || !(x.open || x.year - s.year <= 3)) continue;
+      tips.push(`<b class="warn">${esc(x.name)}</b> <span class="small">${x.open ? '正在进行，到 ' + x.until + ' 年' : x.year === s.year ? '今年' : '还有 ' + (x.year - s.year) + ' 年'}</span> <span class="muted small">${esc(x.hint)}</span> ${x.open ? go(x.at) : ''}`);
+    }
+    if (!ov.faction || ov.faction.type !== 'sect') {
+      const hv = Game.view.house(s);
+      const sects = (hv.sects || []).filter((x) => x.join && !x.join.closed && (x.can === true || /^要回到/.test(x.can))).sort((a, b) => (a.route ? a.route.days : 1e9) - (b.route ? b.route.days : 1e9)).slice(0, 2);
+      for (const x of sects) tips.push(`散修没有俸禄和长老房。可去${placeLink(x.seat.id)}求入<b>${esc(x.f.name)}</b> <span class="muted small">至少${esc(CF.realms.names[x.join.minMajor])}${x.join.maxAge ? '，年不过 ' + x.join.maxAge + '（你 ' + ov.age + ' 岁）' : ''}，成功率 ${x.chance.chance}%</span> ${go(x.seat.id)}`);
+    } else {
+      const fm = FX.Sect.mine(s);
+      if (fm && fm.seatId && !s.player.dongfu && !s.player.dongtian && !FX.Sect.atSeat(s, fm)) tips.push(`你不在山门。领差事、长老房、山门灵机都在${placeLink(fm.seatId)} ${go(fm.seatId, '回山门')}`);
+      const free = A.filter((a) => a.type === 'sect_learn' && a.ok && !a.cost && !s.player.manuals.includes(a.tech));
+      if (free.length) tips.push(`长老房可请授${free.map((a) => '《' + esc(CF.techniques[a.tech].name) + '》').join('')}，不收${esc(CF.house.meritName)} <button class="link" data-act="page" data-p="shop" data-tab="books">去请授</button>`);
+      if (me.realm.major >= 7 && FX.Sect.hallRank && ov.faction.key === 'yuchen' && !me.hall) tips.push(`你已成元神，可以入玉宸九殿任职，各殿职权不同 <button class="link" data-act="page" data-p="sect">去挑殿</button>`);
+    }
+    const sagaMini = tips.length ? `<div class="saga-mini">${tips.map((t) => `<div>${t}</div>`).join('')}<button class="link small" data-act="page" data-p="sagas">全部大事</button></div>` : '';
+    // 自由输入：说一句想做什么，先看预览再照做
+    const aiReady = !!(FX.AI && FX.AI.config().enabled && FX.AI.ready().ok);
+    const sayBox = disabled ? '' : `<div class="say-box"><div class="row say-row"><input id="say-in" type="text" maxlength="200" enterkeyhint="go" autocomplete="off" placeholder="想做什么，直接说（如：去坊市打听丹母砂哪里有）" value="${esc(UI.sayText || '')}" ${UI.sayBusy ? 'disabled' : ''}><button class="primary" data-act="say" ${UI.sayBusy ? 'disabled' : ''}>${UI.sayBusy ? 'AI 理解中…' : '说'}</button></div><div class="muted small">${aiReady ? 'AI 理解你的话，拆成规则认得的几步，先给你看再做' : 'AI 没开，按地名、人名、物名找最像的几种做法'}</div></div>`;
+    const actCard = `<div class="card acts"><h3>做什么</h3>${disabled ? `<p class="warn">眼前的事要先处理。 ${s.pending.length ? '<button class="link" data-act="openEvent">去处理</button>' : ''}</p>` : ''}
+        ${sayBox}
+        ${sagaMini}
+        ${big.length ? `<div class="act-group"><span class="warn">大事</span><div class="row">${big.map((a) => btn(a, a.ok ? 'primary' : '')).join('')}</div></div>` : ''}
+        ${tabs.length > 1 ? `<div class="row tabs acts-tabs">${tabs.map((g) => { const n = listOf(g).filter((a) => a.ok).length; return `<button class="${g === tab ? 'on' : ''}" data-act="subTab" data-key="actTab" data-k="${g}">${g}${g !== tab && n ? ' <span class="muted small">' + n + '</span>' : ''}</button>`; }).join('')}</div>` : ''}
+        ${actBody}
       </div>`;
-  }
-
-  /* ---------- 产业 ---------- */
-  function pageEcon() {
-    const s = UI.s, b = s.family.buildings, res = s.family.resources;
-    const fc = FX.Econ.forecast(s);
-    const bl = Object.keys(CF.buildings).map((k) => {
-      const d = CF.buildings[k], lv = b[k] || 0;
-      const c = FX.Econ.canUpgrade(s, k);
-      const cost = lv < d.max ? FX.Econ.upgradeCost(k, lv + 1) : null;
-      return `<tr><td data-l="建筑"><b>${d.name}</b> <span class="muted">${esc(d.desc)}</span></td><td data-l="等级" class="num">${lv} / ${d.max}</td>
-        <td data-l="年维护" class="num">${d.upkeep * lv}</td><td data-l="升级费用" class="num">${cost ? cost.stone + ' 灵石' + (cost.ore ? ' + ' + cost.ore + ' 矿材' : '') : '—'}</td>
-        <td>${d.locked ? '<span class="muted">阶段 3</span>' : `<button data-act="upgrade" data-k="${k}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason || '')}">${lv ? '升级' : '建造'}</button>`}</td></tr>`;
-    }).join('');
-    const offers = s.market.offers.map((o) => `<tr><td data-l="货物">${CF.items[o.item]}${o.rare ? ' <span class="tag t-warn">稀有</span>' : ''}</td><td data-l="存量" class="num">${o.qty}</td><td data-l="单价" class="num">${n1(o.price)}</td>
-      <td><button data-act="buy" data-k="${o.item}" data-q="1" ${o.qty < 1 || res.stone < o.price ? 'disabled' : ''}>买 1</button>${o.qty >= 10 ? ` <button data-act="buy" data-k="${o.item}" data-q="10" ${res.stone < o.price * 10 ? 'disabled' : ''}>买 10</button>` : ''}</td></tr>`).join('');
-    const sellable = ['grain', 'herb', 'ore', 'qiju', 'rareHerb'].filter((k) => res[k] >= 1);
-    const set = s.family.settings;
-    return `<h1>产业经营</h1>
-      <div class="card"><h3>年度收支预估</h3>${fc.parts.map((x) => `<div class="stat"><span>${x.label}</span><span>${esc(x.text)}</span></div>`).join('')}
-        <div class="stat"><span>净灵石 / 净灵谷</span><b class="${fc.netStone >= 0 ? 'good' : 'bad'}">${sign(fc.netStone)} / ${sign(fc.netGrain)}</b></div>
-        <p class="muted">灵谷仓储上限 ${FX.Econ.grainCap(s)}，超出部分每年腐败 10%。商铺每年自动出售多余矿材与灵谷（${b.alchemy ? '' : '无炼丹房时也出售灵药，'}市价：灵谷 ${s.market.prices.grain}，矿材 ${s.market.prices.ore}，灵药 ${s.market.prices.herb}）。</p></div>
-      <div class="card"><h3>建筑</h3><table class="resp"><thead><tr><th>建筑</th><th>等级</th><th>年维护</th><th>下一级费用</th><th></th></tr></thead><tbody>${bl}</tbody></table>
-        <p class="muted">升级费用 = 一级费用 × 1.8^(目标等级−1)；三级起另需矿材。</p></div>
-      <div class="card"><h3>产业链</h3>
-        <div class="stat"><span>灵田划作药田</span><span class="row"><button data-act="herb" data-d="-1" ${set.herbPlots <= 0 ? 'disabled' : ''}>−</button><b class="num">${set.herbPlots} / ${b.field || 0} 级</b><button data-act="herb" data-d="1" ${set.herbPlots >= (b.field || 0) ? 'disabled' : ''}>＋</button></span></div>
-        <div class="stat"><span>炼丹（灵药 3 + 灵石 5 → 聚气丹；成丹率 60% + 等级×10%）</span><span>${b.alchemy ? `炼丹者 ${FX.Econ.workers(s, 'alchemy').length} 人，每人每年 ${b.alchemy} 炉` : '<span class="muted">尚无炼丹房</span>'}</span></div>
-        <div class="stat"><span>筑基丹方</span><span>${s.family.recipes.zhuji ? `已得（稀有灵药 + 40 灵石 → 筑基丹）<label><input type="checkbox" data-chg="set" data-k="craftZhuji" ${set.craftZhuji ? 'checked' : ''}> 优先炼制</label>` : '<span class="muted">未得，可在坊市碰运气</span>'}</span></div>
-        <div class="stat"><span>聚气丹分配</span><span><label><input type="checkbox" data-chg="set" data-k="usePills" ${set.usePills ? 'checked' : ''}> 按家规自动分给闭关/历练者</label> 保留 <input type="number" min="0" style="width:5em" data-chg="setNum" data-k="pillReserve" value="${set.pillReserve}"> 颗</span></div>
-        <div class="stat"><span>疗伤丹</span><span><label><input type="checkbox" data-chg="set" data-k="useHeal" ${set.useHeal ? 'checked' : ''}> 重伤者自动服用（恢复加倍）</label></span></div>
+    // 快捷栏：手机竖屏时贴在底部导航上面，横屏时放在右栏顶上。左边“再来一次”，右边冲关或闭关到圆满
+    const primary = (bt && btActs.find((a) => a.ok)) || big.find((a) => a.ok) || (until && until.ok ? until : null);
+    const lastA = UI.last ? A.find((a) => sameAct(a, UI.last)) : null;
+    const again = lastA && lastA.ok && lastA !== primary ? lastA : null;
+    const risky = primary && primary.type === 'breakthrough' && bt && bt.death;
+    // 冲不了、也没得修的时候，快捷栏放“下一步”
+    const gq = !primary && gd && !gd.need.soon && gd.best && gd.best.step ? gBtn(gd.best, 'primary') : '';
+    const qbar = s.ended ? '' : s.pending.length ? '<div class="qbar"><button class="primary" data-act="openEvent">处理眼前的事</button></div>'
+      : gq ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${gq}</div>`
+      : primary || again ? `<div class="qbar">${again ? `<button data-act="do" data-i="${A.indexOf(again)}" title="${esc(again.label)}"><span class="muted small">再来</span> ${esc(again.label)}</button>` : ''}${primary ? `<button class="primary${risky ? ' risky' : ''}${primary === until && tab === '修炼' ? ' dup' : ''}" data-act="${risky ? 'doRisk' : 'do'}" data-i="${A.indexOf(primary)}" title="${esc(primary.label)}">${esc(primary.label)}</button>` : ''}</div>` : '';
+    return `
+      <div class="now-cols"><div class="col-a">
+      ${recentCard}
+      <div class="card hl">
+        <div class="row between"><h2 style="margin:0">${esc(me.name)}</h2><span class="muted">${me.sex === 'M' ? '男' : '女'} · ${ov.age} 岁 · ${esc(ov.faction ? ov.faction.name : '散修')}</span></div>
+        <div class="big">${esc(ov.realmTitle)}${ov.title ? ' <span class="tag">' + esc(ov.title) + '</span>' : ''}</div>
+        ${need ? `<div class="row between"><span class="muted">${progLabel(me.realm.major)}</span><span class="num">${n1(me.progress)} / ${need}${ov.full ? ' <span class="warn">已圆满</span>' : ''}</span></div>${bar(prog, ov.full ? 'good' : '')}` : ''}
+        <div class="kv">
+          <div><span class="muted">寿元</span> <b class="${ov.left < 15 ? 'bad' : ''}">余 ${n0(ov.left)} 年</b></div>
+          <div><span class="muted">伤势</span> <b>${health}</b></div>
+          <div><span class="muted">${trace('修炼', ov.speed.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${ov.speed.total}/年</b></div>
+          <div><span class="muted">${trace('战力', ov.power.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span> <b>${n1(ov.power.total)}</b></div>
+          <div><span class="muted">符钱</span> <b>${n0(ov.stone)}</b></div>
+          ${member ? `<div><span class="muted">${esc(CF.house.meritName)}</span> <b>${n0(ov.merit)}</b> <button class="link" data-act="page" data-p="sect">${ov.faction.type === 'clan' ? '族中' : '长老房'}</button></div>` : ''}
+        </div>
+        <div style="margin-top:.3em">${foldBtn('meMore', false, '根基、法门、采气')}</div>
+        ${isOpen('meMore', false) ? `
+          <div class="stat"><span>寿元上限</span><b>${n0(ov.lifespan)} 年</b></div>
+          <div class="stat"><span>资质</span><b>${me.aptitude}${P.rootNames(me).length ? ' · ' + esc(P.rootNames(me).join(' · ')) : ''}</b></div>
+          <div class="stat"><span>${me.realm.major >= 4 ? '法门' : '练炁术'}</span><b>${ov.tech.kind === 'none' ? '<span class="muted">尚无</span>' : '《' + esc(ov.tech.name) + '》'}</b></div>
+          ${fit ? `<div class="stat"><span>${trace('采气', fit.label)}</span><b class="${fit.value >= 1 ? 'good' : fit.value < 0.5 ? 'bad' : ''}">${esc(fit.short)} ×${fit.value}</b></div>` : ''}
+          ${member ? `<div class="stat"><span>职位</span><b>${esc(FX.Sect.postName(s, ov.faction, me))}</b></div>` : ''}
+          ${ov.pillUntil || (me.realm.major >= 2 && s.player.inv.qiju) ? `<div class="stat"><span>${esc(CF.items.qiju.name)}</span><b>${ov.pillUntil ? '药力至 ' + T.fmt(ov.pillUntil) + ' · ' : ''}${autoPillBtn()}</b></div>` : ''}
+          <div class="stat"><span>性格</span><span>${me.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>` : ''}
       </div>
-      <div class="card"><h3>坊市（本回合货架）</h3><table class="resp"><thead><tr><th>货物</th><th>存量</th><th>单价</th><th></th></tr></thead><tbody>${offers}</tbody></table>
-        <div class="row" style="margin-top:.6em">出售：${sellable.map((k) => `<button data-act="sellAsk" data-k="${k}">${CF.items[k]}（${n0(res[k])}，单价 ${FX.Econ.sellPrice(s, k)}）</button>`).join('') || '<span class="muted">无可售库存</span>'}</div></div>`;
+      ${btCard}
+      </div><div class="col-b">${actCard}${qbar}</div><div class="col-c">
+      <div class="grid">
+        <div class="card">
+          <div class="row between"><h2 style="margin:0">${placeLink(place.id)}</h2><span class="tag">${esc((place.region || '南域') + ' · ' + pv.typeName)}</span></div>
+          <div class="stat"><span>灵机</span><b>${stars(place.qi)} ${QI[place.qi]} · 属「${esc(place.attr)}」${FX.CU.qiFor(s, me) < place.qi ? ' <span class="bad">（你是外人，只能借到 ' + FX.CU.qiFor(s, me) + ' 级）</span>' : ''}</b></div>
+          <div class="stat"><span>危险</span><b class="${place.danger >= 3 ? 'bad' : ''}">${stars(Math.min(5, place.danger))} ${DANGER[place.danger]}</b></div>
+          ${s.player.dongfu ? `<div class="stat"><span>洞府</span><b>${s.player.dongfu === place.id ? '<span class="good">就在此地</span> <span class="muted">（灵机 +' + CF.dongfu.qiBonus + '，闭关少受打扰）</span>' : placeLink(s.player.dongfu) + ' <button class="link" data-act="goto" data-id="' + s.player.dongfu + '">回去</button>'}</b></div>` : ''}
+          <div class="stat"><span>势力</span><b>${pv.faction ? esc(pv.faction.name) : '无人管辖'}</b></div>
+          <div class="stat"><span>此地的人</span><b>${pv.people.length} 人 <button class="link" data-act="page" data-p="people">看看</button></b></div>
+          ${pv.market ? `<div class="stat"><span>${place.type === 'city' ? '集市' : '货架'}</span><b><button class="link" data-act="page" data-p="shop">去采买</button></b></div>` : ''}
+          <h3 style="margin-top:.8em">道路 <span class="muted small">远路去地图页一键赶过去</span></h3><div class="col">${travel || '<span class="muted">无路可走</span>'}</div>
+        </div>
+      </div></div></div>`;
+  };
+
+  /* ---------- 地图 ---------- */
+  const MAP = { K: 110, pad: 60, scale: 0.45 };
+  PAGE.map = () => {
+    const s = UI.s, me = P.player(s);
+    const cw = CF.world, K = MAP.K, pad = MAP.pad;
+    const places = Object.values(s.places);
+    const xs = places.map((p) => p.x), ys = places.map((p) => p.y);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const W = (Math.max(...xs) - x0) * K + pad * 2, H = (Math.max(...ys) - y0) * K + pad * 2;
+    const X = (p) => pad + (p.x - x0) * K, Y = (p) => pad + (p.y - y0) * K;
+    const canGo = me.realm.major >= cw.outer.gate.minMajor;
+    const lines = [];
+    for (const a of places) for (const l of a.links) if (a.id < l.to) {
+      const b = s.places[l.to];
+      lines.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}" class="road${l.minMajor ? ' gate' : ''}"/><text x="${(X(a) + X(b)) / 2}" y="${(Y(a) + Y(b)) / 2 - 6}" class="days">${l.days}天</text>`);
+    }
+    // 地域名字（南域、中域……）写在各自地点的中间
+    const regions = {};
+    for (const p of places) { const k = p.region || '南域'; (regions[k] = regions[k] || []).push(p); }
+    const labels = Object.keys(regions).map((k) => { const l = regions[k]; const cx = l.reduce((a, p) => a + X(p), 0) / l.length, cy = l.reduce((a, p) => a + Y(p), 0) / l.length; return `<text x="${cx}" y="${cy - 40}" class="region">${esc(k)}</text>`; }).join('');
+    const nodes = places.map((p) => {
+      const here = p.id === me.locationId, seen = s.player.visited.includes(p.id);
+      const far = p.outer && !canGo && !seen;
+      return `<g class="node t-${p.type} ${here ? 'here' : ''} ${seen ? 'seen' : ''} ${far ? 'far' : ''}" data-act="place" data-id="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)}">
+        <circle cx="${X(p)}" cy="${Y(p)}" r="${here ? 18 : 13}"/>
+        <text x="${X(p)}" y="${Y(p) + 38}" class="pname">${esc(p.name)}</text></g>`;
+    }).join('');
+    // 地点一览：按地域分组，写明从这里过去要几天，可一键赶过去
+    const order = ['南域', '中域', '东域', '北域', '西域', '东海'];
+    const regionKeys = Object.keys(regions).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
+    const list = regionKeys.map((k) => {
+      const rows = regions[k].slice().sort((a, b) => a.name.localeCompare(b.name, 'zh')).map((p) => {
+        const v = Game.view.place(s, p.id);
+        const go = v.here ? '<span class="tag t-good">你在这里</span>' : v.route ? `<button data-act="goto" data-id="${p.id}">赶过去 ${v.route.days} 天</button>` : `<span class="muted small">${esc(v.blocked || '走不通')}</span>`;
+        return `<div class="stat"><span><button class="link" data-act="place" data-id="${p.id}">${esc(p.name)}</button> <span class="muted small">${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''} · 灵机${p.qi} · ${DANGER[p.danger]}${v.visited ? '' : ' · 没去过'}</span></span><span class="row">${go}</span></div>`;
+      }).join('');
+      const mine = regions[k].some((p) => p.id === me.locationId), fk = 'map-' + k;
+      return `<div class="row between" style="margin-top:.5em"><h3 style="margin:0">${esc(k)} <span class="muted small">${regions[k].length} 处</span></h3>${foldBtn(fk, mine, '展开')}</div>${isOpen(fk, mine) ? rows : ''}`;
+    }).join('');
+    return `<h2>地图 <span class="muted">东弥州</span></h2>
+      <div class="card map-wrap" id="map-wrap"><svg viewBox="0 0 ${W} ${H}" class="map" style="width:${Math.round(W * MAP.scale)}px" role="img" aria-label="世界地图">${labels}${lines.join('')}${nodes}</svg></div>
+      <p class="muted small">可左右拖动；点地点看详情。${Object.keys(cw.placeTypes).map((k) => `<span class="legend t-${k}">●</span>${esc(cw.placeTypes[k].name)}`).join(' ')}；描金边的是去过的地方，大圈是你所在之处，虚线要${esc(CF.realms.names[cw.outer.gate.minMajor])}才过得去。</p>
+      <div class="card"><h3 style="margin:0">地点一览 <span class="muted small">一段一段地走，路上出事就停下</span></h3>${list}</div>
+      <p class="muted small">南域是东弥州有名的穷土。往北隔着万里荒原是中域；玉宸派本宗在东域宵明大泽，赤明派在北域鹿台山，魔道的怙照宗在西域极西，再往东是东海龙宫。${canGo ? '你已能驾遁光过去。' : '要到金丹，才驾得起遁光越过荒原。'}</p>`;
+  };
+  // 地图打开时把你所在之处滚到中间
+  const centerMap = () => {
+    const wrap = document.getElementById('map-wrap'), here = wrap && wrap.querySelector('.node.here circle');
+    if (!wrap || !here) return;
+    const svg = wrap.querySelector('svg'), vb = svg.viewBox.baseVal, k = svg.clientWidth / vb.width;
+    wrap.scrollLeft = Math.max(0, Number(here.getAttribute('cx')) * k - wrap.clientWidth / 2);
+    wrap.scrollTop = Math.max(0, Number(here.getAttribute('cy')) * k - wrap.clientHeight / 2);
+  };
+
+  /* ---------- 人物 ---------- */
+  // 见闻：纪事、人物、天下大事三页互相切换
+  const seenTabs = (cur) => `<div class="row tabs sub">${[['chron', '纪事'], ['people', '人物'], ['sagas', '天下大事']].map(([k, n]) => `<button class="${cur === k ? 'on' : ''}" data-act="page" data-p="${k}">${n}</button>`).join('')}</div>`;
+  PAGE.sagas = () => `<h2>天下大事</h2>${seenTabs('sagas')}${sagaCard(UI.s) || '<div class="card"><p class="muted" style="margin:0">眼下没有什么风声。</p></div>'}
+    <p class="muted small">大事的日子开局就排定了，提前三年有风声。和你沾边、快到了的，此刻页「做什么」上面也会提一句。</p>`;
+
+  PAGE.people = () => {
+    const s = UI.s, me = P.player(s);
+    const A = Game.actions(s);
+    const tab = UI.people.tab;
+    let body;
+    if (tab === 'here') {
+      const pv = Game.view.place(s, me.locationId);
+      body = pv.people.length ? `<table class="resp"><thead><tr><th>姓名</th><th>境界</th><th>势力</th><th>交情</th><th></th></tr></thead><tbody>${pv.people.map((q) => {
+        const acts = A.filter((a) => a.npc === q.id);
+        return `<tr><td data-l="姓名">${pl(q.id)}</td><td data-l="境界">${esc(q.realm)}</td><td data-l="势力">${esc(q.faction)}</td><td data-l="交情" class="${q.rel < 0 ? 'bad' : q.rel >= 40 ? 'good' : ''}">${q.rel || '素不相识'}</td>
+          <td>${acts.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${a.type === 'befriend' ? '拜访' : '请教'}</button>`).join(' ')}</td></tr>`;
+      }).join('')}</tbody></table>` : '<p class="muted">此地没有别人。</p>';
+    } else {
+      const rels = P.relationsOf(s, me.id).map((r) => ({ r, q: s.people[r.a === me.id ? r.b : r.a] })).sort((a, b) => (P.alive(b.q) - P.alive(a.q)) || b.r.strength - a.r.strength);
+      body = rels.length ? `<table class="resp"><thead><tr><th>姓名</th><th>境界</th><th>势力</th><th>所在</th><th>交情</th></tr></thead><tbody>${rels.map(({ r, q }) => `<tr class="${P.alive(q) ? '' : 'dead'}"><td data-l="姓名">${pl(q.id)}</td><td data-l="境界">${P.alive(q) ? esc(P.realmName(q)) : '已故'}</td><td data-l="势力">${esc(P.factionName(s, q))}</td><td data-l="所在">${P.alive(q) ? placeLink(q.locationId) + (q.locationId !== me.locationId ? ' <button class="link" data-act="goto" data-id="' + q.locationId + '">去找</button>' : '') : '—'}</td><td data-l="交情" class="${r.strength < 0 ? 'bad' : r.strength >= 40 ? 'good' : ''}">${r.strength}${r.tags.length ? ' <span class="muted">' + esc(r.tags.join('/')) + '</span>' : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">你还不认识谁。去拜访或游历时会结识人。</p>';
+    }
+    return `<h2>人物</h2>${seenTabs('people')}<div class="row tabs"><button class="${tab === 'here' ? 'on' : ''}" data-act="peopleTab" data-k="here">此地的人</button><button class="${tab === 'known' ? 'on' : ''}" data-act="peopleTab" data-k="known">我认识的人</button></div>
+      <div class="card">${body}</div><p class="muted">交情到 ${CF.relations.consultMin} 以上，可以向修为比你高的人请教，每人每年一次，对方也可能婉拒。</p>`;
+  };
+
+  /* ---------- 采买：此地货架、宗门长老房（库藏与传功）、托人代寻合在一处，按用途分 ---------- */
+  const MATERIALS = ['miluo', 'huanghua', 'lingtian', 'ganyin'];
+  const shopCat = (key) => {
+    if (key.startsWith('tech:')) { const t = CF.techniques[key.slice(5)]; return t && t.kind === 'shu' ? 'arts' : 'books'; }
+    const it = CF.items[key];
+    if (!it) return 'pills';
+    if (it.gear || MATERIALS.includes(key)) return 'gear';
+    return it.book ? 'books' : 'pills';
+  };
+  const keyName = (key) => key.startsWith('tech:') ? '《' + CF.techniques[key.slice(5)].name + '》' : CF.items[key].name;
+  // 一次重绘里算过的路程记下来，免得每样东西都重算一遍
+  const routeMemo = (s) => { const me = P.player(s), m = {}; return (id) => (id in m ? m[id] : (m[id] = FX.World.route(s, me.locationId, id, me))); };
+  // 一门功法平时出在哪：哪类地方的货架常备或偶有、哪家长老房传（照配置说，不看今年有没有货）
+  const techWhere = (s, t) => {
+    const key = 'tech:' + t, out = [], MK = CF.market;
+    const me = P.player(s);
+    const names = (ty) => {
+      const ps = Object.values(s.places).filter((p) => p.type === ty);
+      if (!ps.length) return null;
+      const far = !ps.some((p) => p.id === me.locationId || FX.World.route(s, me.locationId, p.id, me));
+      return [ps.slice(0, 2).map((p) => p.name).join('、') + (ps.length > 2 ? '等处' : ''), far ? '，眼下去不了' : ''];
+    };
+    for (const ty in MK) {
+      const d = MK[ty];
+      const n = d && d.staples && names(ty);
+      if (!n) continue;
+      if (d.staples.some((x) => x.item === key)) out.push(n[0] + '的货架常备' + n[1]);
+      else if ((d.rare || []).some((x) => x.item === key)) out.push(n[0] + '的货架偶尔有' + n[1]);
+    }
+    const libs = Object.values(s.factions).filter((f) => FX.Sect.library(f).some((e) => e.tech === t));
+    if (libs.length) out.push(libs.slice(0, 3).map((f) => f.name).join('、') + '的长老房传给门人');
+    const jk = CF.saga.jiaokao, jf = Object.values(s.factions).find((f) => f.key === jk.faction);
+    for (const m in jk.upperGift) if (jk.upperGift[m] === key && jf) out.push(jf.name + '弟子' + CF.realms.names[m] + '时在' + jk.name + '评上考，赏这一门');
+    return out.join('；');
+  };
+  // 一样东西眼下有哪些来路：此地货架、长老房、托人代寻；去过的别处今年有货也列上
+  function sourcesOf(s, A, key, route) {
+    const here = P.player(s).locationId;
+    const m = FX.World.hasMarket(s, here) ? s.markets[here] : null;
+    const tech = key.startsWith('tech:') ? key.slice(5) : null;
+    const o = {
+      market: m ? m.stock.find((x) => x.item === key && x.qty > 0) : null,
+      redeem: tech ? null : A.find((a) => a.type === 'redeem' && a.item === key),
+      learns: tech ? A.filter((a) => a.type === 'sect_learn' && a.tech === tech) : [],
+      order: A.find((a) => a.type === 'order' && a.item === key),
+      elsewhere: [],
+    };
+    for (const id in s.markets) {
+      if (id === here || !s.player.visited.includes(id)) continue;
+      const x = s.markets[id].stock.find((y) => y.item === key && y.qty > 0);
+      const r = x && route(id);
+      if (r) o.elsewhere.push({ id, name: s.places[id].name, days: r.days, price: x.price });
+    }
+    o.elsewhere.sort((a, b) => a.days - b.days);
+    return o;
   }
+  // 来路做成按钮：能办的直接办；长老房要回山门的给“回山门换”；办不了的灰掉并说明
+  function srcBtns(s, A, key, src) {
+    const M = CF.house.meritName, out = [], why = [];
+    const f = FX.Sect.mine(s), away = f ? FX.Sect.awayReason(s, f) : '';
+    const x = src.market;
+    let live = false, poor = false, ready = false;
+    if (x) {
+      const can = Math.min(x.qty, Math.floor(s.player.stone / x.price));
+      out.push(`<button data-act="buy" data-k="${esc(key)}" data-n="1" ${can >= 1 ? '' : 'disabled'} title="此地货架，存 ${x.qty}">买 · ${n0(x.price)} 符钱</button>`);
+      if (!key.startsWith('tech:') && x.qty >= 5 && can >= 5) out.push(`<button data-act="buy" data-k="${esc(key)}" data-n="5">买 5</button>`);
+      if (can >= 1) live = ready = true; else { why.push('符钱不够'); poor = true; }
+    }
+    const meritBtn = (a, text) => {
+      if (a.ok) { live = ready = true; return `<button data-act="do" data-i="${A.indexOf(a)}">${esc(text)}</button>`; }
+      if (a.reason === away) { live = true; return `<button data-act="goto" data-id="${f.seatId}" title="${esc(a.reason)}">回山门${esc(text)}</button>`; }
+      why.push(a.reason);
+      if (/不够/.test(a.reason)) poor = true;
+      return `<button disabled title="${esc(a.reason)}">${esc(text)}</button>`;
+    };
+    if (src.redeem) {
+      const a = src.redeem;
+      out.push(meritBtn(a, '换 · ' + n0(a.cost) + ' ' + M));
+      if (a.ok && ['qiju', 'heal'].includes(key) && a.cost * 5 <= s.player.merit) out.push(`<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5</button>`);
+    }
+    for (const a of src.learns) out.push(meritBtn(a, a.zf ? '凭符诏取' : a.cost ? '换 · ' + n0(a.cost) + ' ' + M : '请授'));
+    if (src.order) {
+      const a = src.order;
+      out.push(`<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.label)}">代寻 · ${n0(a.cost)} 符钱</button>`);
+      if (a.ok) live = ready = true; else { why.push(a.reason); if (/不够/.test(a.reason)) poor = true; }
+    }
+    if (!live && !x) src.elsewhere.slice(0, 2).forEach((e) => out.push(`<button data-act="goto" data-id="${e.id}" title="今年${esc(e.name)}有货，${n0(e.price)} 符钱">去${esc(e.name)} · ${e.days} 天</button>`));
+    if (!live && !x && src.elsewhere.length) live = true;
+    // 道功不够、手里符钱多的，指一条捐输的路
+    const dn = A.find((a) => a.type === 'donate' && (a.ok || a.reason === away) && s.player.stone >= a.cost);
+    if (dn && why.some((w) => /道功不够/.test(w))) {
+      const lack = Math.max(0, ...[src.redeem, ...src.learns].filter((a) => a && /道功不够/.test(a.reason)).map((a) => a.cost - s.player.merit));
+      const n = Math.ceil(lack / dn.gain);
+      out.push(dn.ok && n >= 1 && n * dn.cost <= s.player.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="${n}" title="向功德殿捐输 ${n} 份">捐 ${n0(n * dn.cost)} 符钱补足${esc(M)}</button>` : '<button data-act="page" data-p="sect" data-tab="give">拿符钱捐输换道功</button>');
+    }
+    return { html: out.join(''), why: [...new Set(why.filter(Boolean))], live, poor, ready };
+  }
+  function shopRow(s, A, key, src, tag) {
+    const tech = key.startsWith('tech:') ? CF.techniques[key.slice(5)] : null;
+    const it = tech ? null : CF.items[key];
+    const me = P.player(s);
+    const owned = tech && s.player.manuals.includes(key.slice(5));
+    const have = tech ? (me.techniqueId === key.slice(5) || me.kaifuId === key.slice(5) ? '正在修' : owned ? '已得' : '') : s.player.inv[key] ? '有 ' + s.player.inv[key] : '';
+    const lrn = owned ? A.find((a) => a.type === 'learn' && a.tech === key.slice(5)) : null;
+    const b = owned ? { html: lrn ? `<button data-act="do" data-i="${A.indexOf(lrn)}" ${lrn.ok ? '' : 'disabled'} title="${esc(lrn.reason || '')}">${esc(lrn.label.replace(/《.*》/, ''))}（1 个月）</button>` : '', why: lrn && !lrn.ok ? [lrn.reason] : [] } : srcBtns(s, A, key, src);
+    const tw = !b.html && tech && !owned ? techWhere(s, key.slice(5)) : '';
+    const where = !b.html && it && it.where ? '<br><span class="muted small">去处：' + esc(it.where) + '</span>' : tw ? '<br><span class="muted small">去处：' + esc(tw) + '</span>' : '';
+    return `<div class="stat"><span><b>${esc(keyName(key))}</b>${tag ? ' <span class="tag t-warn">' + esc(tag) + '</span>' : ''}${have ? ' <span class="muted small">' + have + '</span>' : ''}
+      ${tech ? '<br><span class="muted small">' + esc(techLine(tech)) + '</span>' : ''}<br>${desc(tech ? tech.desc : it.desc)}${where}${b.why.length && !b.ready ? '<br><span class="bad small">' + esc(b.why.join('；')) + '</span>' : ''}</span>
+      <span class="row">${b.html}</span></div>`;
+  }
+  // 冲关缺的东西：要的在前，可选的在后；十三味大药缺的外药也算
+  function neededKeys(s, ov) {
+    const out = [];
+    for (const r of ov.reqs) {
+      if (r.ok) continue;
+      if (r.item && CF.items[r.item]) out.push([r.item, r.optional ? '可选' : '冲关要']);
+      if (r.items) r.items.forEach((k) => out.push([k, '大药']));
+      if (r.kaifu) for (const k in CF.techniques) if (CF.techniques[k].kind === 'kaifu') out.push(['tech:' + k, '冲关要']);
+    }
+    return out;
+  }
+  PAGE.shop = (ov) => {
+    const s = UI.s, A = Game.actions(s), me = ov.me, M = CF.house.meritName;
+    const route = routeMemo(s);
+    const here = me.locationId, m = FX.World.hasMarket(s, here) ? s.markets[here] : null;
+    const f = FX.Sect.mine(s), v = f ? Game.view.house(s) : null;
+    const keys = new Set();
+    if (m) m.stock.forEach((x) => { if (x.qty > 0) keys.add(x.item); });
+    for (const a of A) { if (a.type === 'redeem' || a.type === 'order') keys.add(a.item); if (a.type === 'sect_learn' || a.type === 'learn') keys.add('tech:' + a.tech); }
+    // 筑基以后，比手上更好的开府真法也列出来（没货的折在下面，写明出在哪）
+    if (me.realm.major === 3) { const kg = Math.max(0, ...s.player.manuals.filter((t) => CF.techniques[t].kind === 'kaifu').map((t) => CF.techniques[t].grade)); for (const t in CF.techniques) if (CF.techniques[t].kind === 'kaifu' && CF.techniques[t].grade > kg) keys.add('tech:' + t); }
+    // 开府真法只列能弄到的；其余要的东西不论有没有来路都列出来，好知道去哪找
+    const need = neededKeys(s, ov).filter(([k]) => !k.startsWith('tech:') || keys.has(k));
+    const needSet = new Map(need);
+    // 用不上的折起来：低两个大境界的关隘外药、不如身上那件的法器、已得的功法
+    const stMin = {}; if (v) v.store.forEach((e) => { stMin[e.item] = e.minMajor || 0; });
+    const past = (k) => {
+      if (k.startsWith('tech:')) return (CF.techniques[k.slice(5)].kind === 'lianqi' && me.realm.major >= 3) || (s.player.manuals.includes(k.slice(5)) && !A.some((a) => a.type === 'learn' && a.tech === k.slice(5) && a.ok));
+      const it = CF.items[k];
+      if (it.gear) { const b = FX.Ars.best(me, it.gear.slot); return !!b && b.grade >= it.gear.grade; }
+      if (needSet.has(k)) return false;
+      // 关隘外药过了那一关就用不上了
+      const B = CF.breakthrough;
+      if (k === B.zhuji.pillItem && me.realm.major >= 3) return true;
+      for (const ms in B.minorNeeds) if (B.minorNeeds[ms].item === k) { const [M, S] = ms.split('.').map(Number); if (me.realm.major > M || (me.realm.major === M && me.realm.stage > S)) return true; }
+      return stMin[k] !== undefined && !['qiju', 'heal', 'yanshou'].includes(k) && stMin[k] + 2 <= me.realm.major;
+    };
+    const TABS = [['need', '冲关要的'], ['pills', '丹药灵物'], ['books', '功法'], ['arts', '道术'], ['gear', '法器宝材'], ['sell', '卖出']];
+    const rowsOf = (cat) => [...keys].filter((k) => shopCat(k) === cat && !needSet.has(k));
+    const counts = { need: need.length, sell: m ? Object.values(s.player.inv).filter((n) => n > 0).length : 0 };
+    for (const [c] of TABS.slice(1, 5)) counts[c] = rowsOf(c).length;
+    let tab = UI.shopTab;
+    if (!tab || !TABS.some(([k]) => k === tab) || (tab === 'need' && !need.length)) tab = need.length ? 'need' : 'pills';
+    // 页头：手头的钱、此地能办什么、最近的货架和山门
+    let nearest = null;
+    if (!m) for (const id in s.markets) { if (!s.player.visited.includes(id)) continue; const r = route(id); if (r && (!nearest || r.days < nearest.days)) nearest = { id, days: r.days }; }
+    const coming = s.player.orders || [];
+    const head = `<div class="card hl"><div class="kv"><div><span class="muted">符钱</span> <b>${n0(ov.stone)}</b></div>${f ? `<div><span class="muted">${esc(M)}</span> <b>${n0(ov.merit)}</b></div>` : ''}</div>
+      <p class="small" style="margin:.4em 0 0">${m ? `此地有${ov.place.type === 'city' ? '集市' : '货架'}（${m.year} 年的货，每年一换）` : `此地没有货架${nearest ? `，最近的是${placeLink(nearest.id)} <button class="link" data-act="goto" data-id="${nearest.id}">赶过去 ${nearest.days} 天</button>` : ''}`}${f ? (v.atSeat ? '；你在山门，长老房可以换' : `；长老房要回${placeLink(f.seatId)}才能换 <button class="link" data-act="goto" data-id="${f.seatId}">赶回去</button>`) : '；拜入宗门后可拿' + esc(M) + '向长老房换'}。</p>
+      ${coming.length ? `<p class="small muted" style="margin:.3em 0 0">托人代寻在途：${coming.map((o) => esc(FX.World.itemName(o.item)) + '（约 ' + T.fmt(o.due) + ' 到）').join('、')}</p>` : ''}</div>`;
+    const tabsHtml = `<div class="row tabs sub">${TABS.filter(([k]) => k !== 'need' || need.length).map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-act="subTab" data-key="shopTab" data-k="${k}">${n}${counts[k] ? ' <span class="muted small">' + counts[k] + '</span>' : ''}</button>`).join('')}</div>`;
+    let body;
+    if (tab === 'sell') {
+      const inv = Object.entries(ov.inv).filter(([k, n]) => n > 0 && CF.items[k]);
+      body = !m ? '<p class="muted">此地收不了货。凡人国有集市，仙道墟市和宗门山门有货架。</p>'
+        : inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n}</span><span class="row"><span class="muted small">${FX.World.sellPrice(s, k)}/个</span><button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖</button>` : ''}</span></div>`).join('') + '<p class="muted small">按七成收。</p>'
+          : '<p class="muted">行囊里没有能卖的。</p>';
+    } else if (tab === 'need') {
+      body = need.map(([k, t]) => shopRow(s, A, k, sourcesOf(s, A, k, route), t)).join('') + '<p class="muted small">按冲关卡片列的来：标「冲关要」的不齐不能冲，标「可选」「大药」的添把握或品第。</p>';
+    } else {
+      const all = rowsOf(tab).map((k) => ({ k, src: sourcesOf(s, A, k, route) }));
+      const rows = all.map((x) => Object.assign(x, { b: srcBtns(s, A, x.k, x.src) }));
+      rows.forEach((x) => { if (x.k.startsWith('tech:') && A.some((a) => a.type === 'learn' && a.tech === x.k.slice(5) && a.ok)) x.b.live = true; });
+      const now = rows.filter((x) => !past(x.k) && (x.b.live || x.b.poor)), later = rows.filter((x) => !past(x.k) && !x.b.live && !x.b.poor), old = rows.filter((x) => past(x.k));
+      now.sort((a, b) => b.b.live - a.b.live);
+      const fk = 'shop-' + tab;
+      body = `${now.map((x) => shopRow(s, A, x.k, x.src)).join('') || '<p class="muted">眼下这里没有能买能换的。</p>'}
+        ${later.length ? `<div>${foldBtn(fk + '-later', false, '境界未到或眼下换不了的', later.length)}</div>${isOpen(fk + '-later', false) ? later.map((x) => shopRow(s, A, x.k, x.src)).join('') : ''}` : ''}
+        ${old.length ? `<div>${foldBtn(fk + '-old', false, tab === 'arts' ? '已经得了的' : tab === 'books' ? (me.realm.major >= 3 ? '已经得了的、用不上的' : '已经得了的') : '你如今用不上的', old.length)}</div>${isOpen(fk + '-old', false) ? old.map((x) => shopRow(s, A, x.k, x.src)).join('') : ''}` : ''}`;
+    }
+    return `<h2>采买</h2>${head}${tabsHtml}<div class="card">${body}</div>`;
+  };
+
+  /* ---------- 行囊与坊市 ---------- */
+  PAGE.bag = (ov) => {
+    const s = UI.s;
+    const A = Game.actions(s);
+    const inv = Object.entries(ov.inv).filter(([, n]) => n > 0);
+    const useBtn = (k) => { const a = A.find((x) => x.type === 'use' && x.item === k); return (a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">服用</button>` : '') ; };
+    const buyBtns = (x) => {
+      const can = Math.min(x.qty, Math.floor(ov.stone / x.price));
+      if (x.item.startsWith('tech:')) return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买下</button>`;
+      return `<button data-act="buy" data-k="${esc(x.item)}" data-n="1" ${can >= 1 ? '' : 'disabled'}>买 1</button>${x.qty >= 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="5" ${can >= 5 ? '' : 'disabled'}>买 5</button>` : ''}${can > 1 && can !== 5 ? `<button data-act="buy" data-k="${esc(x.item)}" data-n="${can}">${can === x.qty ? '全买' : '买得起的全买'}（${can}）</button>` : ''}`;
+    };
+    const m = s.markets[ov.place.id];
+    const sellable = inv.filter(([k]) => CF.items[k]);
+    const learn = A.filter((a) => a.type === 'learn');
+    const orders = A.filter((a) => a.type === 'order');
+    const coming = s.player.orders;
+    const orderCard = orders.length || coming.length ? `<div class="card"><h3>托人代寻 <span class="muted small">今年没上架的稀罕货，加五成价托墟市去别处寻，到期一定送到</span></h3>
+        ${coming.length ? `<p>在途：${coming.map((o) => esc(FX.World.itemName(o.item)) + '（约 ' + T.fmt(o.due) + ' 到）').join('、')}</p>` : ''}
+        ${orders.map((a) => `<div class="stat"><span>${esc(FX.World.itemName(a.item))}</span><span class="row"><b>${a.cost} 符钱</b><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">托人代寻</button></span></div>`).join('')}
+        ${orders.length ? '' : '<p class="muted">要托人代寻，得去金谷墟市（浮玉泊）。</p>'}</div>` : '';
+    // 道术与神通
+    const me = ov.me, artsK = ov.manuals.filter((t) => CF.techniques[t].kind === 'shu');
+    const prac = A.filter((a) => a.type === 'practice');
+    const artsCard = `<div class="card"><h3>道术与神通</h3><p class="muted small">得了玉简还要参习：入门、小成、中成、大成。攻伐、护身各算最好的一门；神通要金丹法力才使得出。</p>
+      ${artsK.length ? artsK.map((k) => {
+        const t = CF.techniques[k], lv = FX.Ars.level(me, k), xp = (me.arts || {})[k] || 0, th = CF.arts.xp[t.rank];
+        const mine = prac.filter((a) => a.tech === k), why = (mine.find((a) => !a.ok) || {}).reason;
+        const eff = lv ? artEff(me, k) : '';
+        return `<div class="stat"><span>《${esc(t.name)}》 <span class="tag">${esc(CF.shuRankNames[t.rank])}</span> <b>${esc(FX.Ars.levelName(lv))}</b>${lv < 4 ? ` <span class="muted">${Math.floor(xp)}/${th[lv]}</span>` : ''}<br><span class="muted small">${esc(typeLine(t))}${eff ? ' · 眼下' + esc(eff) : ''}</span><br>${desc(t.desc)}</span>
+          <span class="row">${lv < 4 ? mine.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">参习 ${esc(T.dur(a.days))}</button>`).join('') : '<span class="tag t-good">大成</span>'}${why ? ' <span class="muted small">' + esc(why) + '</span>' : ''}</span></div>`;
+      }).join('') : '<p class="muted">还没有道术。坊市里十几枚符钱就能买到下乘道术，宗门长老房也传；大派的神通要拿道功换。</p>'}</div>`;
+    const books = ov.manuals.filter((t) => CF.techniques[t].kind !== 'shu');
+    const bookCard = `<div class="card"><h3>法门</h3>${books.length ? books.map((t) => `<div class="stat"><span>《${esc(CF.techniques[t].name)}》 <span class="muted small">${esc(techLine(CF.techniques[t]))}</span><br>${desc(CF.techniques[t].desc)}</span><span>${t === ov.me.techniqueId || t === ov.me.kaifuId ? '<span class="tag t-good">正在修</span>' : (() => { const a = learn.find((x) => x.tech === t); return a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason)}">${ov.me.techniqueId ? '改修' : '研习'}（1 个月）</button>` : ''; })()}</span></div>`).join('') : '<p class="muted">还没有任何法门。胎息之后要有一门练炁术才能往下修。</p>'}</div>`;
+    // 法器
+    const gear = me.gear || [];
+    const ga = A.filter((a) => a.group === '法器');
+    const gShort = (a) => a.type === 'jilian' ? '祭炼 ' + a.n + ' 道（' + n0(a.cost) + '）' : a.type === 'lianxing' ? '炼形（' + n0(a.cost) + '）' : a.type === 'lianhua' ? '炼化 ' + T.dur(a.days) : a.type === 'chongzhu' ? '熔' + CF.items[a.item].name + '重铸' : '卖 ' + n0(a.gain);
+    const gearCard = `<div class="card"><h3>法器</h3><p class="muted small">攻伐、护身、遁行三类各用最好的一件。炼形一次至多十道禁制；上品符器再炼形就成了法器，要金丹法力和本命精血；道器只有纯阳以上掌控得了。</p>
+      ${gear.length ? gear.map((g) => {
+        const inUse = FX.Ars.best(me, g.slot) === g;
+        const acts = ga.filter((a) => a.gid === g.id);
+        const lx = acts.find((a) => a.type === 'lianxing' && !a.ok) || acts.find((a) => a.type === 'jilian' && !a.ok);
+        const ling = g.ling === undefined ? 100 : Math.floor(g.ling);
+        return `<div class="stat"><span><b>${esc(g.name)}</b> <span class="tag">${esc(CF.gear.slotNames[g.slot])}</span> ${esc(FX.Ars.gradeName(g))} · ${g.jin} 道禁制${inUse ? ' <span class="tag t-good">在用</span>' : ''}<br><span class="muted small">${esc(gearEff(me, g))} · 材质够炼形到${esc(CF.gear.gradeNames[g.cap])}${g.grade >= 4 && ling < 100 ? ' · 器灵炼化 ' + ling + '%' : ''}${lx ? ' · ' + esc(lx.reason) : ''}</span></span>
+          <span class="row">${acts.map((a) => `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.label + (a.reason ? '：' + a.reason : ''))}">${esc(gShort(a))}</button>`).join('')}</span></div>`;
+      }).join('') : '<p class="muted">身上没有符器。坊市里有飞剑、法衣、飞梭，宗门库藏也能拿道功换。</p>'}</div>`;
+    const itemCard = `<div class="card"><div class="stat"><span>符钱</span><b class="big">${n0(ov.stone)}</b></div>
+        ${inv.length ? inv.map(([k, n]) => `<div class="stat"><span>${esc(CF.items[k].name)} ×${n}<br>${desc(CF.items[k].desc)}</span><span class="row">${useBtn(k)}${m ? `<button data-act="sell" data-k="${k}" data-n="1">卖 1</button>${n > 1 ? `<button data-act="sell" data-k="${k}" data-n="${n}">全卖（${n}）</button>` : ''} <span class="muted small">${FX.World.sellPrice(s, k)}/个</span>` : ''}</span></div>`).join('') : '<p class="muted">身无长物。</p>'}
+        ${ov.me.realm.major >= 2 && s.player.inv.qiju ? `<p class="muted small" style="margin:.4em 0 0">闭关、修炼时${esc(CF.items.qiju.name)}药力一尽就从行囊里续服一颗 · ${autoPillBtn()}</p>` : ''}
+      </div>`;
+    const marketCard = m ? `<div class="card"><h3>${esc(ov.place.name)}${ov.place.type === 'city' ? '集市' : '货架'} <span class="muted small">${m.year} 年的货，每年换一次</span></h3>
+        ${m.stock.map((x) => `<div class="stat"><span>${esc(FX.World.itemName(x.item))} <span class="muted small">存 ${x.qty}</span><br>${desc(x.item.startsWith('tech:') ? techLine(CF.techniques[x.item.slice(5)]) + ' · ' + CF.techniques[x.item.slice(5)].desc : CF.items[x.item].desc)}</span><span class="row"><b>${n0(x.price)}</b>${buyBtns(x)}</span></div>`).join('')}
+        ${sellable.length ? '<p class="muted small">卖东西在“物品”一栏，按七成收。</p>' : '<p class="muted small">卖东西：行囊里的灵草、妖物材料等按七成收。</p>'}</div>` : `<div class="card"><p class="muted">此地买卖不了东西。凡人国有集市，仙道墟市和宗门山门有货架。</p></div>`;
+    if (!['items', 'books', 'gear'].includes(UI.bagTab)) UI.bagTab = 'items';
+    const tab = UI.bagTab;
+    void marketCard; void orderCard;
+    return `<h2>行囊</h2>
+      ${subTabs('bagTab', [['items', '物品'], ['books', '功法 ' + (books.length + artsK.length)], ['gear', '法器 ' + gear.length]])}
+      ${tab === 'items' ? itemCard : tab === 'books' ? bookCard + artsCard : gearCard}
+      <p class="muted small">买丹药、换功法法器都在「采买」页：此地货架、长老房、托人代寻放在一起比。 <button class="link" data-act="page" data-p="shop">去采买</button></p>`;
+  };
+
+  /* ---------- 宗门 ---------- */
+  PAGE.sect = (ov) => {
+    const s = UI.s, v = Game.view.house(s), M = CF.house.meritName;
+    const A = Game.actions(s);
+    const btn = (a, text, quiet) => (a ? `<button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'} title="${esc(a.reason || '')}">${esc(text || a.label)}</button>${a.ok || !a.reason || quiet ? '' : ' <span class="muted small">' + esc(a.reason) + '</span>'}` : '');
+    const parts = (ps) => ps.map((x) => x.label + ' ' + (x.value > 0 ? '+' : '') + x.value).join('；');
+    if (!v.member) {
+      const cond = (j) => (!j ? '不收外人' : j.closed ? j.closed : `至少${CF.realms.names[j.minMajor]}${j.maxAge ? '，年不过 ' + j.maxAge : ''}；每年可求一回`);
+      return `<h2>宗门</h2>
+        <div class="card"><p class="muted" style="margin:0">散修来去自由，可功法、外药都得自己去墟市买。拜入宗门后，根本法门向长老房请授便是，每年领俸禄；做差事、领符诏除妖、上交妖物内丹和道书抄本都能记${esc(M)}，再拿${esc(M)}去长老房换冲关外药和更好的功法。</p></div>
+        ${v.sects.map((x) => { const a = A.find((y) => y.type === 'join' && y.fid === x.f.id); return `<div class="card"><div class="row between"><h3 style="margin:0">${esc(x.f.name)}</h3><span class="muted">${placeLink(x.seat.id)}${x.route && x.route.days ? ' · 约 ' + x.route.days + ' 天路程 <button class="link" data-act="goto" data-id="' + x.seat.id + '">赶过去</button>' : x.route ? ' · 就在此地' : ''}</span></div>
+          <p class="muted">${esc(x.f.blurb)}</p>
+          <div class="stat"><span>拜入条件</span><b>${esc(cond(x.join))}</b></div>
+          ${x.join && !x.join.closed ? `<div class="stat"><span>${trace('成功率', parts(x.chance.parts))}</span><b>${x.chance.chance}%</b></div>` : ''}
+          <div class="row">${a ? btn(a) : x.can === true ? '' : '<span class="muted">' + esc(x.can) + '</span>'}</div></div>`; }).join('')}`;
+    }
+    const f = v.faction, clan = f.type === 'clan', major = ov.me.realm.major;
+    // 传功：能换的在前；已得的、境界还不够的折起来
+    const libRow = (e) => {
+      const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && !x.zf);
+      const zfa = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech && x.zf);
+      const learn = A.find((x) => x.type === 'learn' && x.tech === e.tech);
+      const cost = a ? a.cost : e.merit;
+      const right = e.using ? '<span class="tag t-good">正在修</span>' : e.owned ? (learn ? btn(learn, (ov.me.techniqueId ? '改修' : '研习') + '（1 个月）') : '<span class="muted">已得</span>') : btn(a, cost ? `${n0(cost)} ${M}` : '请授', true) + (zfa ? btn(zfa, '凭符诏取', true) : '');
+      const why = !e.owned && a && !a.ok && a.reason ? ' · <span class="bad">' + esc(a.reason) + '</span>' : '';
+      return `<div class="stat"><span>《${esc(e.t.name)}》${e.zf ? ' <span class="tag">二十五正法·' + esc(e.zf) + '</span>' : ''}<br><span class="muted small">${esc(techLine(e.t))}${e.note ? ' · ' + esc(e.note) : ''}${e.minMajor ? ' · ' + CF.realms.names[e.minMajor] + '以后才传' : ''}${e.req ? ' · 要' + esc(e.req) : ''}${why}</span><br>${desc(e.t.desc)}</span><span class="row">${right}</span></div>`;
+    };
+    const libNow = v.library.filter((e) => !e.owned && !(e.minMajor > major));
+    const libLater = v.library.filter((e) => !e.owned && e.minMajor > major);
+    const libHave = v.library.filter((e) => e.owned);
+    const libHtml = `${libNow.length ? libNow.map(libRow).join('') : '<p class="muted">眼下没有能请授的了。</p>'}
+      ${libLater.length ? `<div>${foldBtn('libLater', false, '境界到了才传的', libLater.length)}</div>${isOpen('libLater', false) ? libLater.map(libRow).join('') : ''}` : ''}
+      ${libHave.length ? `<div>${foldBtn('libHave', false, '已经得了的', libHave.length)}</div>${isOpen('libHave', false) ? libHave.map(libRow).join('') : ''}` : ''}`;
+    const storeRow = (e) => {
+      const a = A.find((x) => x.type === 'redeem' && x.item === e.item);
+      const cost = a ? a.cost : e.merit;
+      const many = a && a.ok && cost * 5 <= v.merit && ['qiju', 'heal'].includes(e.item) ? `<button data-act="doN" data-i="${A.indexOf(a)}" data-n="5">换 5 份（${n0(cost * 5)}）</button>` : '';
+      return `<div class="stat"><span>${esc(e.it.name)}${e.have ? ' <span class="muted small">已有 ' + e.have + '</span>' : ''}${e.minMajor ? ' <span class="muted small">' + CF.realms.names[e.minMajor] + '以后</span>' : ''}<br>${desc(e.it.desc)}</span><span class="row">${btn(a, n0(cost) + ' ' + M, true)}${cost < e.merit ? ' <s class="muted small">' + n0(e.merit) + '</s>' : ''}${many}</span></div>`;
+    };
+    // 用不上的折起来：境界还没到的；低两个大境界的关隘外药；不如身上那件的法器
+    const past = (e) => {
+      const it = CF.items[e.item];
+      if (it.gear) { const b = FX.Ars.best(ov.me, it.gear.slot); return !!b && b.grade >= it.gear.grade; }
+      return !['qiju', 'heal', 'yanshou'].includes(e.item) && (e.minMajor || 0) + 2 <= major;
+    };
+    const stLater = v.store.filter((e) => e.minMajor > major), stPast = v.store.filter((e) => !(e.minMajor > major) && past(e));
+    const stNow = v.store.filter((e) => !stLater.includes(e) && !stPast.includes(e));
+    const storeHtml = `${stNow.map(storeRow).join('') || '<p class="muted">眼下没有用得上的。</p>'}${stLater.length ? `<div>${foldBtn('stLater', false, '境界到了才换的', stLater.length)}</div>${isOpen('stLater', false) ? stLater.map(storeRow).join('') : ''}` : ''}${stPast.length ? `<div>${foldBtn('stPast', false, '你如今用不上的', stPast.length)}</div>${isOpen('stPast', false) ? stPast.map(storeRow).join('') : ''}` : ''}`;
+    const subs = A.filter((x) => x.type === 'submit');
+    const work = A.find((x) => x.type === 'work');
+    const mission = A.find((x) => x.type === 'mission');
+    const canLib = libNow.filter((e) => { const a = A.find((x) => x.type === 'sect_learn' && x.tech === e.tech); return a && a.ok; }).length;
+    const canStore = stNow.filter((e) => { const a = A.find((x) => x.type === 'redeem' && x.item === e.item); return a && a.ok; }).length;
+    const tr = A.find((x) => x.type === 'transfer');
+    const lv = A.find((x) => x.type === 'leave');
+    const up = !clan && f.key === 'xuanzhen' ? `<p class="muted">玄真派是玉宸派下辖的道脉。到了金丹，可去东域宵明大泽的玉宸派本宗持道脉符书改投，${esc(M)}照记，不看运气。宵明大泽是灵窟，日后冲击元神正用得上。</p>` : '';
+    const dn = A.find((x) => x.type === 'donate');
+    const ten = dn && dn.ok && dn.cost * 10 <= ov.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="10">捐 10 份（${n0(dn.cost * 10)} 符钱）</button>` : '';
+    const hundred = dn && dn.ok && dn.cost * 100 <= ov.stone ? `<button data-act="doN" data-i="${A.indexOf(dn)}" data-n="100">捐 100 份（${n0(dn.cost * 100)} 符钱）</button>` : '';
+    // 玉宸九殿：元神以后入殿任职，各殿职权不同
+    const halls = A.filter((x) => x.type === 'hall');
+    const HD = CF.house.halls, myHall = ov.me.hall;
+    const awayR = FX.Sect.awayReason(s, f);
+    const hallAway = halls.some((a) => a.reason === awayR);
+    const hallCard = f.key === 'yuchen' && (halls.length || myHall) ? `<div class="card ${myHall ? '' : 'hl'}"><h3>玉宸九殿</h3>
+        ${myHall ? `<p>你在<b>${esc(HD.defs[myHall].name)}</b>任${esc(HD.rankNames[FX.Sect.hallRank(ov.me)])}：${esc(HD.defs[myHall].duty)}。<br><span class="good">职权：${esc(HD.defs[myHall].perk)}</span></p>` : '<p class="warn">你已成元神，可以入九殿任职了。各殿职权不同，挑一处；转殿要隔 ' + HD.every + ' 年。元神为长老，返虚为副殿主，纯阳以上为殿主，职权跟着加重。</p>'}
+        ${hallAway && (!myHall || isOpen('halls', false)) ? `<p class="bad small">入殿、转殿${esc(awayR)}。 <button class="link" data-act="goto" data-id="${v.seat.id}">赶回去</button></p>` : ''}
+        ${myHall ? `<div>${foldBtn('halls', false, '其余八殿')}</div>` : ''}
+        ${!myHall || isOpen('halls', false) ? halls.map((a) => { const d = HD.defs[a.hall]; return `<div class="stat"><span><b>${esc(d.name)}</b> <span class="muted small">${esc(d.duty)}</span><br><span class="small">${esc(d.perk)}</span>${a.ok || a.reason === awayR ? '' : '<br><span class="bad small">' + esc(a.reason) + '</span>'}</span><span class="row"><button data-act="do" data-i="${A.indexOf(a)}" ${a.ok ? '' : 'disabled'}>${myHall ? '转入' : '入此殿'}</button></span></div>`; }).join('') : ''}
+      </div>` : '';
+    const tab = UI.sectTab || 'main';
+    const rb = v.atSeat ? null : routeMemo(s)(v.seat.id);
+    const awayBar = v.atSeat ? '' : `<p class="warn small" style="margin-top:0">你不在山门：请授、兑换、上交${dn ? '、捐输' : ''}都要回${placeLink(v.seat.id)}办。 <button class="link" data-act="goto" data-id="${v.seat.id}">赶回去${rb ? ' ' + rb.days + ' 天' : ''}</button></p>`;
+    const toShop = '<p class="muted small" style="margin-top:0">想和墟市的货一起比价，去「采买」页：长老房、货架、托人代寻都在那里。 <button class="link" data-act="page" data-p="shop">去采买</button></p>';
+    const body = tab === 'lib' ? `<div class="card">${awayBar}${toShop}${libHtml}</div>`
+      : tab === 'store' ? `<div class="card">${awayBar}<p class="muted small" style="margin-top:0">常备，随时可换。手头 ${n0(v.merit)} ${esc(M)}。</p>${toShop}${storeHtml}</div>`
+      : tab === 'give' ? `<div class="card">${awayBar}<h3>${clan ? '上交族中' : '功德房 · 上交'}</h3>
+          ${subs.length ? `<div class="col">${subs.map((a) => `<div>${btn(a)}</div>`).join('')}</div>` : `<p class="muted">行囊里没有可上交的东西。${Object.entries(v.submit).map(([k, n]) => esc(CF.items[k].name) + '每件记 ' + n).join('、')}；本门没有的道书抄本按价值记，每部只记一次。</p>`}
+          ${dn ? `<h3>功德殿 · 捐输</h3><p class="muted">八派六宗的门人可以拿符钱折${esc(M)}，每 ${n0(dn.cost)} 符钱记 ${dn.gain} ${esc(M)}。</p><div class="row">${btn(dn)}${ten}${hundred}</div>` : ''}</div>`
+      : `<div class="card hl">
+          <div class="stat"><span>${esc(M)}</span><b class="big">${n0(v.merit)}</b></div>
+          <div class="stat"><span>职位</span><b>${esc(v.postName)}${v.leader && v.post < 3 ? ' <span class="muted">· ' + (clan ? '家主' : '掌门') + '是' + esc(v.leader.name) + '（' + esc(P.realmName(v.leader)) + '）</span>' : ''}</b></div>
+          <div class="stat"><span>每年俸禄</span><b>符钱 ${n0(v.stipend.stone)}${v.stipend.qiju ? '、' + esc(CF.items.qiju.name) + '×' + v.stipend.qiju : ''}</b></div>
+          <div class="stat"><span>${clan ? '族中' : '山门'}</span><b>${placeLink(v.seat.id)}${v.atSeat ? ' <span class="good">（你在这里）</span>' : ` <button class="link" data-act="goto" data-id="${v.seat.id}">赶回去</button>`}</b></div>
+          ${v.atSeat ? '' : '<p class="muted small" style="margin:.3em 0 0">请授、兑换、上交、领差事都要回山门办。</p>'}
+          <p class="muted small" style="margin-bottom:0">${clan ? '族里' : '奉事房'}的差事每月记 ${v.taskMerit} ${esc(M)}，另给符钱；${clan ? '替家族除妖' : '领符诏除妖'}打赢了记 ${v.missionMerit} ${esc(M)}，逃了就算没办成。</p>
+          <div class="row" style="margin-top:.5em">${work ? btn(work) : ''}${mission ? btn(mission) : ''}</div>
+        </div>
+        ${hallCard}
+        <div class="card"><h3>去留</h3>${up}${tr ? `<div class="row">${btn(tr)}</div>` : ''}
+          ${lv ? `<div class="row"><button class="danger" data-act="doAsk" data-i="${A.indexOf(lv)}">${esc(lv.label)}</button></div>` : ''}
+          <p class="muted small" style="margin-bottom:0">辞出以后就是散修，可以去求入别的宗门；八派六宗要金丹才收。</p></div>`;
+    return `<h2>${clan ? '家族' : '宗门'} <span class="muted">${esc(f.name)}</span></h2>
+      ${subTabs('sectTab', [['main', '概况'], ['lib', (clan ? '家传' : '传功') + (canLib ? ' · ' + canLib + ' 可换' : '')], ['store', '库藏' + (canStore ? ' · ' + canStore + ' 可换' : '')], ['give', '上交' + (dn ? '·捐输' : '') + (subs.length ? ' · ' + subs.length : '')]])}
+      ${body}`;
+  };
 
   /* ---------- 纪事 ---------- */
-  const CHRON_TYPES = [['', '全部'], ['breakthrough', '突破'], ['death', '死亡'], ['marriage', '婚嫁'], ['event', '事件'], ['succession', '继承'], ['rule', '家规'], ['building', '建设'], ['resource', '经济'], ['leave', '离族'], ['agent', 'AI 家主']];
-  function pageChron() {
-    const s = UI.s, C2 = UI.chron;
-    const es = s.history.filter((e) => (C2.type ? e.type === C2.type : e.severity >= 2)).slice(-400).reverse();
-    const byTurn = {};
-    for (const e of es) (byTurn[e.turn] = byTurn[e.turn] || []).push(e);
-    const turns = Object.keys(byTurn).map(Number).sort((a, b) => b - a);
-    return `<div class="row between"><h1>年代纪事</h1><button data-act="history">《${esc(s.family.surname)}氏家史》（简版）</button></div>
-      <div class="row">${CHRON_TYPES.map(([k, l]) => `<button class="${C2.type === k ? 'primary' : ''}" data-act="chronType" data-k="${k}">${l}</button>`).join('')}</div>
-      <p class="muted">“全部”只列重要度 ≥ 2 的条目；点击条目展开前因与后果。</p>
-      ${turns.map((t) => `<div class="card"><h3>第 ${t} 回合</h3>${chronTurn(t, `<div class="log">${byTurn[t].map((e) => {
-        const open = C2.open === e.id;
-        const causes = open ? FX.H.causeChain(s, e.id, 3) : [];
-        const cons = open ? FX.H.consequences(s, e.id) : [];
-        return `<p class="clickable" data-act="chronOpen" data-id="${e.id}"><span class="y">${e.year}年</span>${'★'.repeat(Math.max(0, e.severity - 2))}${esc(FX.H.text(e))}${e.firstOf ? ' <span class="tag t-warn">第一次</span>' : ''}</p>
-          ${open ? `<div class="opt"><div class="meta">前因：${causes.length ? causes.map((c) => `${c.year}年 ${esc(FX.H.text(c))}`).join(' ← ') : '无记录'}</div><div class="meta">后果：${cons.length ? cons.map((c) => `${c.year}年 ${esc(FX.H.text(c))}`).join('；') : '暂无'}</div><div class="meta">涉及：${e.actors.map(pl).join('、') || '—'}</div></div>` : ''}`;
-      }).join('')}</div>`)}</div>`).join('') || '<p class="muted">尚无记录</p>'}`;
-  }
-  // 只在“全部”视图、且回合已结束时提供整回合润色（按回合批量调一次）
-  function chronTurn(t, html) {
-    const s = UI.s;
-    if (UI.chron.type || (t >= s.turn && !s.ended)) return html;
-    return aiBlock(AI.turnKey(s, t), html, { kind: 'turn', arg: t, label: 'AI 润色此回合' });
-  }
+  PAGE.chron = () => {
+    const s = UI.s, f = UI.chron.filter;
+    const list = s.history.filter((e) => (f === 'pov' ? e.pov : f === 'rumor' ? !e.pov && e.severity >= 2 : e.pov || e.severity >= 2)).slice(-400).reverse();
+    return `<h2>纪事</h2>${seenTabs('chron')}<div class="row tabs">${[['pov', '亲历'], ['rumor', '传闻'], ['all', '全部']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" data-act="chronFilter" data-k="${k}">${n}</button>`).join('')}</div>
+      <div class="card log">${(() => { const nr = f === 'rumor' ? {} : narrOf(); return list.map((e) => `${nr[e.id] ? aiNote(nr[e.id]) : ''}<p class="${e.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(e.t))}</span>${esc(FX.H.text(e))}${!e.pov && e.params && e.params.ix && !s.ended ? ` <button class="link small" data-act="rumorAct" data-id="${e.id}">插手</button>` : ''}</p>`).join(''); })() || '<p class="muted">尚无</p>'}</div>
+      ${s.history.length > 400 ? '<p class="muted">只列最近 400 条。</p>' : ''}`;
+  };
 
-  /* ---------- AI 家主托管 ---------- */
-  function pageAgent() {
-    const s = UI.s;
-    if (s.ended) return '';
-    const rd = AI.ready();
-    const recent = Agent.log.slice(-8).reverse().map((x) => `<p class="${x.ok ? '' : 'muted'}"><span class="y">${x.year}年</span>${esc(x.text)}</p>`).join('');
-    let ctl;
-    if (Agent.running) ctl = `<div class="row"><b class="warn">${esc(Agent.status)}</b><button class="danger" data-act="agentStop" ${Agent.stopRequested ? 'disabled' : ''}>${Agent.stopRequested ? '本步结束后停下…' : '停止托管'}</button></div>`;
-    else if (!rd.ok) ctl = `<p class="muted">需要先开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
-    else ctl = `<div class="row"><button class="primary" data-act="agentRun" data-n="1" ${s.pending.length ? 'title="会先替你决断待决事件"' : ''}>托管 1 回合</button><button data-act="agentRun" data-n="5">托管 5 回合</button>${Agent.status ? `<span class="muted">${esc(Agent.status)}</span>` : ''}</div>`;
-    return `<div class="card ${Agent.running ? 'hl' : ''}"><h3>AI 家主托管</h3>${ctl}
-      <p class="muted">AI 只能从规则此刻允许的操作里挑（差事、建设、买卖、突破、请求、继承人、家规、事件选项），成败仍由规则结算。每一步的理由都记进纪事（筛选“AI 家主”）。模型出错或回复看不懂时托管暂停，局面不动。每回合约调用 1–3 次。</p>
-      ${recent ? `<div class="log">${recent}</div>` : ''}</div>`;
+  /* ---------- 存档与设置 ---------- */
+  // 手机上玩：网页版里教人加到主屏幕；单文件版里给出网页版的网址
+  function phoneCard() {
+    const W = FX.PWA || {};
+    if (W.web && W.standalone) return `<div class="card"><h3>手机上玩</h3><p class="good" style="margin:0">已经装在主屏幕上了，断网也能玩。</p><p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。</p></div>`;
+    if (W.web) {
+      const how = W.wechat ? '在微信里打开的话，先点右上角「…」选「在浏览器打开」，再按下面的办法加到主屏幕。'
+        : W.ios ? '用 Safari 打开本页，点底部的分享按钮（方框带向上箭头），选「添加到主屏幕」。'
+        : '点浏览器菜单里的「添加到主屏幕」或「安装应用」。';
+      return `<div class="card hl"><h3>装到手机主屏幕</h3><p style="margin-top:0">装好以后像 App 一样从主屏幕打开，全屏、断网也能玩。${esc(how)}</p>
+        ${W.canPrompt ? '<div class="row"><button class="primary" data-act="installApp">装到主屏幕</button></div>' : ''}
+        <p class="muted small" style="margin-bottom:0">存档只在这台手机里；换手机、清浏览器数据之前，先在存档管理里导出一份。电脑上的存档用「复制为文本」，在手机上「从文本导入」即可。</p></div>`;
+    }
+    return `<div class="card"><h3>手机上玩</h3><p style="margin-top:0">用手机浏览器打开 <a href="${esc(W.url || '')}" target="_blank" rel="noopener">${esc(W.url || '')}</a>，再加到主屏幕，就能像 App 一样全屏、离线玩。</p><p class="muted small" style="margin-bottom:0">这里的存档带不过去，要先在存档管理里「复制为文本」，到手机上「从文本导入」。</p></div>`;
   }
-
-  /* ---------- 军师（只在玩家点击时调用）---------- */
-  function pageAdvisor() {
-    const s = UI.s;
-    if (s.ended) return '';
-    const rd = AI.ready();
-    const key = AI.adviceKey(s);
-    const text = AI.get(key);
-    let body;
-    if (text) body = `<div class="ai-text">${esc(text).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('')}</div><div class="ai-bar"><span class="tag ai-tag">AI 建议</span><span class="muted">仅供参考：成败仍由规则结算，军师看不到未来。</span></div>`;
-    else if (AI.isPending(key)) body = '<p class="muted">军师正在思量…（不影响你继续操作）</p>';
-    else if (!rd.ok) body = `<p class="muted">军师需要开启 AI 功能（${esc(rd.reason)}）。<button class="link" data-act="page" data-p="rules">去设置</button></p>`;
-    else body = (AI.failure(key) ? `<p class="muted">军师未能进言：${esc(AI.failure(key))}</p>` : '<p class="muted">把当前状态摘要（不含存档）发给模型，换几条文字建议。</p>') + '<button data-act="aiPolish" data-kind="advice">请军师进言</button>';
-    return `<div class="card"><h3>军师进言</h3>${body}</div>`;
+  // AI：开关、key、模型、每日上限、测试连接、被拒的回复
+  function aiCard() {
+    const AI = FX.AI;
+    if (!AI) return '';
+    const c = AI.config(), key = AI.hasKey(), ready = AI.ready(), use = AI.usedToday();
+    const opts = AI.models.map((m) => `<option value="${esc(m)}" ${m === c.model ? 'selected' : ''}>${esc(m)}</option>`).join('');
+    const rej = AI.rejects.length ? `<details class="ai-rejects"><summary class="muted small">最近被拒的回复（${AI.rejects.length} 条，换成了模板文字）</summary>${AI.rejects.map((r) => `<p><b>${esc(r.why)}</b><br><span class="muted">${esc(r.text)}</span></p>`).join('')}</details>` : '';
+    return `<div class="card ai-form"><h3>AI（DeepSeek）</h3>
+      <p class="muted small" style="margin-top:0">AI 只写文字，成败得失照旧由规则掷骰；没开、没填 key、断网或超时，就用原来的模板文字。key 只存在这台设备的浏览器里，只发往 DeepSeek，不进存档和导出。</p>
+      <div class="stat"><span>状态</span><b class="${c.enabled ? (ready.ok ? 'good' : 'warn') : 'muted'}">${c.enabled ? (ready.ok ? '已开启 · ' + esc(c.model) : '已开启，但' + esc(ready.reason)) : '已关闭'}</b></div>
+      <div class="row"><button class="${c.enabled ? '' : 'primary'}" data-act="aiToggle">${c.enabled ? '关闭 AI' : '开启 AI'}</button><button data-act="aiTest" ${ready.ok ? '' : 'disabled'}>测试连接</button></div>
+      <div class="row"><input type="password" id="ai-key" autocomplete="off" spellcheck="false" placeholder="${key ? '已填写（要换就粘贴新的）' : '粘贴 DeepSeek 的 key（sk-…）'}"><button data-act="aiKey">保存 key</button>${key ? '<button data-act="aiKeyClear">清除 key</button>' : ''}</div>
+      <div class="row"><label>模型 <select id="ai-model">${opts}</select></label><label>每天至多 <input type="number" id="ai-limit" min="1" max="5000" value="${c.dailyLimit}" style="width:5.5em"> 次</label></div>
+      <div class="row"><label><input type="checkbox" id="ai-narrate" ${c.narrate ? 'checked' : ''}> 行动后写一段叙述</label><label><input type="checkbox" id="ai-event" ${c.eventText ? 'checked' : ''}> 眼前的事换个说法</label><label><input type="checkbox" id="ai-hooks" ${c.hooks !== false ? 'checked' : ''}> 找上门的事由 AI 写</label><button data-act="aiSave">保存设置</button></div>
+      <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
+      ${rej}</div>`;
   }
-
-  /* ---------- 家史（简版，只读）---------- */
-  function historyTemplate(h) {
-    return h.chapters.map((c) => `<h3>${esc(c.title)}</h3><div class="log">${c.nodes.length ? c.nodes.map((n) => `<p><span class="y">${n.year}年</span>${esc(n.text)}</p>`).join('') : '<p class="muted">无记载</p>'}</div>`).join('');
-  }
-  function historyPolished(text) {
-    return esc(text).split('\n').filter(Boolean).map((x) => { const m = /^【(.+?)】\s*(.*)$/.exec(x); return m ? `<h3>${m[1]}</h3>${m[2] ? `<p>${m[2]}</p>` : ''}` : `<p>${x}</p>`; }).join('');
-  }
-
-  /* ---------- 族谱（简版）---------- */
-  function pageTree() {
-    const s = UI.s;
-    const gens = {};
-    for (const p of Object.values(s.people)) if (p.origin === 'native') (gens[p.generation] = gens[p.generation] || []).push(p);
-    return `<h1>族谱</h1>${unfinished('交互树状族谱（缩放、折叠、婚姻连线）属于阶段 2。当前为按世代分组的列表。')}
-      ${Object.keys(gens).sort((a, b) => a - b).map((g) => `<div class="card"><h3>第 ${+g + 1} 代</h3>${gens[g].sort((a, b) => a.birthYear - b.birthYear).map((p) => `<div class="stat ${p.status !== 'alive' ? 'muted' : ''}"><span>${pl(p.id)} <span class="tag" style="border-color:${p.branch === 'main' ? 'var(--accent)' : 'var(--good)'}">${BR[p.branch]}</span>${s.family.headList.some((h) => h.id === p.id) ? '<span class="tag t-warn">历任家主</span>' : ''}${p.status === 'dead' ? ' 已故' : p.status === 'left' ? ' 离族' + (p.marriedOutTo ? '（外嫁' + esc(p.marriedOutTo) + '）' : '') : ''}</span>
-        <span class="muted">${p.spouseId || p.formerSpouseIds.length ? '配偶 ' + [p.spouseId].concat(p.formerSpouseIds).filter(Boolean).map(pl).join('、') : ''} ${p.fatherId ? '· 父 ' + pl(p.fatherId) : ''}</span></div>`).join('')}</div>`).join('')}`;
-  }
-
-  /* ---------- 势力 ---------- */
-  function pageFac() {
-    const s = UI.s;
-    return `<h1>势力外交</h1>${unfinished('势力的独立年度演化、联姻/贸易/赠礼/求援/依附/威慑/扩张等外交行为、危机与自动战斗属于阶段 3。当前关系值会被事件改变，但势力本身尚不行动。')}
-      <div class="grid">${Object.values(s.factions).map((f) => `<div class="card"><h3>${f.name}</h3>
-        <div class="stat"><span>实力等级</span><b>${f.tier}</b></div>
-        <div class="stat"><span>与本族关系</span><b class="${f.relToPlayer < 0 ? 'bad' : 'good'}">${f.relToPlayer}</b></div>
-        <div class="stat"><span>核心修士</span><span>${f.core.map((c) => `${esc(c.name)}（${CF.realms.names[c.major]}${CF.realms.stageNames[c.major][c.stage - 1]}，${c.age} 岁）`).join('、')}</span></div>
-        <div class="stat"><span>恩怨</span><span>${f.grudges.map((g) => esc(g.what)).join('、') || '无'}</span></div></div>`).join('')}</div>`;
-  }
-
-  /* ---------- 家规与设置 ---------- */
-  function pageRules() {
-    const s = UI.s;
-    const cats = [['succession', '继承制度'], ['allocation', '资源分配'], ['foreign', '对外政策']];
-    return `<h1>家规与设置</h1>
-      <div class="card"><h3>家规</h3><p class="muted">修改：家主威望 -8，受不利影响的分支支持度 -5 到 -10，并做阻力判定；同类家规冷却 4 个回合；新家规下回合起生效，首回合只发挥一半。</p>
-      ${cats.map(([k, l]) => { const cd = FX.Family.ruleCooldownLeft(s, k); const cur = s.family.rules[k]; const eff = FX.Family.effectiveRule(s, k); return `<div class="opt"><div class="row between"><b>${l}：${CF.rules[k][cur].name}</b><span class="muted">${cd ? '冷却还剩 ' + cd + ' 回合' : '可修改'}${eff !== cur ? '（过渡期，本回合仍按「' + CF.rules[k][eff].name + '」）' : ''}</span></div>
-        ${Object.keys(CF.rules[k]).map((o) => `<div class="stat"><span>${CF.rules[k][o].name} <span class="muted">${esc(CF.rules[k][o].desc)}</span></span>${o === cur ? '<span class="tag t-good">现行</span>' : `<button data-act="rule" data-c="${k}" data-o="${o}" ${cd || s.ended ? 'disabled' : ''}>改为此规</button>`}</div>`).join('')}</div>`; }).join('')}
-      </div>
-      <div class="card"><h3>存档</h3><p class="muted">存储：${storeLabel()}。每次操作后自动存档。</p><button data-act="openSaves">存档管理 / 导入导出</button></div>
-      ${aiSettings()}
-      <div class="card"><h3>显示</h3><div class="row">字号 <button data-act="font" data-d="-1">A−</button><button data-act="font" data-d="1">A＋</button><span class="muted">当前 ${Math.round(UI.fontScale * 100)}%</span></div></div>
-      <div class="card"><h3>未完成功能（阶段 1）</h3><ul class="muted">
-        <li>阶段 2：交互族谱树、完整关系网络（亲密/恩怨已有简版）、分支积怨的事件化、联姻外交。</li>
-        <li>阶段 3：外部势力独立演化、七种外交行为、锋芒触发的外部事件、危机部署与自动战斗结算、护族大阵与藏经阁效果、执行外交任务差事。</li>
-        <li>阶段 4：其余基础事件（目前 30 个中已做 14 个及其后续节点）、13 条事件链的完整后续、完整家史与导出（当前为按章节摘录的简版）。</li>
-        <li>AI 润色：润色文本只存在当前页面，刷新或读档后需重新生成；家史与军师建议暂不支持导出。</li>
-        <li>阶段 5：视觉打磨、平衡校准（第 18 章指标）、完整 README 与最终验收。</li>
-      </ul></div>`;
-  }
-
-  function aiSettings() {
-    const c = AI.config();
-    const rd = AI.ready();
-    return `<div class="card"><h3>AI 功能（DeepSeek，可选）：润色与家主托管</h3>
-      <p class="muted">规则算结果，大模型只写文字：它只改写纪事、家史、事件描述和军师建议的文字，不决定任何结果，输出不进存档、不影响状态哈希。关闭或失败时一律显示原模板文字，游戏全程可离线玩。</p>
-      <p class="muted">「AI 家主托管」在宗祠里：开启后可让 AI 替你当家若干回合，它只能从规则允许的操作里挑，每步理由记进纪事。</p>
-      <p class="warn">开启后，回合纪事、家史摘录、事件描述、家族状态摘要和当下可选操作会发往下方的接口地址（默认 DeepSeek 官方接口）。不发送完整存档。</p>
-      <div class="stat"><label for="in-aion">开启 AI 功能</label><input type="checkbox" id="in-aion" data-chg="aiEnabled" ${c.enabled ? 'checked' : ''}></div>
-      <div class="stat"><label for="in-aikey">DeepSeek key</label><span class="row"><input type="password" id="in-aikey" autocomplete="off" spellcheck="false" placeholder="${AI.hasKey() ? '已保存（不回显）' : 'sk-…'}" style="width:14em"><button data-act="aiKey">保存 key</button>${AI.hasKey() ? '<button class="danger" data-act="aiKeyClear">清除 key</button>' : ''}</span></div>
-      <div class="stat"><label for="in-aimodel">模型</label><span><input type="text" id="in-aimodel" list="ai-models" value="${esc(c.model)}" style="width:12em"><datalist id="ai-models">${AI.models.map((m) => `<option value="${m}">`).join('')}</datalist></span></div>
-      <div class="stat"><label for="in-aiurl">接口地址</label><input type="text" id="in-aiurl" value="${esc(c.endpoint)}" style="width:22em;max-width:100%"></div>
-      <div class="stat"><label for="in-ailimit">每日调用上限</label><input type="number" id="in-ailimit" min="1" value="${c.dailyLimit}" style="width:6em"></div>
-      <div class="row" style="margin-top:.5em"><button data-act="aiSave">保存设置</button><button data-act="aiTest" ${rd.ok ? '' : 'disabled'}>测试连接</button><button class="link" data-act="aiReset">恢复默认地址与模型</button></div>
-      <p class="muted">状态：${rd.ok ? '可用' : '不调用（' + esc(rd.reason) + '）'} · 最近一次：${esc(AI.statusText())} · 今日已调用 ${AI.usedToday()} / ${c.dailyLimit} 次</p>
-      <p class="muted">key 只存在本浏览器的 localStorage，只发往上面的接口地址；不写进存档、不随导出、不打日志。浏览器直连 DeepSeek 可能被跨域（CORS）拦截，测试连接报“网络错误”时，可把接口地址换成你自己的中转。</p>
+  /* ---------- 导演模式 ---------- */
+  PAGE.dir = (ov) => {
+    const s = UI.s, D = FX.Director, Dir = FX.Dir;
+    if (!D || !Dir) return '<h2>导演</h2><p class="muted">这一版没有导演模式。</p>';
+    const st = Dir.state(s), on = dirOn(), me = ov.me;
+    const chips = (obj, cur, act) => Object.keys(obj).map((k) => `<button class="chip ${k === cur ? 'on primary' : ''}" data-act="${act}" data-k="${k}">${esc(obj[k].name || obj[k])}</button>`).join('');
+    const per = Dir.PERSONAS[st.persona];
+    const tl = Dir.timeline(s, 70);
+    const nr = narrOf();
+    // 本地的心声只写念头（做了什么紧接着的纪事里有）；AI 拿的主意连做法一起写；没有念头的不占一行
+    const row = (x) => x.kind === 'dir'
+      ? (x.via === 'ai' ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">AI</span></p>`
+        : x.text ? `<p class="dir-think"><i>“${esc(x.text)}”</i></p>` : '')
+      : `${nr[x.id] ? aiNote(nr[x.id]) : ''}<p class="${x.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(x.t))}</span>${esc(x.text)}</p>`;
+    const head = `<div class="card dir-head">
+      <div class="dir-who"><b>${esc(me.name)}</b> · ${ov.age} 岁 · ${esc(ov.realm)} · 在${esc(ov.place.name)} · 余寿约 ${n0(ov.left)} 年 · 符钱 ${n0(ov.stone)}${ov.faction ? ' · ' + esc(ov.faction.name) : ''}</div>
+      ${ov.need && isFinite(ov.need) ? bar((me.progress / ov.need) * 100) : ''}
+      <div class="row dir-ctl">${s.ended ? '<button class="primary" data-act="life">看生平</button><button data-act="askNew">另开一生</button>'
+        : on ? '<button class="primary" data-act="dirPause">⏸ 暂停</button><button data-act="dirStop">接管（我来玩）</button>'
+        : '<button class="primary" data-act="dirStart">▶ ' + (tl.some((x) => x.kind === 'dir') ? '继续导演' : '开始导演') + '</button><button data-act="dirOnce" ' + (D.busy ? 'disabled' : '') + '>走一步</button><button data-act="page" data-p="now">自己玩</button>'}</div>
+      <div class="dir-opt"><span class="muted">速度</span><div class="chips c4">${chips(D.SPEEDS, D.speed, 'dirSpeed')}</div></div>
+      <div class="dir-opt"><span class="muted">AI</span><div class="chips c3">${chips(D.MODES, D.aiMode, 'dirMode')}</div></div>
+      <p class="muted small" style="margin:.3em 0 0">${esc(D.aiState())}${D.status ? ' · <b class="warn">' + esc(D.status) + '</b>' : ''}${D.lastAI && D.aiMode !== 'off' ? ' · ' + esc(D.lastAI) : ''}</p>
     </div>`;
-  }
+    const started = tl.some((x) => x.kind === 'dir');
+    const heart = `<details class="card dir-heart" ${!started || UI.dirHeart ? 'open' : ''}><summary data-act="dirHeart"><h3>本心：${esc(per.name)}${st.aim ? ' · ' + esc(st.aim) : ''}</h3></summary><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
+      <p class="muted small">${esc(per.desc)}。性格：${esc((me.traits || []).join('、') || '平常')}。</p>
+      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></details>`;
+    const life = `<div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+    // 开导演以后，本心折起来放到后面，手机上第一屏就能看到这一生在怎么过
+    return `<h2>导演模式</h2>${head}${s.ended ? life : started ? life + heart : heart + life}`;
+  };
+
+  PAGE.sys = () => `<h2>存档与设置</h2>
+    <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
+      <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
+    <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
+    ${aiCard()}
+    ${phoneCard()}
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
+      <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
   function renderModals() {
-    if (!UI.modals.length) return '';
+    if (!UI.modals.length) { UI.modalSig = null; return ''; }
     const m = UI.modals[UI.modals.length - 1];
     const body = MODALS[m.type](m);
-    return `<div class="modal-bg" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(m.title || '')}">${body}</div></div>`;
+    // 同一个弹窗重画（比如 AI 的文字回来了）不再淡入一遍，免得闪
+    const sig = UI.modals.length + ':' + m.type, still = sig === UI.modalSig;
+    UI.modalSig = sig;
+    return `<div class="modal-bg${still ? ' still' : ''}" data-act="${m.blocking ? '' : 'bgClose'}"><div class="modal" role="dialog" aria-modal="true">${body}</div></div>`;
   }
   const MODALS = {
     event(m) {
       const s = UI.s;
       if (!s.pending.length) { setTimeout(popModal, 0); return ''; }
       m.blocking = true;
-      const v = FX.Ev.view(s, s.pending[0]);
-      const linkNames = (t) => { let x = esc(t); for (const id of v.people) { const p = s.people[id]; if (p) x = x.split(esc(p.name)).join(pl(id)); } return x; };
-      const evKey = AI.eventKey(s, s.pending[0]);
-      return `<h2>${esc(v.name)} <span class="tag">${esc(v.category)}</span>${v.chain ? ` <span class="tag t-warn">事件链 ${v.chain}</span>` : ''}</h2>
-        ${aiBlock(evKey, `<p>${linkNames(v.text)}</p>`, { kind: 'event', label: '换个说法（AI）', html: (t) => `<p>${linkNames(t)}</p>` })}${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
-        ${v.options.map((o, i) => `<div class="opt ${o.available ? '' : 'disabled'}"><div class="row between"><b>${i + 1}. ${esc(o.label)}${o.irreversible ? ' <span class="tag t-bad">不可逆</span>' : ''}</b>
-          <button class="${o.available ? 'primary' : ''}" data-act="choose" data-i="${v.id}" data-o="${o.id}" data-irr="${o.irreversible ? 1 : ''}" ${o.available ? '' : 'disabled'} ${i === 0 ? 'autofocus' : ''}>选择</button></div>
-          <div class="meta">成本：<b>${esc(o.cost)}</b></div><div class="meta">风险：<b>${esc(o.risk)}</b></div>${o.outcome ? `<div class="meta">可能结果：<b>${esc(o.outcome)}</b></div>` : ''}${o.available ? '' : `<div class="meta bad">不可选：${esc(o.reason)}</div>`}</div>`).join('')}
-        <p class="muted">可用数字键 1–${v.options.length} 选择。${s.pending.length > 1 ? `还有 ${s.pending.length - 1} 件待决。` : ''}</p>`;
+      const v = Game.pendingEvents(s)[0];
+      let alt = null, wait = '';
+      const hp = s.pending[0].bound && s.pending[0].bound._p;
+      if (aiOn('eventText') && !(hp && hp.via === 'ai')) {
+        const key = FX.AI.eventKey(s.pending[0]);
+        alt = Game.ai.text(s, key);
+        if (!alt) { FX.AI.eventText(s, s.pending[0]); wait = aiWaiting(key); }
+      }
+      return `<h2>${esc(v.name)} <span class="tag">${esc(v.category)}</span></h2>
+        ${alt ? `<p class="ai-note">${esc(alt)}<span class="src">AI 改写</span></p><details class="muted small"><summary>原文</summary>${esc(v.text)}</details>` : `<p>${esc(v.text)}</p>${wait}`}${v.causes.length ? `<p class="muted">起因：${v.causes.map(esc).join('；')}</p>` : ''}
+        ${v.options.map((o, i) => `<div class="opt ${o.available ? '' : 'disabled'}"><div class="row between"><b>${i + 1}. ${esc(o.label)}</b>
+          <button class="${o.available ? 'primary' : ''}" data-act="choose" data-i="${v.id}" data-o="${o.id}" ${o.available ? '' : 'disabled'} ${i === 0 ? 'autofocus' : ''}>选择</button></div>
+          <div class="meta">代价：<b>${esc(o.cost)}</b></div><div class="meta">风险：<b>${esc(o.risk)}</b></div>${o.outcome ? `<div class="meta">可能结果：<b>${esc(o.outcome)}</b></div>` : ''}
+          ${o.chance ? `<div class="meta">${trace('成功率怎么算', o.chance.parts.map((x) => x.label + ' ' + x.value).join('；'))}</div>` : ''}${o.available ? '' : `<div class="meta bad">不可选：${esc(o.reason)}</div>`}</div>`).join('')}
+        <p class="muted">可用数字键 1–${v.options.length} 选择。成败由规则掷骰决定。</p>`;
     },
     person(m) {
       const s = UI.s, v = Game.view.person(s, m.id);
       if (!v) return '';
       const p = v.p;
-      const bt = Game.breakthroughPreview(s, p.id);
       return `<div class="row between"><h2>${esc(p.name)}</h2><button data-act="close" aria-label="关闭">✕</button></div>
-        <p>${p.sex === 'M' ? '男' : '女'} · ${v.age} 岁 · ${BR[p.branch]} · ${ORIGIN_P[p.origin]} · <b>${esc(v.status)}</b>${p.id === s.family.headId ? ' · 家主' : ''}</p>
-        <div class="grid"><div>
-          <div class="stat"><span>灵根</span><b>${CF.roots.names[p.root.type]}${p.root.mutant ? '（' + p.root.mutant + '：' + CF.roots.mutantTraits[p.root.mutant] + '）' : ''} ${p.root.elements.join('')}</b></div>
-          <div class="stat"><span>资质</span><b>${p.aptitude}</b></div>
-          <div class="stat"><span>境界</span><b>${esc(v.realm)}${p.realm.major ? ` <span class="muted">${n0(p.progress)}/${v.need === Infinity ? '—' : v.need}</span>` : ''}</b></div>
-          <div class="stat"><span>寿元</span><b>${p.status === 'alive' ? v.left + ' / ' + (p.lifespanMax + p.lifespanBonus) : '—'}</b></div>
-          <div class="stat"><span>${trace('修炼速度', v.speed.factors.map((f) => f.label + ' ×' + f.value).join('；'))}</span><b>${v.speed.total}/年</b></div>
-          <div class="stat"><span>战力</span><b>${v.power}</b></div>
-        </div><div>
-          <div class="stat"><span>${trace('忠诚', '基线 ' + v.loyaltyBase + '（宗祠、孝顺、家主威望、分支支持度、家规、恩怨），每年向基线靠拢 2 点')}</span><b>${p.loyalty}</b></div>
-          <div class="stat"><span>野心</span><b>${p.ambition}</b></div>
-          <div class="stat"><span>个人威望</span><b>${n0(p.prestige)}</b></div>
-          <div class="stat"><span>私财 / 贡献</span><b>${n0(p.wealth)} / ${n0(p.contribution)}</b></div>
-          <div class="stat"><span>性格倾向</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
-          <div class="stat"><span>亲缘</span><span>${p.fatherId ? '父 ' + pl(p.fatherId) + ' ' : ''}${p.motherId ? '母 ' + pl(p.motherId) + ' ' : ''}${p.spouseId ? '配偶 ' + pl(p.spouseId) : ''}</span></div>
-        </div></div>
-        ${p.childIds.length ? `<p>子女：${p.childIds.map(pl).join('、')}</p>` : ''}
-        ${p.traits.map((t) => `<p class="muted" style="margin:.1em 0">· ${t}：${esc(CF.traits.desc[t])}</p>`).join('')}
-        ${v.relations.length ? `<p>关系：${v.relations.map((r) => `${pl(r.other)}<span class="${r.type === 'feud' ? 'bad' : 'good'}">（${r.type === 'feud' ? '恩怨' : '亲近'} ${r.strength}${r.tags.length ? '，' + esc(r.tags.join('/')) : ''}）</span>`).join('、')}</p>` : ''}
-        ${bt && bt.kind && bt.can.ok ? `<p><button data-act="tryBreak" data-id="${p.id}">冲击${esc(bt.target)}（${bt.chance}%）</button></p>` : ''}
-        ${p.status === 'alive' && s.family.resources.yanshou > 0 && p.yanshouTaken < 3 ? `<p><button data-act="yanshou" data-id="${p.id}">服用延寿丹（+${CF.yanshouYears[p.yanshouTaken]} 年）</button></p>` : ''}
-        <h3>生平</h3><p>${esc(v.life)}</p>
-        <h3>人生记录</h3><div class="log">${v.history.slice().reverse().map((e) => `<p><span class="y">${e.year}年</span>${esc(e.text)}</p>`).join('') || '<p class="muted">无</p>'}</div>`;
+        <p>${p.sex === 'M' ? '男' : '女'} · ${v.age} 岁 · ${esc(v.faction)} · ${p.status === 'alive' ? '在' + esc(v.place) : '已故'}</p>
+        <div class="stat"><span>境界</span><b>${esc(v.realmTitle)}</b></div>
+        <div class="stat"><span>战力</span><b>${v.power}</b></div>
+        ${P.rootNames(p).length ? `<div class="stat"><span>根基</span><b>${esc(P.rootNames(p).join(' · '))}</b></div>` : ''}
+        ${(p.gear || []).length ? `<div class="stat"><span>法器</span><b>${p.gear.map((g) => esc(FX.Ars.title(g))).join('、')}</b></div>` : ''}
+        ${Object.keys(p.arts || {}).some((k) => FX.Ars.level(p, k) > 0) ? `<div class="stat"><span>道术神通</span><b>${Object.keys(p.arts).filter((k) => FX.Ars.level(p, k) > 0).map((k) => esc(FX.Ars.artLabel(p, k))).join('、')}</b></div>` : ''}
+        ${p.bio ? `<p class="muted">《仙业》人物 · ${esc(p.bio)}</p>` : ''}
+        ${v.isMe ? `<div class="stat"><span>资质</span><b>${p.aptitude}</b></div>` : `<div class="stat"><span>与你的交情</span><b>${v.rel ? v.rel.strength + (v.rel.tags.length ? '（' + esc(v.rel.tags.join('/')) + '）' : '') : '素不相识'}</b></div>`}
+        <div class="stat"><span>性格</span><span>${p.traits.map((t) => `<span class="tag" title="${esc(CF.traits.desc[t])}">${t}</span>`).join('')}</span></div>
+        ${v.isMe ? `<h3>生平</h3><p>${esc(v.life)}</p>` : ''}
+        ${!v.isMe && p.status === 'alive' && Game.npc.aim(s, p.id) ? `<div class="stat"><span>志向</span><span>${esc(Game.npc.aim(s, p.id))}</span></div>` : ''}
+        ${!v.isMe ? (() => {
+          const st = Game.npc.story(s, p.id, 6);
+          if (!st.length) return '';
+          const on = !!(FX.AI && FX.AI.config().enabled);
+          const key = on ? FX.AI.npcKey(s, p.id) : null;
+          const bio = key ? Game.ai.text(s, key) : null;
+          const busy = key && FX.AI.isPending(key);
+          return `<h3>近况</h3>${bio ? aiNote(bio) : busy ? aiWaiting(key) : on ? '<button class="link small" data-act="aiNpc" data-id="' + p.id + '">请 AI 写他的近况与打算</button>' : ''}<div class="log">${st.slice().reverse().map((e) => `<p class="rumor"><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('')}</div>`;
+        })() : ''}
+        <h3>${v.isMe ? '人生记录' : '你与此人'}</h3><div class="log">${v.history.slice().reverse().map((e) => `<p><span class="y">${esc(T.fmt(e.t))}</span>${esc(e.text)}</p>`).join('') || '<p class="muted">无</p>'}</div>`;
     },
-    report(m) {
-      const s = UI.s, r = s.lastReport;
-      if (!r) return '';
-      const keys = ['stone', 'grain', 'herb', 'ore', 'qiju', 'zhuji'];
-      return `<h2>第 ${r.fromYear}–${r.toYear} 年摘要</h2>
-        <p>${keys.filter((k) => r.delta[k]).map((k) => `${CF.items[k]} <b class="${r.delta[k] >= 0 ? 'good' : 'bad'}">${sign(r.delta[k])}</b>`).join('，') || '资源无变化'}；人口 ${r.population[0]} → ${r.population[1]}</p>
-        ${r.entries.length ? aiBlock(AI.turnKey(s, r.turn), `<div class="log">${r.entries.map((id) => { const e = FX.H.get(s, id); return e ? `<p><span class="y">${e.year}年</span>${esc(FX.H.text(e))}</p>` : ''; }).join('')}</div>`, { kind: 'turn', arg: r.turn }) : '<p class="muted">五年无大事。</p>'}
-        <div class="row"><button class="primary" data-act="close" autofocus>知道了</button></div>`;
+    place(m) {
+      const s = UI.s, v = Game.view.place(s, m.id);
+      const p = v.place;
+      const A = Game.actions(s);
+      const next = v.route && v.route.path.length > 1 ? A.find((a) => a.type === 'travel' && a.to === v.route.path[1]) : null;
+      return `<div class="row between"><h2>${esc(p.name)}</h2><button data-act="close" aria-label="关闭">✕</button></div>
+        <p>${esc(p.region || '南域')} · ${esc(v.typeName)}${v.faction ? ' · ' + esc(v.faction.name) : ''}${v.here ? ' · <b class="warn">你在这里</b>' : v.visited ? ' · 去过' : ' · 没去过'}</p>
+        <div class="stat"><span>灵机</span><b>${stars(p.qi)} ${QI[p.qi]} · 属「${esc(p.attr)}」</b></div>
+        ${v.fit ? `<div class="stat"><span>你在此采气</span><b class="${v.fit.value >= 1 ? 'good' : v.fit.value < 0.5 ? 'bad' : ''}">${esc(v.fit.short)} ×${v.fit.value}</b></div>` : ''}
+        ${p.blurb ? `<p class="muted">${esc(p.blurb)}</p>` : ''}
+        ${v.faction && v.faction.blurb ? `<p class="muted">${esc(v.faction.blurb)}</p>` : ''}
+        <div class="stat"><span>危险</span><b class="${p.danger >= 3 ? 'bad' : ''}">${stars(Math.min(5, p.danger))} ${DANGER[p.danger]}</b></div>
+        <div class="stat"><span>相邻</span><span>${p.links.map((l) => esc(s.places[l.to].name) + ' ' + l.days + '天').join('、')}</span></div>
+        ${v.blocked ? `<p class="warn">${esc(v.blocked)}。</p>` : ''}
+        ${v.here ? '' : v.route ? `<p>从你所在之处出发：${v.route.path.map((id) => esc(s.places[id].name)).join(' → ')}，共 ${v.route.days} 天。路是一段一段走的，每段都可能出事。</p>
+          ${next ? `<div class="row"><button class="primary" data-act="goto" data-id="${p.id}">一路赶过去（${v.route.days} 天）</button><button data-act="do" data-i="${A.indexOf(next)}" data-close="1">只走第一段</button></div>` : ''}` : ''}
+        ${v.visited ? `<p class="muted">此地有 ${v.people.length} 人${v.market ? '，可以买卖东西' : ''}。</p>` : ''}`;
     },
-    history() {
-      const s = UI.s, h = FX.H.familyHistory(s);
-      return `<div class="row between"><h2>《${esc(h.title)}》</h2><button data-act="close" aria-label="关闭">✕</button></div>
-        <p class="muted">依据族中真实记录按章摘录（简版）。</p>
-        ${aiBlock(AI.historyKey(s), historyTemplate(h), { kind: 'history', label: 'AI 润色全文', html: historyPolished })}
-        ${unfinished('完整家史（人物列传、评语）与导出属于阶段 4。')}
-        <div class="row"><button data-act="close">关闭</button></div>`;
+    ending() {
+      const s = UI.s, p = P.player(s), r = Game.view.rating(s);
+      return `<h2>${esc(p.name)}的一生</h2>
+        <p class="big">${esc(r.grade)} · ${esc(r.title)}（${r.total} 分）</p>
+        <p class="muted">${r.parts.map((x) => esc(x.label) + ' ' + x.value).join('；')}</p>
+        <p>${esc(FX.H.lifeSummary(s, p))}</p>
+        <div class="row"><button data-act="close">再看看纪事</button><button class="primary" data-act="newRun">另开一生</button></div>`;
+    },
+    life() {
+      const s = UI.s, p = P.player(s);
+      const on = !!(FX.AI && FX.AI.config().enabled);
+      const L = on ? Game.ai.latest(s, 'life') : null;
+      const key = on ? FX.AI.lifeKey(s) : null;
+      const busy = key && FX.AI.isPending(key);
+      const fresh = L && L.key === key;
+      const fail = key && FX.AI.failure(key);
+      const btn = on ? `<div class="row"><button data-act="aiLife" ${busy || fresh ? 'disabled' : ''}>${busy ? 'AI 执笔中…' : L ? (fresh ? '小传已是最新' : '按眼下的经历重写小传') : '请 AI 写一篇小传'}</button></div>${fail ? `<p class="muted small">没写成：${esc(fail)}</p>` : ''}` : '';
+      return `<div class="row between"><h2>生平</h2><button data-act="close" aria-label="关闭">✕</button></div><p>${esc(FX.H.lifeSummary(s, p))}</p>
+        ${L ? `<h3>小传</h3><p class="ai-note">${esc(L.out)}<span class="src">AI 写于 ${esc(L.year)} 年</span></p>` : ''}${btn}`;
+    },
+    // 自由输入的预览：每步的耗时、花费、成功率由规则算；确认后才结算
+    intent(m) {
+      const s = UI.s;
+      const num = '①②③④⑤';
+      const plans = m.plans || [];
+      const row = (r, i) => {
+        const bits = [];
+        if (r.days) bits.push(T.dur(r.days));
+        if (r.cost) bits.push('花 ' + n0(r.cost) + ' 符钱');
+        if (r.chance !== null && r.chance !== undefined) bits.push('成功率 ' + r.chance + '%');
+        return `<div class="${r.ok ? '' : 'bad'}">${num[i] || i + 1} ${esc(r.label || '')}${bits.length ? ' <span class="muted small">· ' + esc(bits.join(' · ')) + '</span>' : ''}${r.ok ? '' : '<br><span class="small">做不到：' + esc(r.reason || '') + '</span>'}${r.ok && (r.gain || r.risk) ? `<br><span class="muted small">${esc([r.gain, r.risk].filter(Boolean).join('；'))}</span>` : ''}${r.warn ? `<br><span class="warn small">${esc(r.warn)}</span>` : ''}</div>`;
+      };
+      const card = (pl, i) => {
+        const c = pl.check;
+        return `<div class="card intent-plan${i === 0 && c.ok ? ' hl' : ''}"><b>${esc(pl.say || '这样做')}</b>${pl.via === 'ai' ? ' <span class="muted small">AI 的理解</span>' : ''}
+          <div class="intent-steps">${c.rows.map(row).join('')}</div>
+          ${c.ok ? `<div class="row between"><span class="muted small">${c.days ? '共约 ' + esc(T.dur(c.days)) : ''}${c.cost ? ' · 花 ' + n0(c.cost) + ' 符钱' : ''}${c.rows.length > 1 ? ' · 路上出事就停' : ''}</span><button class="primary" data-act="intentGo" data-i="${i}">照做</button></div>` : ''}</div>`;
+      };
+      return `<div class="row between"><h2>${esc(m.title || '你说')}</h2><button data-act="close">✕</button></div>
+        <p class="say-quote">${m.title ? esc(m.input) : '“' + esc(m.input) + '”'}</p>
+        ${m.note ? `<p class="${m.noteCls || 'muted'}">${esc(m.note)}</p>` : ''}
+        ${plans.map(card).join('')}
+        ${!plans.length ? '<p class="muted">没找到对得上的做法。换个说法试试，提到具体的人名、地名或东西更好认。</p>' : ''}
+        <div class="row"><button data-act="close" autofocus>换个说法</button></div>`;
     },
     confirm(m) {
       return `<h2>${esc(m.title)}</h2><p>${esc(m.text)}</p><div class="row"><button class="danger" data-act="confirmYes" autofocus>确定</button><button data-act="close">取消</button></div>`;
-    },
-    heir() {
-      const s = UI.s;
-      const ranked = FX.Family.rankCandidates(s, s.family.headId).filter((x) => x.p.id !== s.family.headId);
-      return `<div class="row between"><h2>指定继承人</h2><button data-act="close">✕</button></div>
-        <p class="muted">现行继承制度：${CF.rules.succession[s.family.rules.succession].name}。指定不等于全族接受，接受度由家规匹配度和分支支持度共同决定。</p>
-        ${ranked.slice(0, 10).map((x) => { const a = FX.Family.acceptance(s, x.p.id, s.family.headId); return `<div class="stat"><span>${pl(x.p.id)}（${BR[x.p.branch]}，${esc(P.realmName(x.p))}，${P.age(s, x.p)} 岁）${trace('评分 ' + x.score, x.parts.map((y) => y.label + ' ' + y.value).join('；'))} · 接受度 <b class="${a.level === 'high' ? 'good' : a.level === 'low' ? 'bad' : 'warn'}">${a.value}</b></span><button data-act="setHeir" data-id="${x.p.id}" ${s.family.heirId === x.p.id ? 'disabled' : ''}>立为继承人</button></div>`; }).join('') || '<p class="bad">无合格候选人（需成年、在世、本家血脉）</p>'}`;
     },
     saves(m) {
       const sl = m.slots || {};
       return `<div class="row between"><h2>存档管理</h2><button data-act="close">✕</button></div>
         <p class="muted">存储：${storeLabel()}</p>
-        ${['auto', 'slot1', 'slot2', 'slot3'].map((k) => { const meta = sl[k]; return `<div class="stat"><span><b>${k === 'auto' ? '自动存档' : '槽位 ' + k.slice(4)}</b> ${meta ? `<span class="muted">${esc(meta.surname)}氏 · ${esc(meta.originName)} · 第 ${meta.year} 年 · ${meta.population} 人 · ${esc(meta.ratingPreview)}${meta.savedAt ? ' · ' + new Date(meta.savedAt).toLocaleString('zh-CN') : ''}</span>` : '<span class="muted">空</span>'}</span>
+        ${['auto', 'slot1', 'slot2', 'slot3'].map((k) => { const meta = sl[k]; return `<div class="stat"><span><b>${k === 'auto' ? '自动存档' : '槽位 ' + k.slice(4)}</b> ${meta ? `<span class="muted">${esc(meta.name || '?')} · ${esc(meta.originName)} · ${meta.year} 年 · ${meta.age} 岁 · ${esc(meta.realm)}${meta.ended ? ' · 已身故' : ''}${meta.savedAt ? ' · ' + new Date(meta.savedAt).toLocaleString('zh-CN') : ''}</span>` : '<span class="muted">空</span>'}</span>
           <span class="row">${k !== 'auto' && UI.s ? `<button data-act="saveSlot" data-k="${k}">保存</button>` : ''}${meta ? `<button data-act="loadSlot" data-k="${k}">读取</button>` : ''}${meta && k !== 'auto' ? `<button class="danger" data-act="delSlot" data-k="${k}">删除</button>` : ''}</span></div>`; }).join('')}
-        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button></div>
+        <h3>导出</h3><div class="row"><button data-act="exportFile" ${UI.s ? '' : 'disabled'}>下载 .json 文件</button><button data-act="exportText" ${UI.s ? '' : 'disabled'}>复制为文本</button>${FX.PWA && FX.PWA.canShareFile() ? `<button data-act="shareSave" ${UI.s ? '' : 'disabled'}>分享存档文件</button>` : ''}</div>
         <h3>导入</h3><div class="row"><input type="file" accept=".json,.txt,application/json" id="in-file"><button data-act="importFile">从文件导入</button></div>
         <textarea id="in-text" placeholder="粘贴以 FXZ1: / FXB1: 开头的存档文本，或 JSON"></textarea><div class="row"><button data-act="importText">从文本导入</button></div>
         ${m.exported ? `<h3>存档文本</h3><p class="muted">${m.copied ? '已复制到剪贴板。' : '浏览器不允许自动复制，请手动全选复制：'}</p><textarea readonly>${esc(m.exported)}</textarea>` : ''}`;
-    },
-    sell(m) {
-      const s = UI.s, k = m.k;
-      return `<h2>出售${CF.items[k]}</h2><p>库存 ${n0(s.family.resources[k])}，单价 ${FX.Econ.sellPrice(s, k)} 灵石（坊市收购价为市价七成）。</p>
-        <div class="row"><input type="number" id="in-sell" min="1" max="${Math.floor(s.family.resources[k])}" value="${Math.floor(s.family.resources[k] / 2) || 1}" style="width:8em"><button class="primary" data-act="sell" data-k="${k}">出售</button><button data-act="close">取消</button></div>`;
     },
     trace(m) {
       return `<h3>成因分解</h3><p>${esc(m.text).split('；').join('<br>')}</p><button data-act="close" autofocus>关闭</button>`;
@@ -561,240 +1067,286 @@
   }
 
   const ACT = {
-    page(d) { UI.page = d.p; UI.more = false; render(); const m = $('#main'); if (m) m.scrollTop = 0; G.scrollTo && G.scrollTo(0, 0); },
-    more() { UI.more = !UI.more; render(); },
+    page(d) { UI.page = d.p; if (d.tab) UI[d.p + 'Tab'] = d.tab; UI.centerMap = d.p === 'map'; UI.modals = UI.modals.filter((m) => m.type === 'event' || m.type === 'ending'); render(); G.scrollTo && G.scrollTo(0, 0); },
+    subTab(d) { UI[d.key] = d.k; if (d.key === 'actTab') remember('actTab', d.k); render(); },
+    fold(d) { UI.fold[d.k] = !(UI.fold[d.k] === undefined ? d.def === '1' : UI.fold[d.k]); try { localStorage.setItem('family-xiuxian:fold', JSON.stringify(UI.fold)); } catch (e) { /* 忽略 */ } render(); },
+    unclamp(d, el) { el.classList.toggle('clamp'); },
+    // 一路赶到某地：按最短路一段一段走，路上出事、走不通就停下
+    goto(d) {
+      const s = UI.s, to = s.places[d.id];
+      UI.modals = UI.modals.filter((m) => m.type !== 'place');
+      let legs = 0, why = '';
+      while (legs < 40) {
+        const me = P.player(s);
+        if (me.locationId === d.id) break;
+        const v = Game.view.place(s, d.id);
+        if (!v.route || v.route.path.length < 2) { why = v.blocked || '走不通'; break; }
+        const a = Game.actions(s).find((x) => x.type === 'travel' && x.to === v.route.path[1]);
+        if (!a || !a.ok) { why = a ? a.reason : '此刻走不了'; break; }
+        const r = Game.act(s, a);
+        if (!r.ok) { why = r.error; break; }
+        legs++;
+        if (s.pending.length || s.ended || r.interrupted) { why = s.pending.length ? '路上出了事，先处理' : r.text || ''; break; }
+      }
+      const arrived = P.player(s).locationId === d.id;
+      toast(arrived ? `到了${to.name}${legs > 1 ? '（走了 ' + legs + ' 段）' : ''}` : (legs ? `走了 ${legs} 段，停在${s.places[P.player(s).locationId].name}：` : '✗ ') + why, 3500);
+      if (arrived && UI.page === 'map') UI.page = 'now';
+      afterAction();
+    },
     pickOrigin(d) { UI.start.origin = d.k; render(); },
-    newGame() {
+    newGame(d) {
       UI.start.surname = ($('#in-surname') || {}).value || '';
+      UI.start.given = ($('#in-given') || {}).value || '';
+      UI.start.sex = ($('#in-sex') || {}).value || '';
       UI.start.seed = ($('#in-seed') || {}).value || '';
       const seed = UI.start.seed || String(Date.now() % 1e9) + '-' + Math.floor(Math.random() * 1e6);
-      UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, seed });
-      UI.page = 'hall';
+      UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, given: UI.start.given, sex: UI.start.sex, seed });
+      UI.page = d && d.dir ? 'dir' : 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
+      if (FX.Director) FX.Director.reset();
+      if (d && d.dir && FX.Director) FX.Director.start(UI.s);
       afterAction();
-      toast(`${UI.s.family.surname}氏开宗立族（种子 ${seed}）`, 3500);
-      openPendingIfAny();
+      if (G.scrollTo) G.scrollTo(0, 0);
+      toast(`${P.player(UI.s).name}踏入仙途（种子 ${seed}）`, 3500);
     },
     async continue() { const t = await loadAuto(); if (t) readSave(t); },
-    newRun() { UI.s = null; UI.modals = []; render(); },
-    advance() {
-      const r = Game.advance(UI.s);
-      if (!r.ok) return toast('✗ ' + r.error);
+    newRun() { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); },
+    askNew() { pushModal({ type: 'confirm', title: '另开一生', text: '当前这一生会留在自动存档里，直到新的一生开始后被覆盖。要继续保留，先存到槽位。', onYes: () => { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); } }); },
+    do(d, el) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      if (a.warn && !d.sure) { pushModal({ type: 'confirm', title: a.label, text: a.warn + '确定吗？', onYes: () => ACT.do({ i: d.i, sure: '1' }) }); return; }
+      if (el && el.dataset.close) UI.modals = UI.modals.filter((m) => m.type !== 'place');
+      const r = Game.act(UI.s, a);
+      if (!r.ok) { toast('✗ ' + r.error); return; }
+      if (repeatable(a)) { UI.last = {}; for (const k of LAST_KEYS) if (a[k] !== undefined) UI.last[k] = a[k]; remember('last', UI.last); }
+      if (r.text) toast(r.text);
       afterAction();
-      if (r.interrupted) { toast(`第 ${r.year} 年发生大事，推进暂停`); openPendingIfAny(); }
-      else if (r.ended) toast('本局结束：' + UI.s.ended.what, 4000);
-      else { openPendingIfAny(); pushModal({ type: 'report', title: '回合摘要' }); }
-      autoPolish();
     },
-    openEvent() { openPendingIfAny(); },
-    history() {
-      pushModal({ type: 'history', title: '家史' });
-      if (UI.s.ended && AI.ready().ok && !AI.failure(AI.historyKey(UI.s))) AI.polishHistory(UI.s); // 结局家史自动润色一次
+    // 快捷栏里的冲关有身死之险：先问一句，免得连点闭关时误点
+    doRisk(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      const bt = Game.view.overview(UI.s).breakthrough;
+      pushModal({ type: 'confirm', title: a.label, text: `成功率 ${bt ? bt.chance : '?'}%，失败时约 ${bt ? bt.death : '?'}% 身死。确定现在冲关吗？`, onYes: () => ACT.do({ i: d.i }) });
     },
-    aiRaw(d) { if (UI.aiRaw.has(d.k)) UI.aiRaw.delete(d.k); else UI.aiRaw.add(d.k); render(); },
-    aiPolish(d) {
+    buy(d) { const r = Game.buy(UI.s, d.k, Number(d.n) || 1); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    doAsk(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      pushModal({ type: 'confirm', title: a.label, text: '这一步回不了头，确定吗？', onYes: () => { const r = Game.act(UI.s, a); toast(r.ok ? r.text || '已办' : '✗ ' + r.error); if (r.ok) afterAction(); } });
+    },
+    // 自由输入：先问 AI（至多 8 秒），不行就按关键词匹配
+    async say() {
       const s = UI.s;
-      const k = d.kind;
-      const key = k === 'turn' ? AI.turnKey(s, Number(d.t)) : k === 'history' ? AI.historyKey(s) : k === 'advice' ? AI.adviceKey(s) : s.pending[0] ? AI.eventKey(s, s.pending[0]) : null;
-      if (!key) return;
-      AI.failed.delete(key); // 玩家主动重试
-      if (k === 'turn') AI.polishTurn(s, Number(d.t));
-      else if (k === 'history') AI.polishHistory(s);
-      else if (k === 'advice') AI.advise(s);
-      else AI.polishEvent(s, s.pending[0]);
-      UI.aiRaw.delete(key);
+      const inp = $('#say-in');
+      const text = ((inp && inp.value) || UI.sayText || '').trim();
+      UI.sayText = text;
+      if (!text) { toast('先写一句想做什么'); return; }
+      if (!s || s.ended || s.pending.length || UI.sayBusy) return;
+      const local = () => Game.intent.match(s, text);
+      const withCheck = (pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) });
+      const useAI = FX.AI && FX.AI.config().enabled && FX.AI.ready().ok;
+      if (!useAI) { pushModal({ type: 'intent', input: text, plans: local() }); return; }
+      UI.sayBusy = true; render();
+      let r;
+      try { r = await FX.AI.intent(s, text); } catch (e) { r = { ok: false, reason: '出错了' }; }
+      UI.sayBusy = false;
+      if (UI.s !== s || s.pending.length) { render(); return; }
+      if (r.ok && r.plan) {
+        const pl = withCheck(r.plan);
+        // AI 的拆法走不通时，把关键词匹配的几种也列出来
+        pushModal({ type: 'intent', input: text, plans: pl.check.ok ? [pl] : [pl].concat(local().filter((c) => c.check.ok).slice(0, 2)) });
+      } else if (r.ok && r.ask) pushModal({ type: 'intent', input: text, note: 'AI 想问清楚：' + r.ask, noteCls: 'warn', plans: local() });
+      else if (r.ok && r.cannot) pushModal({ type: 'intent', input: text, note: '做不到：' + r.cannot, noteCls: 'bad', plans: local() });
+      else pushModal({ type: 'intent', input: text, note: 'AI 没接上（' + (r.reason || '未知') + '），先按字面找了几种做法。', plans: local() });
+    },
+    // 传闻里的事：插手 → 预览卡（去相助、去探望、去打听），照做走自由输入那一套
+    rumorAct(d) {
+      const s = UI.s;
+      const e = FX.H.get(s, d.id);
+      const plans = Game.npc.interventions(s, d.id).map((pl) => Object.assign(pl, { check: Game.intent.preview(s, pl.steps) }));
+      pushModal({ type: 'intent', title: '插手', input: e ? FX.H.text(e) : '', note: plans.length ? '' : '当事人已不在，插不上手了。', plans });
+    },
+    aiNpc(d) { FX.AI.npcBio(UI.s, d.id); render(); },
+    // 导演模式
+    dirStart() { UI.modals = UI.modals.filter((m) => m.type !== 'event'); FX.Director.start(UI.s); UI.page = 'dir'; render(); },
+    dirPause() { FX.Director.stop('已暂停'); afterAction(); },
+    dirStop() { FX.Director.stop(''); UI.page = 'now'; afterAction(); toast('你接管了，自己来'); },
+    async dirOnce() { await FX.Director.once(UI.s); afterAction(); },
+    dirSpeed(d) { FX.Director.setSpeed(d.k); render(); },
+    // 本心卡折起、展开：记在界面状态里，导演跑着页面重画也不会自己合上
+    dirHeart(d, el, ev) { if (ev) ev.preventDefault(); UI.dirHeart = !(el && el.parentNode && el.parentNode.open); render(); },
+    dirMode(d) { FX.Director.setMode(d.k); render(); },
+    dirPersona(d) { FX.Dir.setPersona(UI.s, d.k); scheduleSave(); render(); },
+    dirAim() { FX.Dir.setAim(UI.s, ($('#dir-aim') || {}).value || ''); scheduleSave(); toast('志向定下了'); render(); },
+    intentGo(d) {
+      const m = UI.modals[UI.modals.length - 1];
+      const pl = m && m.plans && m.plans[Number(d.i)];
+      if (!pl) return;
+      UI.modals.pop();
+      const r = Game.intent.exec(UI.s, pl);
+      UI.sayText = '';
+      const msg = r.texts.join('；') || (r.done ? '办完了' : '');
+      toast((r.stopped ? (r.done ? '做了 ' + r.done + '/' + r.total + ' 步，停下：' + r.stopped : '✗ ' + r.stopped) + (msg ? '。' + msg : '') : msg), 5000);
+      afterAction();
+    },
+    doN(d) {
+      const a = Game.actions(UI.s)[Number(d.i)];
+      if (!a) return;
+      const r = Game.act(UI.s, Object.assign({}, a, { qty: Number(d.n) }));
+      if (!r.ok) { toast('✗ ' + r.error); return; }
+      if (r.text) toast(r.text);
+      afterAction();
+    },
+    autoPill(d) { Game.setOption(UI.s, 'autoPill', d.v === '1'); toast(d.v === '1' ? '闭关时会自动续服' : '不再自动服用'); afterAction(); },
+    sell(d) { const r = Game.sell(UI.s, d.k, Number(d.n)); toast(r.ok ? r.text : '✗ ' + r.error); if (r.ok) afterAction(); },
+    choose(d) {
+      const r = Game.choose(UI.s, d.i, d.o);
+      if (!r.ok) { toast('✗ ' + r.error); return; }
+      UI.modals = UI.modals.filter((m) => m.type !== 'event');
+      toast(r.result || '已决断', 3500);
+      afterAction();
+    },
+    openEvent() { afterAction(); },
+    person(d) { pushModal({ type: 'person', id: d.id }); },
+    place(d) { pushModal({ type: 'place', id: d.id }); },
+    life() { pushModal({ type: 'life' }); },
+    peopleTab(d) { UI.people.tab = d.k; render(); },
+    chronFilter(d) { UI.chron.filter = d.k; render(); },
+    trace(d) { pushModal({ type: 'trace', text: d.t }); },
+    close() { popModal(); },
+    bgClose(d, el, ev) { if (ev.target === el) popModal(); },
+    confirmYes() { const m = UI.modals[UI.modals.length - 1]; UI.modals.pop(); if (m.onYes) m.onYes(); render(); },
+    font(d) { UI.fontScale = Math.max(0.8, Math.min(1.5, UI.fontScale + Number(d.d) * 0.1)); applyFont(); },
+    openSaves() { const m = { type: 'saves' }; pushModal(m); refreshSlots(m); },
+    async saveSlot(d) {
+      const r = await FX.Store.put(d.k, Game.save.serialize(UI.s, Date.now()));
+      toast(r.ok ? '已保存到槽位 ' + d.k.slice(4) : '✗ ' + r.error);
+      refreshSlots(UI.modals[UI.modals.length - 1]);
+    },
+    async loadSlot(d) { const t = d.k === 'auto' ? await loadAuto() : await FX.Store.get(d.k); if (t && (await readSave(t))) toast('已读取'); },
+    async delSlot(d) { await FX.Store.del(d.k); refreshSlots(UI.modals[UI.modals.length - 1]); },
+    exportFile() {
+      const p = P.player(UI.s);
+      const ok = FX.Store.download(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
+      toast(ok ? '已开始下载' : '下载失败，请改用复制文本');
+    },
+    async shareSave() {
+      const p = P.player(UI.s);
+      const r = await FX.PWA.shareFile(`修仙录-${p.name}-${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
+      if (r === false) toast('这个浏览器分享不了文件，请改用下载或复制文本');
+    },
+    aiToggle() {
+      const c = FX.AI.saveConfig({ enabled: !FX.AI.config().enabled });
+      toast(c.enabled ? (FX.AI.hasKey() ? 'AI 已开启' : 'AI 已开启，还要填 key') : 'AI 已关闭，用模板文字');
       render();
     },
     aiKey() {
-      const el = $('#in-aikey');
-      const v = el ? el.value.trim() : '';
-      if (el) el.value = '';
-      if (!v) return toast('请先粘贴 key');
-      toast(AI.setKey(v) ? 'key 已保存在本浏览器' : '✗ 浏览器不允许本地存储，无法保存 key');
+      const v = (($('#ai-key') || {}).value || '').trim();
+      if (!v) return toast('先把 key 粘贴进框里');
+      if (!/^[\x21-\x7e]{8,200}$/.test(v)) return toast('这不像 key：应是一串英文字母和数字');
+      toast(FX.AI.setKey(v) ? 'key 已存在这台设备上' : '✗ 这个浏览器存不了 key');
       render();
     },
-    async agentRun(d) {
-      if (Agent.running) return;
-      UI.modals = UI.modals.filter((m) => m.type !== 'event');
-      const r = await Agent.run(UI.s, Number(d.n) || 1, { afterTurn: () => { scheduleSave(); autoPolish(); } });
-      scheduleSave();
-      toast(Agent.status, 4000);
-      render();
-      if (!r.ok) openPendingIfAny();
-    },
-    agentStop() { Agent.stop(); render(); },
-    aiKeyClear() { AI.setKey(''); toast('key 已清除'); render(); },
+    aiKeyClear() { pushModal({ type: 'confirm', title: '清除 key', text: '清除以后 AI 就停了，要用得重新粘贴。确定吗？', onYes: () => { FX.AI.setKey(''); toast('key 已清除'); } }); },
     aiSave() {
-      const c = AI.saveConfig({ model: ($('#in-aimodel') || {}).value, endpoint: ($('#in-aiurl') || {}).value, dailyLimit: ($('#in-ailimit') || {}).value });
-      toast(AI.validEndpoint(c.endpoint) ? '设置已保存' : '已保存，但接口地址无效（需 https），不会调用', 3500);
+      FX.AI.saveConfig({ model: ($('#ai-model') || {}).value, dailyLimit: ($('#ai-limit') || {}).value, narrate: !!($('#ai-narrate') || {}).checked, eventText: !!($('#ai-event') || {}).checked, hooks: !!($('#ai-hooks') || {}).checked });
+      toast('AI 设置已保存');
       render();
     },
-    aiReset() { AI.saveConfig({ model: AI.defaults.model, endpoint: AI.defaults.endpoint }); toast('已恢复默认：' + AI.defaults.model); render(); },
     async aiTest() {
-      toast('正在测试连接…');
-      const r = await AI.testConnection();
-      toast(r.ok ? '连接成功' : '连接失败：' + r.reason, 4500);
+      toast('正在连 DeepSeek…');
+      const r = await FX.AI.testConnection();
+      toast(r.ok ? '连上了，DeepSeek 回了：' + r.text.slice(0, 20) : '✗ 没连上：' + r.reason, 5000);
       render();
     },
-    choose(d) {
-      const go = () => {
-        const r = Game.resolveEvent(UI.s, d.i, d.o);
-        if (!r.ok) return toast('✗ ' + r.error);
-        toast(r.result || '已处置', 3200);
-        UI.modals = UI.modals.filter((m) => m.type !== 'event' && m.type !== 'confirm');
-        afterAction();
-        if (UI.s.pending.length) openPendingIfAny();
-        else if (UI.s.phase === 'advancing' && !UI.s.ended) toast('可点“继续推进”完成本回合剩余年份', 3000);
-      };
-      if (d.irr) pushModal({ type: 'confirm', title: '不可逆的决定', text: '此选项无法撤回，确定吗？', yes: go });
-      else go();
-    },
-    confirmYes() { const m = UI.modals[UI.modals.length - 1]; UI.modals.pop(); m.yes(); render(); },
-    close() { popModal(); },
-    bgClose(d, el, ev) { if (ev.target === el) popModal(); },
-    person(d) { pushModal({ type: 'person', id: d.id, title: '人物' }); },
-    trace(d) { pushModal({ type: 'trace', text: d.t, title: '成因' }); },
-    sort(d) { const R = UI.roster; if (R.sort === d.k) R.dir *= -1; else { R.sort = d.k; R.dir = -1; } render(); },
-    suggest(d) { result(Game.applySuggestions(UI.s, d.all === '1'), '已按建议安排'); },
-    keepDuty(d) { result(Game.confirmDuty(UI.s, d.id)); },
-    batch() {
-      const s = UI.s, c = UI.cult.batchCond;
-      const ids = P.adults(s).filter((p) => c === 'attention' ? FX.Sim.needsAttention(s).includes(p) : c === 'none' ? !p.duty.type : c === 'mortal' ? !(P.hasRoot(p) && p.realm.major > 0) : c === 'lowapt' ? P.hasRoot(p) && p.realm.major > 0 && p.aptitude < 45 : c.startsWith('d:') ? p.duty.type === c.slice(2) : false).map((p) => p.id);
-      if (!ids.length) return toast('没有符合条件的族人');
-      const r = Game.batchSetDuty(s, ids, UI.cult.batchDuty);
-      toast(`已改派 ${r.done} 人${r.failed.length ? '；' + r.failed.length + ' 人不适用：' + r.failed.slice(0, 3).join('，') : ''}`, 4000);
-      afterAction();
-    },
-    tryBreak(d) {
-      const s = UI.s, p = s.people[d.id], b = Game.breakthroughPreview(s, d.id);
-      pushModal({ type: 'confirm', title: `${p.name}冲击${b.target}`, text: `成功率 ${b.chance}%${b.kind !== 'minor' ? `；失败将跌落修为并重伤，身死概率 ${b.death}%` : ''}${b.kind === 'zhuji' && s.family.resources.zhuji ? '；将消耗筑基丹 1 颗' : ''}。`, yes: () => {
-        const r = Game.attemptBreakthrough(s, d.id);
-        if (!r.ok) return toast('✗ ' + r.error);
-        toast(r.success ? `${p.name}破关成功，成就${r.target}！` : `${p.name}冲击${r.target}失败${r.died ? '，身死道消' : ''}`, 4000);
-        afterAction();
-        openPendingIfAny();
-      } });
-    },
-    yanshou(d) { const r = Game.useYanshou(UI.s, d.id); if (r.ok) toast(r.text); afterAction(); },
-    upgrade(d) { result(Game.upgrade(UI.s, d.k), CF.buildings[d.k].name + '升级完成'); },
-    buy(d) { const r = Game.buy(UI.s, d.k, Number(d.q)); result(r, r.ok ? `购入${CF.items[d.k]}×${d.q}，花费 ${r.cost}` : null); },
-    sellAsk(d) { pushModal({ type: 'sell', k: d.k, title: '出售' }); },
-    sell(d) { const q = Number(($('#in-sell') || {}).value || 0); const r = Game.sell(UI.s, d.k, q); if (r.ok) { popModal(); toast(`得灵石 ${r.gain}`); afterAction(); } else toast('✗ ' + r.error); },
-    herb(d) { result(Game.setSetting(UI.s, 'herbPlots', UI.s.family.settings.herbPlots + Number(d.d))); },
-    toggleSet(d) { result(Game.setSetting(UI.s, d.k, !UI.s.family.settings[d.k])); },
-    chronType(d) { UI.chron.type = d.k; render(); },
-    chronOpen(d) { UI.chron.open = UI.chron.open === d.id ? null : d.id; render(); },
-    req(d) { result(Game.answerRequest(UI.s, d.id, d.a === '1')); },
-    heirPicker() { pushModal({ type: 'heir', title: '继承人' }); },
-    setHeir(d) { const r = Game.designateHeir(UI.s, d.id); if (r.ok) { toast(`已立继承人，接受度 ${r.acceptance.value}`); popModal(); afterAction(); } else toast('✗ ' + r.error); },
-    abdicate() { pushModal({ type: 'confirm', title: '家主退位', text: '家主退为太上长老，由继承人接任。确定吗？', yes: () => result(Game.abdicate(UI.s), '家主已退位') }); },
-    rule(d) {
-      const s = UI.s;
-      pushModal({ type: 'confirm', title: '修改家规', text: `改为「${CF.rules[d.c][d.o].name}」：家主威望 -8，可能遭到分支阻力；${CF.rules.cooldownTurns} 个回合内不能再改；下回合起生效（首回合一半）。阻力判定通过率约 ${Math.round(FX.Family.resistChance(s, FX.Family.ruleAdverse(s, d.c, d.o)) * 100)}%。`, yes: () => { const r = Game.changeRule(s, d.c, d.o); result(r, r.ok ? '家规已改：' + r.note : null); } });
-    },
-    seal() { pushModal({ type: 'confirm', title: '封存族史', text: '结束本局并生成评级。此操作不可撤回。', yes: () => { Game.seal(UI.s); afterAction(); } }); },
-    font(d) { UI.fontScale = Math.max(0.85, Math.min(1.4, UI.fontScale + Number(d.d) * 0.1)); applyFont(); render(); },
-    async openSaves() { const m = { type: 'saves', title: '存档' }; pushModal(m); refreshSlots(m); },
-    async saveSlot(d) {
-      const doIt = async () => { const r = await FX.Store.put(d.k, Game.save.serialize(UI.s, Date.now())); toast(r.ok ? '已保存' : '✗ ' + r.error); const m = UI.modals.find((x) => x.type === 'saves'); if (m) refreshSlots(m); };
-      const m = UI.modals.find((x) => x.type === 'saves');
-      if (m && m.slots && m.slots[d.k]) pushModal({ type: 'confirm', title: '覆盖存档', text: '此槽位已有存档，确定覆盖吗？', yes: doIt });
-      else doIt();
-    },
-    async loadSlot(d) { const t = d.k === 'auto' ? await loadAuto() : await FX.Store.get(d.k); if (t) readSave(t); },
-    async delSlot(d) { pushModal({ type: 'confirm', title: '删除存档', text: '删除后无法恢复。', yes: async () => { await FX.Store.del(d.k); const m = UI.modals.find((x) => x.type === 'saves'); if (m) refreshSlots(m); } }); },
-    exportFile() {
-      const ok = FX.Store.download(`${UI.s.family.surname}氏-第${UI.s.year}年.json`, Game.save.serialize(UI.s, Date.now()));
-      toast(ok ? '已开始下载' : '浏览器禁止下载，请改用“复制为文本”');
-    },
+    aiLife() { FX.AI.life(UI.s); render(); },
+    async installApp() { const ok = await FX.PWA.prompt(); toast(ok ? '已装到主屏幕' : '没有安装'); render(); },
     async exportText() {
-      const t = await FX.Store.encodeText(Game.save.serialize(UI.s, Date.now()));
-      const copied = await FX.Store.copy(t);
-      const m = UI.modals.find((x) => x.type === 'saves');
-      if (m) { m.exported = t; m.copied = copied; render(); }
-      toast(copied ? '存档文本已复制' : '请手动复制下方文本');
+      const m = UI.modals[UI.modals.length - 1];
+      m.exported = await FX.Store.encodeText(Game.save.serialize(UI.s, Date.now()));
+      m.copied = await FX.Store.copy(m.exported);
+      render();
     },
     async importFile() {
-      const f = ($('#in-file') || {}).files;
-      if (!f || !f[0]) return toast('请先选择文件');
-      try { const t = await FX.Store.decodeText(await f[0].text()); readSave(t); } catch (e) { toast('导入失败：' + e.message, 5000); }
+      const f = $('#in-file') && $('#in-file').files[0];
+      if (!f) return toast('请先选择文件');
+      try { readSave(await FX.Store.decodeText(await f.text())); } catch (e) { toast('读取失败：' + e.message, 5000); }
     },
     async importText() {
-      const v = ($('#in-text') || {}).value;
-      if (!v) return toast('请先粘贴存档文本');
-      try { const t = await FX.Store.decodeText(v); readSave(t); } catch (e) { toast('导入失败：' + e.message, 5000); }
+      const t = ($('#in-text') || {}).value;
+      if (!t) return toast('请先粘贴存档文本');
+      try { readSave(await FX.Store.decodeText(t)); } catch (e) { toast('读取失败：' + e.message, 5000); }
     },
   };
-  const CHG = {
-    duty(d, el) { result(Game.setDuty(UI.s, d.id, el.value)); },
-    focus(d, el) {
-      const cur = UI.s.family.focusIds.slice();
-      const next = el.checked ? cur.concat(d.id) : cur.filter((x) => x !== d.id);
-      result(Game.setFocus(UI.s, next));
-    },
-    showGone(d, el) { UI.roster.showGone = el.checked; render(); },
-    batchCond(d, el) { UI.cult.batchCond = el.value; },
-    batchDuty(d, el) { UI.cult.batchDuty = el.value; },
-    set(d, el) { result(Game.setSetting(UI.s, d.k, el.checked)); },
-    setNum(d, el) { result(Game.setSetting(UI.s, d.k, Math.max(0, Math.floor(Number(el.value) || 0)))); },
-    aiEnabled(d, el) { AI.saveConfig({ enabled: el.checked }); toast(el.checked ? (AI.hasKey() ? 'AI 功能已开启' : 'AI 功能已开启，填写 key 后生效') : 'AI 功能已关闭，全部显示原文、不再托管'); render(); },
-  };
-  // 每回合结束后批量润色一次（不等待；无 key 或关闭时不发请求）
-  function autoPolish() {
-    const s = UI.s, r = s && s.lastReport;
-    if (!r || !r.entries.length || !AI.ready().ok) return;
-    const key = AI.turnKey(s, r.turn);
-    if (!AI.failure(key)) AI.polishTurn(s, r.turn);
-  }
 
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
+  // 导演跑得快时页面不停重画，按下到抬起之间按钮可能已换掉、点击就丢了：暂停、接管在按下时就办
+  const PRESS = new Set(['dirPause', 'dirStop', 'dirHeart']);
+  let pressed = 0;
+  document.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest && ev.target.closest('[data-act]');
+    if (!el || !PRESS.has(el.dataset.act) || ev.button) return;
+    ev.preventDefault();
+    pressed = Date.now();
+    ACT[el.dataset.act](el.dataset, el, ev);
+  });
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-act]');
     if (!el || !el.dataset.act) return;
+    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) { ev.preventDefault(); return; }
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
-  document.addEventListener('change', (ev) => {
-    const el = ev.target.closest('[data-chg]');
-    if (el && CHG[el.dataset.chg]) CHG[el.dataset.chg](el.dataset, el);
-  });
-  document.addEventListener('input', (ev) => {
-    const el = ev.target;
-    if (el.dataset && el.dataset.input === 'rq') {
-      UI.roster.q = el.value; const pos = el.selectionStart; render();
-      const n = $('#in-rq'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
-    }
-  });
+  // 输入框里的字在重画时不丢
+  document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'say-in') UI.sayText = ev.target.value; });
   document.addEventListener('keydown', (ev) => {
     const m = UI.modals[UI.modals.length - 1];
+    if (!m && ev.key === 'Enter' && ev.target && ev.target.id === 'say-in' && !ev.isComposing) { ev.preventDefault(); ACT.say(); return; }
     if (!m) {
-      if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset && ev.target.dataset.act === 'pickOrigin') { ev.preventDefault(); ACT.pickOrigin(ev.target.dataset); }
+      if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset && ['pickOrigin', 'place'].includes(ev.target.dataset.act)) { ev.preventDefault(); ACT[ev.target.dataset.act](ev.target.dataset); }
       return;
     }
     if (ev.key === 'Escape' && !m.blocking) { popModal(); return; }
     if (m.type === 'event' && /^[1-9]$/.test(ev.key)) {
-      const btns = document.querySelectorAll('.modal [data-act="choose"]');
-      const b = btns[Number(ev.key) - 1];
+      const b = document.querySelectorAll('.modal [data-act="choose"]')[Number(ev.key) - 1];
       if (b && !b.disabled) b.click();
     }
   });
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
 
-  // 润色异步到达：有输入框聚焦时先不重绘，避免冲掉正在输入的内容
-  Agent.onStep = () => { scheduleSave(); AI.onUpdate(); };
-  AI.onUpdate = () => {
-    const a = document.activeElement;
-    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { UI.aiDirty = true; return; }
-    render();
-  };
-  document.addEventListener('focusout', () => { if (UI.aiDirty) { UI.aiDirty = false; setTimeout(() => { const a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) render(); else UI.aiDirty = true; }, 0); } });
-
+  let dirDrawn = 0, dirDrawTimer = null;
   async function boot() {
     try { UI.fontScale = Number(localStorage.getItem('family-xiuxian:font')) || 1; } catch (e) { UI.fontScale = 1; }
+    try { UI.fold = JSON.parse(localStorage.getItem('family-xiuxian:fold') || '{}') || {}; } catch (e) { UI.fold = {}; }
+    try { UI.last = JSON.parse(localStorage.getItem('family-xiuxian:last') || 'null'); UI.actTab = JSON.parse(localStorage.getItem('family-xiuxian:actTab') || 'null'); } catch (e) { UI.last = null; }
     applyFont();
     UI.storeKind = await FX.Store.init();
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
+    if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
+    if (FX.Director) {
+      // 导演走一步：存档、记叙述、刷新；正在打字时不重画
+      FX.Director.onStep = () => {
+        if (!UI.s || FX.Director.s !== UI.s) return;
+        scheduleSave();
+        if (UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
+        aiAfter();
+        const a = document.activeElement;
+        if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+        // 至多每 0.3 秒重画一次，省电，也好点按钮
+        const now = Date.now();
+        if (now - dirDrawn >= 300 || !FX.Director.running) { dirDrawn = now; render(); }
+        else if (!dirDrawTimer) dirDrawTimer = setTimeout(() => { dirDrawTimer = null; dirDrawn = Date.now(); if (UI.s) render(); }, 300 - (now - dirDrawn));
+      };
+    }
+    if (FX.AI) FX.AI.onUpdate = () => {
+      if (UI.s) scheduleSave();
+      const a = document.activeElement;
+      if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+      render();
+    };
     render();
   }
   FX.UI = UI;
