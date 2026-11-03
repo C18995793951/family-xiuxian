@@ -200,7 +200,9 @@
     for (const p of npcs) {
       if (P().lifespanLeft(s, p) <= 0) { P().kill(s, p, '寿元耗尽，坐化', [], {}); continue; }
       const place = s.places[p.locationId];
-      if (R.chance(s.rng, cf.life.npcAccident * (1 + place.danger * 0.5))) { P().kill(s, p, '外出遇险身亡', [], {}); continue; }
+      // 境界越高越难遭横祸（元神真君一年里外出遇险的机会远小于练炁小修）；原著人物不会无故横死
+      const safe = p.notable ? 0 : cf.life.npcAccidentRealm[Math.min(p.realm.major, cf.life.npcAccidentRealm.length - 1)];
+      if (R.chance(s.rng, cf.life.npcAccident * safe * (1 + place.danger * 0.5))) { P().kill(s, p, '外出遇险身亡', [], {}); continue; }
       P().heal(p, cf.daysPerYear);
       CU().npcYear(s, p);
       if (!p.factionId && P().alive(p) && R.chance(s.rng, cf.world.looseMoveChance)) {

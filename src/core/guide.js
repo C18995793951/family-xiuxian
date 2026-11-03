@@ -26,7 +26,8 @@
     if (p.realm.major === 0) out.push({ label: '悟得胎息后要一门练炁术', keys: techKeys('lianqi'), tech: 'lianqi', soon: true });
     for (const r of FX.CU.requirements(s, p)) {
       if (r.ok || r.optional) continue;
-      if (r.lianqi) out.push({ label: r.label, keys: techKeys('lianqi'), tech: 'lianqi' });
+      if (r.qi) out.push({ label: r.label, keys: [], qi: r.qi });
+      else if (r.lianqi) out.push({ label: r.label, keys: techKeys('lianqi'), tech: 'lianqi' });
       else if (r.kaifu) out.push({ label: r.label, keys: techKeys('kaifu'), tech: 'kaifu' });
       else if (r.item && C().items[r.item]) {
         const need = FX.CU.minorNeed(p);
@@ -106,6 +107,24 @@
         add({ days: d + months * M, gap, text: label + '；你有 ' + merit + ' ' + MN + '，还差 ' + gap + '：' + ((C().actions.work[seat.type] || {}).name || '领差事') + '每月记 ' + per + '，约 ' + months + ' 个月', step: w ? { act: w } : { goto: f.seatId }, earn: true });
       }
     };
+    // 冲关要灵机够高的地方：去现成能用的地方，或在野外灵机差一级的地方开洞府聚灵
+    if (need.qi) {
+      const D = C().dongfu;
+      for (const id in s.places) {
+        const pl = s.places[id];
+        const r = route(id);
+        if (!r) continue;
+        const risk = pl.danger ? '，危险 ' + pl.danger + ' 级' : '';
+        if (FX.CU.qiAt(s, p, id) >= need.qi) add({ days: r.days, text: (r.days ? '去' + pl.name + '（路上 ' + r.days + ' 天' + risk + '）' : '就在' + pl.name) + '：你在那里借得到 ' + FX.CU.qiAt(s, p, id) + ' 级灵机', step: r.days ? { goto: id } : null, danger: pl.danger });
+        else if ((pl.type === 'wild' || pl.type === 'danger') && pl.qi >= D.minQi && Math.min(5, pl.qi + D.qiBonus) >= need.qi && p.realm.major >= D.minMajor) {
+          const cost = D.cost[pl.qi];
+          const text = '在' + pl.name + '开辟洞府（' + cost + ' 符钱，聚灵到 ' + Math.min(5, pl.qi + D.qiBonus) + ' 级' + risk + (r.days ? '，路上 ' + r.days + ' 天' : '') + '）';
+          const da = !r.days && L.find((a) => a.type === 'dongfu' && a.ok);
+          if (stone >= cost) add({ days: r.days + M, text, step: da ? { act: da } : r.days ? { goto: id } : null, danger: pl.danger, dongfu: id });
+          else add(Object.assign(short(cost, text, r.days + M) || {}, { danger: pl.danger, dongfu: id }));
+        }
+      }
+    }
     for (const key of need.keys) {
       const tech = key.startsWith('tech:') ? key.slice(5) : null;
       const name = nameOf(key);
@@ -152,7 +171,9 @@
         add({ days: r.days + Math.round((100 / Math.max(5, ch) - 1) * 360), text: text + (wait && r.days === 0 && /今年已求过/.test(can) ? '。今年求过了，明年再来' : ''), step: act ? { act } : wait && r.days === 0 ? null : { goto: g.seatId }, join: true, wait: !act && wait && r.days === 0 });
       }
     }
-    ways.sort((a, b) => a.days - b.days || (a.earn ? 1 : 0) - (b.earn ? 1 : 0));
+    // 凶险之地往后排（每级危险约当多走四个月），免得头一条就把人往险地里送
+    const cost = (w) => w.days + (w.danger || 0) * 120;
+    ways.sort((a, b) => cost(a) - cost(b) || (a.earn ? 1 : 0) - (b.earn ? 1 : 0));
     return ways;
   };
 

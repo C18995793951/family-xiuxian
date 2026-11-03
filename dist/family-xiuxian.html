@@ -284,6 +284,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .dir-log p.dir-think { margin: .5em 0 .2em; color: var(--accent); }
 .dir-log p.dir-think i { color: var(--text); font-style: normal; }
 .dir-log p.dir-think .src { color: var(--muted); font-size: .8em; margin-left: .4em; }
+.dir-heart > summary { cursor: pointer; list-style: none; }
+.dir-heart > summary::-webkit-details-marker { display: none; }
+.dir-heart > summary h3 { display: inline; }
+.dir-heart > summary h3::after { content: ' ▾'; color: var(--muted); font-size: .8em; }
+.dir-heart[open] > summary h3::after { content: ' ▴'; }
+.dir-heart[open] > summary { margin-bottom: .5em; }
 
 </style>
 </head>
@@ -616,6 +622,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
       heavyDongtianMult: 0.25,  // 在自家洞天里养伤，重伤恶化的几率乘这个
       heavyDongfuMult: 0.5,     // 在自家洞府里
       npcAccident: 0.004,       // NPC 每年意外身亡（乘以所在地危险度修正）
+      npcAccidentRealm: [1, 1, 1, 0.7, 0.5, 0.35, 0.2, 0.08], // 按大境界打折：凡人/胎息/练炁照旧，筑基起递减，元神以后只剩一成不到
       oldFrac: 0.2,
     },
 
@@ -1906,8 +1913,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
   CU.techFit = (s, p) => { const f = CU.attrFit(s, p, s.places[p.locationId]); return f ? f.value : 1; };
 
   // 此人在所在地能借到的灵机（宗门、家族驻地只对自己人开放）
-  CU.qiFor = (s, p) => {
-    const place = s.places[p.locationId];
+  CU.qiFor = (s, p) => CU.qiAt(s, p, p.locationId);
+  // 某人在某地能借到几级灵机（宗门、家族驻地外人只借得到山门外的；自家洞天、洞府另算）
+  CU.qiAt = (s, p, placeId) => {
+    const place = s.places[placeId];
     if (!place) return 1;
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
@@ -2160,12 +2169,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
       out.push({ label: '一篇开府真法', kaifu: true, ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '金谷墟市常备下乘开府真法；宗门弟子筑基后可向长老房请授；上乘的只在大派世族流转' });
     }
     if (k === 'jindan') {
-      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', qi: B.jindan.minQi, ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.ningdan.name, item: 'ningdan', ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
       if (P().isPlayer(s, p)) out.push(FX.Yao.requirement(s, p));
     }
     if (k === 'yuanshen') {
-      out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', qi: B.yuanshen.minQi, ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', item: 'dingshen', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
       if (has('xudu')) out.push({ label: I.xudu.name + '（可选：+' + B.xuduPill + '%）', ok: true, optional: true, note: '丹元大会魁首所得' });
     }
@@ -3370,7 +3379,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
     for (const p of npcs) {
       if (P().lifespanLeft(s, p) <= 0) { P().kill(s, p, '寿元耗尽，坐化', [], {}); continue; }
       const place = s.places[p.locationId];
-      if (R.chance(s.rng, cf.life.npcAccident * (1 + place.danger * 0.5))) { P().kill(s, p, '外出遇险身亡', [], {}); continue; }
+      // 境界越高越难遭横祸（元神真君一年里外出遇险的机会远小于练炁小修）；原著人物不会无故横死
+      const safe = p.notable ? 0 : cf.life.npcAccidentRealm[Math.min(p.realm.major, cf.life.npcAccidentRealm.length - 1)];
+      if (R.chance(s.rng, cf.life.npcAccident * safe * (1 + place.danger * 0.5))) { P().kill(s, p, '外出遇险身亡', [], {}); continue; }
       P().heal(p, cf.daysPerYear);
       CU().npcYear(s, p);
       if (!p.factionId && P().alive(p) && R.chance(s.rng, cf.world.looseMoveChance)) {
@@ -3539,7 +3550,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const job = cf.actions.work[place.type];
     if (job) {
       const member = p.factionId && s.factions[p.factionId].seatId === place.id;
-      add({ type: 'work', days: job.days, label: job.name + ' ' + T().dur(job.days), group: '营生', ok: !job.memberOnly || member, reason: job.memberOnly && !member ? '只有本门/本族中人可做' : '' });
+      for (const d of [job.days, job.days * 6]) add({ type: 'work', days: d, label: job.name + ' ' + T().dur(d), group: '营生', ok: !job.memberOnly || member, reason: job.memberOnly && !member ? '只有本门/本族中人可做' : '' });
     }
     // 托墟市代寻
     for (const o of Act.orderable(s)) add({ type: 'order', item: o.item, days: 0, cost: o.cost, label: '托人代寻' + W().itemName(o.item) + '（' + o.cost + ' 符钱，约 ' + T().dur(o.days) + '后送到）', group: '坊市', ok: s.player.stone >= o.cost, reason: s.player.stone >= o.cost ? '' : '符钱不够（需 ' + o.cost + '）' });
@@ -3684,17 +3695,28 @@ button.wide { width: 100%; margin-bottom: .6em; }
   Act.DO.work = (s, a) => {
     const p = me(s), place = here(s);
     const job = C().actions.work[place.type];
-    const r = Sim().passDays(s, a.days, 'other');
-    if (!P().alive(p)) return { text: '' };
-    if (r.interrupted) return { text: '差事没做完就出了事', interrupted: true };
-    const stone = Math.round(R.int(s.rng, job.stone[0], job.stone[1]) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
-    s.player.stone += stone;
-    // 本门、本族的差事另由功德房记道功
-    const merit = job.merit ? FX.Sect.taskMerit(p) : 0;
-    s.player.merit += merit;
+    // 一次做几个月（一个月或半年）：按月结算，中途出了事就只结做完的月份
+    const months = Math.max(1, Math.round(a.days / job.days));
+    let stone = 0, merit = 0, used = 0, cut = false;
+    for (let k = 0; k < months; k++) {
+      const r = Sim().passDays(s, job.days, 'other');
+      used += r.used;
+      if (!P().alive(p)) return { text: '' };
+      if (r.interrupted) { cut = true; break; }
+      const pay = Math.round(R.int(s.rng, job.stone[0], job.stone[1]) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
+      stone += pay;
+      s.player.stone += pay;
+      // 本门、本族的差事另由功德房记道功
+      const m = job.merit ? FX.Sect.taskMerit(p) : 0;
+      merit += m;
+      s.player.merit += m;
+      if (s.pending.length && k < months - 1) { cut = true; break; }
+    }
+    if (!stone && cut) return { text: '差事没做完就出了事', interrupted: true };
+    const r = { used };
     const mtxt = merit ? '，记' + C().house.meritName + ' ' + merit : '';
     H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone, merit: mtxt } });
-    return { text: `得符钱 ${stone}${mtxt}` };
+    return { text: `得符钱 ${stone}${mtxt}${cut ? '（中途有事，先停下）' : ''}`, interrupted: cut };
   };
 
   // 某类地方的营生一个月大约挣多少（“下一步”估还要做几个月用）
@@ -5614,7 +5636,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (p.realm.major === 0) out.push({ label: '悟得胎息后要一门练炁术', keys: techKeys('lianqi'), tech: 'lianqi', soon: true });
     for (const r of FX.CU.requirements(s, p)) {
       if (r.ok || r.optional) continue;
-      if (r.lianqi) out.push({ label: r.label, keys: techKeys('lianqi'), tech: 'lianqi' });
+      if (r.qi) out.push({ label: r.label, keys: [], qi: r.qi });
+      else if (r.lianqi) out.push({ label: r.label, keys: techKeys('lianqi'), tech: 'lianqi' });
       else if (r.kaifu) out.push({ label: r.label, keys: techKeys('kaifu'), tech: 'kaifu' });
       else if (r.item && C().items[r.item]) {
         const need = FX.CU.minorNeed(p);
@@ -5694,6 +5717,24 @@ button.wide { width: 100%; margin-bottom: .6em; }
         add({ days: d + months * M, gap, text: label + '；你有 ' + merit + ' ' + MN + '，还差 ' + gap + '：' + ((C().actions.work[seat.type] || {}).name || '领差事') + '每月记 ' + per + '，约 ' + months + ' 个月', step: w ? { act: w } : { goto: f.seatId }, earn: true });
       }
     };
+    // 冲关要灵机够高的地方：去现成能用的地方，或在野外灵机差一级的地方开洞府聚灵
+    if (need.qi) {
+      const D = C().dongfu;
+      for (const id in s.places) {
+        const pl = s.places[id];
+        const r = route(id);
+        if (!r) continue;
+        const risk = pl.danger ? '，危险 ' + pl.danger + ' 级' : '';
+        if (FX.CU.qiAt(s, p, id) >= need.qi) add({ days: r.days, text: (r.days ? '去' + pl.name + '（路上 ' + r.days + ' 天' + risk + '）' : '就在' + pl.name) + '：你在那里借得到 ' + FX.CU.qiAt(s, p, id) + ' 级灵机', step: r.days ? { goto: id } : null, danger: pl.danger });
+        else if ((pl.type === 'wild' || pl.type === 'danger') && pl.qi >= D.minQi && Math.min(5, pl.qi + D.qiBonus) >= need.qi && p.realm.major >= D.minMajor) {
+          const cost = D.cost[pl.qi];
+          const text = '在' + pl.name + '开辟洞府（' + cost + ' 符钱，聚灵到 ' + Math.min(5, pl.qi + D.qiBonus) + ' 级' + risk + (r.days ? '，路上 ' + r.days + ' 天' : '') + '）';
+          const da = !r.days && L.find((a) => a.type === 'dongfu' && a.ok);
+          if (stone >= cost) add({ days: r.days + M, text, step: da ? { act: da } : r.days ? { goto: id } : null, danger: pl.danger, dongfu: id });
+          else add(Object.assign(short(cost, text, r.days + M) || {}, { danger: pl.danger, dongfu: id }));
+        }
+      }
+    }
     for (const key of need.keys) {
       const tech = key.startsWith('tech:') ? key.slice(5) : null;
       const name = nameOf(key);
@@ -5740,7 +5781,9 @@ button.wide { width: 100%; margin-bottom: .6em; }
         add({ days: r.days + Math.round((100 / Math.max(5, ch) - 1) * 360), text: text + (wait && r.days === 0 && /今年已求过/.test(can) ? '。今年求过了，明年再来' : ''), step: act ? { act } : wait && r.days === 0 ? null : { goto: g.seatId }, join: true, wait: !act && wait && r.days === 0 });
       }
     }
-    ways.sort((a, b) => a.days - b.days || (a.earn ? 1 : 0) - (b.earn ? 1 : 0));
+    // 凶险之地往后排（每级危险约当多走四个月），免得头一条就把人往险地里送
+    const cost = (w) => w.days + (w.danger || 0) * 120;
+    ways.sort((a, b) => cost(a) - cost(b) || (a.earn ? 1 : 0) - (b.earn ? 1 : 0));
     return ways;
   };
 
@@ -7427,6 +7470,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const cir = Npc.circle(s).sort((a, b) => (a.id < b.id ? -1 : 1));
     for (const q of cir) {
       if (!P().alive(q)) continue;
+      // 隐修期满出关：说一声，免得圈子里的人一隐修就十几年没有音信
+      if (q.aim && q.aim.kind === 'seclude' && s.year >= q.aim.until && q.health.state === 'healthy') tell(s, q, 'npc_unseclude', { realm: P().realmName(q) }, [], []);
       if (!q.aim || q.aim.done || s.year >= q.aim.until || (q.aim.kind !== 'heal' && q.health.state === 'heavy')) Npc.pickAim(s, q);
       if (R.chance(s.rng, K.act[q.aim.kind] || 0.4)) Npc.step(s, q);
       if (P().alive(q) && q.aim.kind !== 'roam' && R.chance(s.rng, K.social)) Npc.social(s, q);
@@ -7497,6 +7542,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     npc_roam: ['{who}游历到{place}，一路无事。'],
     npc_roam_gain: ['{who}游历到{place}，颇有所得。'],
     npc_seclude: ['{who}在{place}闭门隐修，久不见人。'],
+    npc_unseclude: ['{who}隐修期满，在{place}出关，修为已是{realm}。'],
     npc_know: ['{who}在{place}结识了{other}，两人颇为投缘。'],
     npc_bond: ['{who}与同门{other}在{place}相处日久，渐成知交。'],
     npc_spar: ['{who}与{other}在{place}切磋，{win}胜了半招。'],
@@ -7577,8 +7623,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const me = ov.me, CF = C();
     const find = (f) => A.find((a) => a.ok && f(a));
     const here = ov.place.id;
-    const goTo = (pid) => { const r = W().route(s, here, pid); return r && r.path.length > 1 ? find((a) => a.type === 'travel' && a.to === r.path[1]) : null; };
-    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || find((a) => a.type === 'rest');
+    // 找路只走得通的路（南域与中域之间的荒原，金丹以前过不去）
+    const who = FX.P.player(s);
+    const goTo = (pid) => { const r = W().route(s, here, pid, who); return r && r.path.length > 1 ? find((a) => a.type === 'travel' && a.to === r.path[1]) : null; };
+    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || Dir.restFor(s, A);
     const house = Gm.view.house(s);
     if (!house.member && !me.factionId && me.realm.major >= 1) {
       const tgt = house.sects.find((x) => x.join && !x.join.closed && (x.can === true || /^要回到/.test(x.can)));
@@ -7600,12 +7648,21 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const dy = find((a) => a.type === 'diyuan');
       if (dy) return dy;
       const pit = Object.values(s.places).find((x) => x.name === dyCfg.place);
-      const r = pit && W().route(s, here, pit.id);
+      const r = pit && W().route(s, here, pit.id, who);
       if (r && r.days <= 60) { const t = goTo(pit.id); if (t) return t; }
     }
     const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
     if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * CF.daysPerYear || ov.age > ov.lifespan - 25)) return br;
+    // 冲关要灵机够高之地（结丹四级、元神六级）：修满了就去能用的地方，或到野外开洞府聚灵；太凶险的地方不去
+    const qn = P().isFull(who) && FX.Guide.needs(s).find((n) => n.qi);
+    if (qn) {
+      for (const w of FX.Guide.ways(s, qn)) {
+        if ((w.danger || 0) > 2 || !w.step) continue;
+        if (w.step.act) { const a = find((x) => x.type === w.step.act.type && x.days === w.step.act.days && (x.item || '') === (w.step.act.item || '')); if (a) return a; }
+        if (w.step.goto) { const t = goTo(w.step.goto); if (t) return t; }
+      }
+    }
     if (ov.pillUntil === null && me.realm.major >= 2) { const q = find((a) => a.type === 'use' && a.item === 'qiju'); if (q) return q; }
     const mk = s.markets[here];
     if (!house.member) for (const k of CF.loot) if (ov.inv[k] > 0 && mk) return { type: 'sell', item: k, qty: ov.inv[k] };
@@ -7623,9 +7680,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
       if (red && red.ok) return red;
       if (red && /不够/.test(red.reason)) {
         if (!house.atSeat) { const t = goTo(house.faction.seatId); if (t) return t; }
+        // 符钱宽裕就捐输补足道功，免得一个月一个月地领差事
+        const gap = Math.max(0, (red.cost || 0) - s.player.merit);
+        const dn = find((a) => a.type === 'donate');
+        if (dn && gap > 0) { const n = Math.ceil(gap / dn.gain); if (n * dn.cost <= ov.stone - 50) return Object.assign({}, dn, { qty: n }); }
         const m = find((a) => a.type === 'mission');
         if (m && rng() < 0.5) return m;
-        const w = find((a) => a.type === 'work');
+        const per = Math.max(1, FX.Sect.taskMerit(who));
+        const w = (gap / per >= 6 && find((a) => a.type === 'work' && a.days >= 180)) || find((a) => a.type === 'work');
         if (w) return w;
       }
       if (red && /^要回到/.test(red.reason)) { const t = goTo(house.faction.seatId); if (t) return t; }
@@ -7634,9 +7696,12 @@ button.wide { width: 100%; margin-bottom: .6em; }
       const ord = find((a) => a.type === 'order' && wanted(a.item));
       if (ord) return ord;
       const markets = Object.values(s.places).filter((p) => p.id !== here && s.markets[p.id] && s.markets[p.id].stock.some((x) => wanted(x.item) && x.qty > 0 && x.price <= ov.stone));
-      const best = markets.map((p) => W().route(s, here, p.id)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
+      const best = markets.map((p) => W().route(s, here, p.id, who)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
       if (best) return find((a) => a.type === 'travel' && a.to === best.path[1]);
-      const w = find((a) => a.type === 'work');
+      // 钱差得多就一口气做半年
+      const price = Math.min(...Object.keys(CF.items).filter(wanted).map((k) => CF.items[k].price).concat(Object.keys(CF.techniques).filter((k) => wanted('tech:' + k)).map((k) => CF.techniques[k].price)));
+      const pay = FX.Act.workPay(s, ov.place.type);
+      const w = (pay && isFinite(price) && (price - ov.stone) / Math.max(1, pay.stone) >= 6 && find((a) => a.type === 'work' && a.days >= 180)) || find((a) => a.type === 'work');
       if (w && rng() < 0.6) return w;
     }
     const qslot = mk && mk.stock.find((x) => x.item === 'qiju' && x.qty > 0);
@@ -7644,7 +7709,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (me.realm.major >= 2 && !want.length) {
       const rateAt = (p) => { const lim = CF.cultivation.outsiderQi[p.type]; const qi = lim !== undefined && p.factionId && p.factionId !== me.factionId ? Math.min(p.qi, lim) : p.qi; const f = FX.CU.attrFit(s, me, p); return CF.cultivation.qiMult[qi] * (f ? f.value : 1); };
       const cur = rateAt(ov.place);
-      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: W().route(s, here, p.id) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
+      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: W().route(s, here, p.id, who) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
       if (goal) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
       const df = find((a) => a.type === 'dongfu');
       if (df && ov.place.danger <= 1 && ov.stone > df.cost * 2) return df;
@@ -7654,6 +7719,13 @@ button.wide { width: 100%; margin-bottom: .6em; }
     if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+  };
+
+  // 静养：挑一段大约养得好伤的日子（静养时伤好得快一倍），不一个月一个月地养
+  Dir.restFor = (s, A) => {
+    const left = me(s).health.days;
+    const rs = (A || Act().list(s)).filter((a) => a.ok && a.type === 'rest').sort((a, b) => a.days - b.days);
+    return rs.find((a) => a.days * 2 >= left) || rs[rs.length - 1] || null;
   };
 
   /* ---------- 传闻：近来能插手、还没理会过的 ---------- */
@@ -7713,9 +7785,11 @@ button.wide { width: 100%; margin-bottom: .6em; }
         const ex = find((a) => a.type === 'explore' && a.days === 30) || find((a) => a.type === 'explore');
         if (ex && s.places[p.locationId].danger <= per.danger + 1) return out({ act: ex }, '在此地走走看看，或有所得。');
       }
-      if (r < (acc += per.roam)) {
-        const ts = A.filter((a) => a.ok && a.type === 'travel' && s.places[a.to].danger <= per.danger);
-        if (ts.length) { const t = ts[Math.floor(rng() * ts.length)]; return out({ act: t }, '久居一地，想去' + s.places[t.to].name + '看看。'); }
+      // 出门走走：在一地住满一年才想走；到了新地方先住一阵、四处看看，不急着回去
+      const d = Dir.state(s);
+      if (r < (acc += per.roam) && (!d.roam || s.t - d.roam.t >= cf.daysPerYear)) {
+        const ts = A.filter((a) => a.ok && a.type === 'travel' && s.places[a.to].danger <= per.danger && a.to !== (d.roam && d.roam.from));
+        if (ts.length) { const t = ts[Math.floor(rng() * ts.length)]; d.roam = { from: p.locationId, to: t.to, t: s.t }; return out({ act: t }, '在' + s.places[p.locationId].name + '住久了，想去' + s.places[t.to].name + '看看。'); }
       }
       if (r < (acc += per.social)) {
         const cs = A.filter((a) => a.ok && (a.type === 'befriend' || a.type === 'consult'));
@@ -7726,8 +7800,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
         if (w) return out({ act: w }, '手头不宽裕，先挣些符钱。');
       }
     }
-    const a = Dir.diligent(s, rng) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 360) || find((x) => x.type === 'rest') || find((x) => x.type === 'cultivate');
+    let a = Dir.diligent(s, rng) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 360) || Dir.restFor(s, A) || find((x) => x.type === 'cultivate');
     if (!a) return null;
+    // 刚游历到新地方（三个月内）又要赶回去：不缺急用的东西就先在此地看看、住下修炼
+    const rm = Dir.state(s).roam;
+    if (a.type === 'travel' && rm && rm.to === p.locationId && s.t - rm.t < 120 && !stuck && !hurt) {
+      const stay = (rng() < 0.5 && find((x) => x.type === 'explore' && x.days === 30)) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 90) || find((x) => x.type === 'cultivate' && !x.coin);
+      if (stay) return out({ act: stay }, stay.type === 'explore' ? '初到' + s.places[p.locationId].name + '，先四处看看。' : '在' + s.places[p.locationId].name + '住些日子，就地修炼。');
+    }
     return out({ act: a }, whyOf(s, a));
   };
   // 苦修路上的心声（模板；只在换了做法时才记）
@@ -7736,16 +7816,17 @@ button.wide { width: 100%; margin-bottom: .6em; }
     switch (a.type) {
       case 'breakthrough': return '修为已到关口，成败在此一举。';
       case 'cultivate': return a.coin ? '符钱尚足，以符钱修行快些。' : '闭关修炼，不问外事。';
-      case 'rest': case 'use': return a.item && a.item !== 'heal' ? '服下' + C().items[a.item].name + '。' : '伤还没好，先养伤。';
-      case 'travel': return '动身去' + s.places[a.to].name + '。';
+      case 'rest': case 'use': return a.item && a.item !== 'heal' ? '' : '伤还没好，先养伤。';
+      case 'travel': return ''; // 纪事里已写了去哪，不再重复一句
       case 'join': return '无门无派难有出路，去求入山门。';
       case 'learn': case 'sect_learn': return '换一门更好的功法。';
-      case 'redeem': case 'order': case 'buy': return '冲关缺的东西，得先备齐。';
+      case 'redeem': case 'order': case 'buy': return a.item === 'qiju' ? '中孚丹快用完了，补上几颗。' : '冲关缺的东西，得先备齐。';
       case 'mission': case 'work': return '道功、符钱不够，先去挣。';
       case 'explore': return '出去走走，或有机缘。';
       case 'befriend': return '去拜访' + n(a.npc) + '。';
       case 'diyuan': return '地渊开了，去碰碰运气。';
-      default: return a.label ? a.label + '。' : '';
+      case 'submit': case 'donate': return '把用不上的折成道功，好换冲关要用的东西。';
+      default: return ''; // 纪事里已写了做了什么，不再照抄一遍
     }
   };
 
@@ -7761,7 +7842,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const brave = opts.filter((o) => ['fight', 'deep'].includes(o.id) && (ch(o) === null ? per.bold >= 2 : ch(o) >= line)).sort((a, b) => (ch(b) || 0) - (ch(a) || 0))[0];
     if (brave) return { id: brave.id, label: brave.label, why: ch(brave) !== null ? '胜算不小，拼一拼。' : '富贵险中求。', via: 'local' };
     const safe = opts.find((o) => ['safe', 'pay', 'flee'].includes(o.id)) || opts.filter((o) => !o.irreversible)[0] || opts[0];
-    return { id: safe.id, label: safe.label, why: per.bold >= 1 ? '这回不值得拼命。' : '稳妥为上。', via: 'local' };
+    const risky = opts.some((o) => ['fight', 'deep'].includes(o.id));
+    return { id: safe.id, label: safe.label, why: !risky ? '' : per.bold >= 1 ? '这回不值得拼命。' : '稳妥为上。', via: 'local' };
   };
 
   /* ---------- 什么时候值得问 AI（「要紧时」模式）---------- */
@@ -7926,12 +8008,15 @@ button.wide { width: 100%; margin-bottom: .6em; }
     let i = 0;
     while (i < notes.length && hnum(notes[i].hid) < first) i++;
     const dn = (r) => ({ kind: 'dir', t: r.t, label: r.label, text: r.out, via: r.via });
+    // 按“一个念头 + 它引出的事”分组：新的组在前，组里念头在前、事情新的在前，读起来先知道为什么、再看结果
+    const groups = [{ head: null, items: [] }];
     for (const e of hs) {
-      while (i < notes.length && hnum(notes[i].hid) <= hnum(e.id)) out.push(dn(notes[i++]));
-      out.push({ kind: 'h', t: e.t, id: e.id, pov: e.pov, text: H().text(e), sev: e.severity });
+      while (i < notes.length && hnum(notes[i].hid) <= hnum(e.id)) groups.push({ head: dn(notes[i++]), items: [] });
+      groups[groups.length - 1].items.push({ kind: 'h', t: e.t, id: e.id, pov: e.pov, text: H().text(e), sev: e.severity });
     }
-    while (i < notes.length) out.push(dn(notes[i++]));
-    return out.reverse();
+    while (i < notes.length) groups.push({ head: dn(notes[i++]), items: [] });
+    for (const g of groups.reverse()) { if (g.head) out.push(g.head); out.push(...g.items.reverse()); }
+    return out;
   };
 
   FX.Dir = Dir;
@@ -9750,8 +9835,10 @@ button.wide { width: 100%; margin-bottom: .6em; }
     const per = Dir.PERSONAS[st.persona];
     const tl = Dir.timeline(s, 70);
     const nr = narrOf();
+    // 本地的心声只写念头（做了什么紧接着的纪事里有）；AI 拿的主意连做法一起写；没有念头的不占一行
     const row = (x) => x.kind === 'dir'
-      ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">${x.via === 'ai' ? 'AI' : '本心'}</span></p>`
+      ? (x.via === 'ai' ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">AI</span></p>`
+        : x.text ? `<p class="dir-think"><i>“${esc(x.text)}”</i></p>` : '')
       : `${nr[x.id] ? aiNote(nr[x.id]) : ''}<p class="${x.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(x.t))}</span>${esc(x.text)}</p>`;
     const head = `<div class="card dir-head">
       <div class="dir-who"><b>${esc(me.name)}</b> · ${ov.age} 岁 · ${esc(ov.realm)} · 在${esc(ov.place.name)} · 余寿约 ${n0(ov.left)} 年 · 符钱 ${n0(ov.stone)}${ov.faction ? ' · ' + esc(ov.faction.name) : ''}</div>
@@ -9763,11 +9850,13 @@ button.wide { width: 100%; margin-bottom: .6em; }
       <div class="dir-opt"><span class="muted">AI</span><div class="chips c3">${chips(D.MODES, D.aiMode, 'dirMode')}</div></div>
       <p class="muted small" style="margin:.3em 0 0">${esc(D.aiState())}${D.status ? ' · <b class="warn">' + esc(D.status) + '</b>' : ''}${D.lastAI && D.aiMode !== 'off' ? ' · ' + esc(D.lastAI) : ''}</p>
     </div>`;
-    const heart = `<div class="card"><h3>本心</h3><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
+    const started = tl.some((x) => x.kind === 'dir');
+    const heart = `<details class="card dir-heart" ${!started || UI.dirHeart ? 'open' : ''}><summary data-act="dirHeart"><h3>本心：${esc(per.name)}${st.aim ? ' · ' + esc(st.aim) : ''}</h3></summary><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
       <p class="muted small">${esc(per.desc)}。性格：${esc((me.traits || []).join('、') || '平常')}。</p>
-      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></div>`;
-    return `<h2>导演模式</h2>${head}${s.ended ? '' : heart}
-      <div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></details>`;
+    const life = `<div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+    // 开导演以后，本心折起来放到后面，手机上第一屏就能看到这一生在怎么过
+    return `<h2>导演模式</h2>${head}${s.ended ? life : started ? life + heart : heart + life}`;
   };
 
   PAGE.sys = () => `<h2>存档与设置</h2>
@@ -10038,6 +10127,8 @@ button.wide { width: 100%; margin-bottom: .6em; }
     dirStop() { FX.Director.stop(''); UI.page = 'now'; afterAction(); toast('你接管了，自己来'); },
     async dirOnce() { await FX.Director.once(UI.s); afterAction(); },
     dirSpeed(d) { FX.Director.setSpeed(d.k); render(); },
+    // 本心卡折起、展开：记在界面状态里，导演跑着页面重画也不会自己合上
+    dirHeart(d, el, ev) { if (ev) ev.preventDefault(); UI.dirHeart = !(el && el.parentNode && el.parentNode.open); render(); },
     dirMode(d) { FX.Director.setMode(d.k); render(); },
     dirPersona(d) { FX.Dir.setPersona(UI.s, d.k); scheduleSave(); render(); },
     dirAim() { FX.Dir.setAim(UI.s, ($('#dir-aim') || {}).value || ''); scheduleSave(); toast('志向定下了'); render(); },
@@ -10145,7 +10236,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
   // 导演跑得快时页面不停重画，按下到抬起之间按钮可能已换掉、点击就丢了：暂停、接管在按下时就办
-  const PRESS = new Set(['dirPause', 'dirStop']);
+  const PRESS = new Set(['dirPause', 'dirStop', 'dirHeart']);
   let pressed = 0;
   document.addEventListener('pointerdown', (ev) => {
     const el = ev.target.closest && ev.target.closest('[data-act]');
@@ -10157,7 +10248,7 @@ button.wide { width: 100%; margin-bottom: .6em; }
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-act]');
     if (!el || !el.dataset.act) return;
-    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) return;
+    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) { ev.preventDefault(); return; }
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });

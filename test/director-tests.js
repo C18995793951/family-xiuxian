@@ -196,6 +196,62 @@ const count = (s, re) => (s.aiLog || []).filter((r) => r.kind === 'dir' && re.te
     return '种子 dir-same，' + P.realmName(P.player(a)) + '，读档后又走 50 步';
   });
 
+  await check('D6', '试玩后的修正：不往荒原那头够不着的地方找灵机（家族子弟不再困在凡人国）；游历到新地方先住下不立刻折返；静养挑够长的日子；差事可一口气做半年；高境界 NPC 少横死、原著人物不横死；结丹缺灵机四级时有“下一步”、苦修会去开洞府', () => {
+    // 1) 找灵机只看走得通的路：家族子弟一生里待在灵机 0 级之地的年份很少
+    let zeroYears = 0, years = 0, pingpong = 0, travels = 0, restSteps = 0, restMonths = 0;
+    for (const per of ['jingying', 'qiudao', 'youli']) for (let i = 0; i < 2; i++) {
+      const s = Game.newGame({ origin: 'clan', seed: 'd6-' + per + '-' + i });
+      Dir.setPersona(s, per);
+      const y0 = s.year; let ly = s.year, steps = 0;
+      const hops = [];
+      while (!s.ended && s.year - y0 < 200 && steps < 8000) {
+        steps++;
+        const p = P.player(s), from = p.locationId, t0 = s.t;
+        const r = Dir.stepLocal(s);
+        if (P.player(s).locationId !== from && !s.pending.length) { hops.push({ from, to: P.player(s).locationId, t: s.t }); travels++; }
+        if (s.year !== ly) { ly = s.year; years++; if (s.places[P.player(s).locationId].qi === 0 && P.player(s).realm.major >= 3) zeroYears++; }
+        void r; void t0;
+      }
+      for (let k = 2; k < hops.length; k++) if (hops[k].to === hops[k - 2].to && hops[k - 1].to === hops[k - 2].from && hops[k].t - hops[k - 1].t <= 20 && hops[k - 1].t - hops[k - 2].t <= 20) pingpong++;
+      for (const e of s.history) if (e.type === 'rest' && e.pov) { restSteps++; restMonths += 1; }
+    }
+    assert(zeroYears / Math.max(1, years) < 0.1, '筑基以后还常在灵机 0 级的凡人国修炼：' + zeroYears + '/' + years + ' 年');
+    assert(pingpong <= travels * 0.05, '刚到就折返的来回跑太多：' + pingpong + '/' + travels);
+    // 2) 静养挑够长的日子
+    const s = Game.newGame({ origin: 'loose', seed: 'd6-rest' });
+    const p = P.player(s); p.health = { state: 'heavy', days: 300 }; s.player.inv.heal = 0;
+    const ra = Dir.restFor(s);
+    assert(ra && ra.days >= 150, '重伤 300 天只静养 ' + (ra && ra.days) + ' 天');
+    // 3) 半年差事：一次结六个月的工钱，只记一条纪事
+    const w = Game.newGame({ origin: 'mortal', seed: 'd6-work' });
+    const half = Game.actions(w).find((a) => a.type === 'work' && a.days >= 180 && a.ok);
+    assert(half, '凡人国没有做半年的营生');
+    const st0 = w.player.stone, h0 = w.history.length, t0 = w.t;
+    const r = Game.act(w, half);
+    assert(r.ok, '做半年失败：' + r.error);
+    assert(w.t - t0 >= 150 || w.pending.length, '半年差事没过半年：' + (w.t - t0) + ' 天');
+    assert(w.player.stone > st0, '半年差事没挣到钱');
+    assert(w.history.slice(h0).filter((e) => e.type === 'work').length === 1, '半年差事记了不止一条');
+    // 4) NPC 横死：元神以后打了一成不到的折，原著人物不横死
+    const cf = FX.CONFIG.life;
+    assert(cf.npcAccidentRealm[7] <= 0.1 && cf.npcAccidentRealm[2] === 1, '横死折扣不对');
+    const g = Game.newGame({ origin: 'sect', seed: 'd6-canon' });
+    const canon = Object.values(g.people).filter((q) => q.notable && P.alive(q)).map((q) => q.id);
+    for (let y = 0; y < 150; y++) FX.Sim.yearly(g);
+    const dead = canon.filter((id) => !P.alive(g.people[id]) && /遇险/.test(g.people[id].deathCause || ''));
+    assert(!dead.length, '原著人物外出遇险身亡：' + dead.map((id) => g.people[id].name).join('、'));
+    // 5) 结丹要灵机四级：山门只有三级时，“下一步”给出去处或开洞府，苦修照着走，不再干等
+    const j = Game.newGame({ origin: 'sect', seed: 'd6-jindan' });
+    const jp = P.player(j), seat = j.places[jp.locationId];
+    seat.qi = 3; jp.realm = { major: 5, stage: 3 }; jp.progress = P.need(jp); j.player.stone = 20000; j.player.inv.ningdan = 1; jp.lifespanMax = 100000;
+    const gq = FX.Guide.next(j);
+    assert(gq && gq.need.qi === 4 && gq.ways.length, '结丹缺灵机时没有“下一步”：' + JSON.stringify(gq && gq.need));
+    let reached = false;
+    for (let k = 0; k < 40 && !reached; k++) { if (j.pending.length) { Dir.stepLocal(j); continue; } if (FX.CU.qiFor(j, jp) >= 4) reached = true; else Game.act(j, Dir.diligent(j, Dir.mkRng('j' + k))); }
+    assert(reached, '苦修没去找灵机四级之地：还在' + j.places[jp.locationId].name);
+    return `结丹缺灵机时“下一步”：${gq.best.text}；家族子弟筑基后待在灵机 0 级之地 ${zeroYears}/${years} 年；折返 ${pingpong}/${travels} 次；重伤 300 天静养 ${ra.days} 天；半年差事得符钱 ${w.player.stone - st0}；原著人物 ${canon.length} 位，150 年里无人横死`;
+  });
+
   const summary = { when: new Date().toISOString(), passed: results.filter((r) => r.ok).length, total: results.length, results };
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   fs.writeFileSync(path.join(__dirname, 'out', 'director-summary.json'), JSON.stringify(summary, null, 2));

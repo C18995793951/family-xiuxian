@@ -34,8 +34,10 @@
   CU.techFit = (s, p) => { const f = CU.attrFit(s, p, s.places[p.locationId]); return f ? f.value : 1; };
 
   // 此人在所在地能借到的灵机（宗门、家族驻地只对自己人开放）
-  CU.qiFor = (s, p) => {
-    const place = s.places[p.locationId];
+  CU.qiFor = (s, p) => CU.qiAt(s, p, p.locationId);
+  // 某人在某地能借到几级灵机（宗门、家族驻地外人只借得到山门外的；自家洞天、洞府另算）
+  CU.qiAt = (s, p, placeId) => {
+    const place = s.places[placeId];
     if (!place) return 1;
     const lim = C().cultivation.outsiderQi[place.type];
     if (lim !== undefined && place.factionId && p.factionId !== place.factionId) return Math.min(place.qi, lim);
@@ -288,12 +290,12 @@
       out.push({ label: '一篇开府真法', kaifu: true, ok: !!kf, note: kf ? '《' + C().techniques[kf].name + '》' : '金谷墟市常备下乘开府真法；宗门弟子筑基后可向长老房请授；上乘的只在大派世族流转' });
     }
     if (k === 'jindan') {
-      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '在灵机 ' + B.jindan.minQi + ' 级以上、你能用的地方', qi: B.jindan.minQi, ok: CU.qiFor(s, p) >= B.jindan.minQi, note: '此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.ningdan.name, item: 'ningdan', ok: has('ningdan'), note: I.ningdan.where + '，约 ' + I.ningdan.price + ' 符钱' });
       if (P().isPlayer(s, p)) out.push(FX.Yao.requirement(s, p));
     }
     if (k === 'yuanshen') {
-      out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
+      out.push({ label: '一处「地」：灵机六级、你用得上的灵窟福地', qi: B.yuanshen.minQi, ok: CU.qiFor(s, p) >= B.yuanshen.minQi, note: CU.diNote + '。此处你能借到 ' + CU.qiFor(s, p) + ' 级' });
       out.push({ label: I.dingshen.name + '（可选：+' + B.yuanshenPill + '%）', item: 'dingshen', ok: has('dingshen'), optional: true, note: I.dingshen.where + '，约 ' + I.dingshen.price + ' 符钱' });
       if (has('xudu')) out.push({ label: I.xudu.name + '（可选：+' + B.xuduPill + '%）', ok: true, optional: true, note: '丹元大会魁首所得' });
     }

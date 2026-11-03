@@ -99,7 +99,7 @@
     const job = cf.actions.work[place.type];
     if (job) {
       const member = p.factionId && s.factions[p.factionId].seatId === place.id;
-      add({ type: 'work', days: job.days, label: job.name + ' ' + T().dur(job.days), group: '营生', ok: !job.memberOnly || member, reason: job.memberOnly && !member ? '只有本门/本族中人可做' : '' });
+      for (const d of [job.days, job.days * 6]) add({ type: 'work', days: d, label: job.name + ' ' + T().dur(d), group: '营生', ok: !job.memberOnly || member, reason: job.memberOnly && !member ? '只有本门/本族中人可做' : '' });
     }
     // 托墟市代寻
     for (const o of Act.orderable(s)) add({ type: 'order', item: o.item, days: 0, cost: o.cost, label: '托人代寻' + W().itemName(o.item) + '（' + o.cost + ' 符钱，约 ' + T().dur(o.days) + '后送到）', group: '坊市', ok: s.player.stone >= o.cost, reason: s.player.stone >= o.cost ? '' : '符钱不够（需 ' + o.cost + '）' });
@@ -244,17 +244,28 @@
   Act.DO.work = (s, a) => {
     const p = me(s), place = here(s);
     const job = C().actions.work[place.type];
-    const r = Sim().passDays(s, a.days, 'other');
-    if (!P().alive(p)) return { text: '' };
-    if (r.interrupted) return { text: '差事没做完就出了事', interrupted: true };
-    const stone = Math.round(R.int(s.rng, job.stone[0], job.stone[1]) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
-    s.player.stone += stone;
-    // 本门、本族的差事另由功德房记道功
-    const merit = job.merit ? FX.Sect.taskMerit(p) : 0;
-    s.player.merit += merit;
+    // 一次做几个月（一个月或半年）：按月结算，中途出了事就只结做完的月份
+    const months = Math.max(1, Math.round(a.days / job.days));
+    let stone = 0, merit = 0, used = 0, cut = false;
+    for (let k = 0; k < months; k++) {
+      const r = Sim().passDays(s, job.days, 'other');
+      used += r.used;
+      if (!P().alive(p)) return { text: '' };
+      if (r.interrupted) { cut = true; break; }
+      const pay = Math.round(R.int(s.rng, job.stone[0], job.stone[1]) * C().actions.workPayMult[p.realm.major]) + Math.round(P().realmRank(p) * job.perRank);
+      stone += pay;
+      s.player.stone += pay;
+      // 本门、本族的差事另由功德房记道功
+      const m = job.merit ? FX.Sect.taskMerit(p) : 0;
+      merit += m;
+      s.player.merit += m;
+      if (s.pending.length && k < months - 1) { cut = true; break; }
+    }
+    if (!stone && cut) return { text: '差事没做完就出了事', interrupted: true };
+    const r = { used };
     const mtxt = merit ? '，记' + C().house.meritName + ' ' + merit : '';
     H().add(s, { type: 'work', tags: ['营生'], actors: [p.id], places: [place.id], key: 'work', pov: true, severity: 1, params: { name: p.name, place: place.name, dur: T().dur(r.used), job: job.name, stone, merit: mtxt } });
-    return { text: `得符钱 ${stone}${mtxt}` };
+    return { text: `得符钱 ${stone}${mtxt}${cut ? '（中途有事，先停下）' : ''}`, interrupted: cut };
   };
 
   // 某类地方的营生一个月大约挣多少（“下一步”估还要做几个月用）

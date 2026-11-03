@@ -322,6 +322,7 @@
       heavyDongtianMult: 0.25,  // 在自家洞天里养伤，重伤恶化的几率乘这个
       heavyDongfuMult: 0.5,     // 在自家洞府里
       npcAccident: 0.004,       // NPC 每年意外身亡（乘以所在地危险度修正）
+      npcAccidentRealm: [1, 1, 1, 0.7, 0.5, 0.35, 0.2, 0.08], // 按大境界打折：凡人/胎息/练炁照旧，筑基起递减，元神以后只剩一成不到
       oldFrac: 0.2,
     },
 

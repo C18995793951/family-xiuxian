@@ -69,8 +69,10 @@
     const me = ov.me, CF = C();
     const find = (f) => A.find((a) => a.ok && f(a));
     const here = ov.place.id;
-    const goTo = (pid) => { const r = W().route(s, here, pid); return r && r.path.length > 1 ? find((a) => a.type === 'travel' && a.to === r.path[1]) : null; };
-    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || find((a) => a.type === 'rest');
+    // 找路只走得通的路（南域与中域之间的荒原，金丹以前过不去）
+    const who = FX.P.player(s);
+    const goTo = (pid) => { const r = W().route(s, here, pid, who); return r && r.path.length > 1 ? find((a) => a.type === 'travel' && a.to === r.path[1]) : null; };
+    if (me.health.state === 'heavy') return find((a) => a.type === 'use' && a.item === 'heal') || Dir.restFor(s, A);
     const house = Gm.view.house(s);
     if (!house.member && !me.factionId && me.realm.major >= 1) {
       const tgt = house.sects.find((x) => x.join && !x.join.closed && (x.can === true || /^要回到/.test(x.can)));
@@ -92,12 +94,21 @@
       const dy = find((a) => a.type === 'diyuan');
       if (dy) return dy;
       const pit = Object.values(s.places).find((x) => x.name === dyCfg.place);
-      const r = pit && W().route(s, here, pit.id);
+      const r = pit && W().route(s, here, pit.id, who);
       if (r && r.days <= 60) { const t = goTo(pit.id); if (t) return t; }
     }
     const bt = ov.breakthrough;
     const br = find((a) => a.type === 'breakthrough');
     if (br && (bt.kind !== 'zhuji' || ov.inv.zhuji > 0 || me.fullDays >= 8 * CF.daysPerYear || ov.age > ov.lifespan - 25)) return br;
+    // 冲关要灵机够高之地（结丹四级、元神六级）：修满了就去能用的地方，或到野外开洞府聚灵；太凶险的地方不去
+    const qn = P().isFull(who) && FX.Guide.needs(s).find((n) => n.qi);
+    if (qn) {
+      for (const w of FX.Guide.ways(s, qn)) {
+        if ((w.danger || 0) > 2 || !w.step) continue;
+        if (w.step.act) { const a = find((x) => x.type === w.step.act.type && x.days === w.step.act.days && (x.item || '') === (w.step.act.item || '')); if (a) return a; }
+        if (w.step.goto) { const t = goTo(w.step.goto); if (t) return t; }
+      }
+    }
     if (ov.pillUntil === null && me.realm.major >= 2) { const q = find((a) => a.type === 'use' && a.item === 'qiju'); if (q) return q; }
     const mk = s.markets[here];
     if (!house.member) for (const k of CF.loot) if (ov.inv[k] > 0 && mk) return { type: 'sell', item: k, qty: ov.inv[k] };
@@ -115,9 +126,14 @@
       if (red && red.ok) return red;
       if (red && /不够/.test(red.reason)) {
         if (!house.atSeat) { const t = goTo(house.faction.seatId); if (t) return t; }
+        // 符钱宽裕就捐输补足道功，免得一个月一个月地领差事
+        const gap = Math.max(0, (red.cost || 0) - s.player.merit);
+        const dn = find((a) => a.type === 'donate');
+        if (dn && gap > 0) { const n = Math.ceil(gap / dn.gain); if (n * dn.cost <= ov.stone - 50) return Object.assign({}, dn, { qty: n }); }
         const m = find((a) => a.type === 'mission');
         if (m && rng() < 0.5) return m;
-        const w = find((a) => a.type === 'work');
+        const per = Math.max(1, FX.Sect.taskMerit(who));
+        const w = (gap / per >= 6 && find((a) => a.type === 'work' && a.days >= 180)) || find((a) => a.type === 'work');
         if (w) return w;
       }
       if (red && /^要回到/.test(red.reason)) { const t = goTo(house.faction.seatId); if (t) return t; }
@@ -126,9 +142,12 @@
       const ord = find((a) => a.type === 'order' && wanted(a.item));
       if (ord) return ord;
       const markets = Object.values(s.places).filter((p) => p.id !== here && s.markets[p.id] && s.markets[p.id].stock.some((x) => wanted(x.item) && x.qty > 0 && x.price <= ov.stone));
-      const best = markets.map((p) => W().route(s, here, p.id)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
+      const best = markets.map((p) => W().route(s, here, p.id, who)).filter(Boolean).sort((a, b) => a.days - b.days)[0];
       if (best) return find((a) => a.type === 'travel' && a.to === best.path[1]);
-      const w = find((a) => a.type === 'work');
+      // 钱差得多就一口气做半年
+      const price = Math.min(...Object.keys(CF.items).filter(wanted).map((k) => CF.items[k].price).concat(Object.keys(CF.techniques).filter((k) => wanted('tech:' + k)).map((k) => CF.techniques[k].price)));
+      const pay = FX.Act.workPay(s, ov.place.type);
+      const w = (pay && isFinite(price) && (price - ov.stone) / Math.max(1, pay.stone) >= 6 && find((a) => a.type === 'work' && a.days >= 180)) || find((a) => a.type === 'work');
       if (w && rng() < 0.6) return w;
     }
     const qslot = mk && mk.stock.find((x) => x.item === 'qiju' && x.qty > 0);
@@ -136,7 +155,7 @@
     if (me.realm.major >= 2 && !want.length) {
       const rateAt = (p) => { const lim = CF.cultivation.outsiderQi[p.type]; const qi = lim !== undefined && p.factionId && p.factionId !== me.factionId ? Math.min(p.qi, lim) : p.qi; const f = FX.CU.attrFit(s, me, p); return CF.cultivation.qiMult[qi] * (f ? f.value : 1); };
       const cur = rateAt(ov.place);
-      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: W().route(s, here, p.id) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
+      const goal = Object.values(s.places).filter((p) => p.danger <= 1 && rateAt(p) > cur * 1.15).map((p) => ({ p, r: W().route(s, here, p.id, who) })).filter((x) => x.r).sort((a, b) => rateAt(b.p) - rateAt(a.p) || a.r.days - b.r.days)[0];
       if (goal) { const t = find((a) => a.type === 'travel' && a.to === goal.r.path[1]); if (t) return t; }
       const df = find((a) => a.type === 'dongfu');
       if (df && ov.place.danger <= 1 && ov.stone > df.cost * 2) return df;
@@ -146,6 +165,13 @@
     if (rng() < 0.15) return find((a) => a.type === 'explore') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     if (rng() < 0.1) return find((a) => a.type === 'work') || find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
     return find((a) => a.type === 'cultivate' && !a.coin && a.days === 360);
+  };
+
+  // 静养：挑一段大约养得好伤的日子（静养时伤好得快一倍），不一个月一个月地养
+  Dir.restFor = (s, A) => {
+    const left = me(s).health.days;
+    const rs = (A || Act().list(s)).filter((a) => a.ok && a.type === 'rest').sort((a, b) => a.days - b.days);
+    return rs.find((a) => a.days * 2 >= left) || rs[rs.length - 1] || null;
   };
 
   /* ---------- 传闻：近来能插手、还没理会过的 ---------- */
@@ -205,9 +231,11 @@
         const ex = find((a) => a.type === 'explore' && a.days === 30) || find((a) => a.type === 'explore');
         if (ex && s.places[p.locationId].danger <= per.danger + 1) return out({ act: ex }, '在此地走走看看，或有所得。');
       }
-      if (r < (acc += per.roam)) {
-        const ts = A.filter((a) => a.ok && a.type === 'travel' && s.places[a.to].danger <= per.danger);
-        if (ts.length) { const t = ts[Math.floor(rng() * ts.length)]; return out({ act: t }, '久居一地，想去' + s.places[t.to].name + '看看。'); }
+      // 出门走走：在一地住满一年才想走；到了新地方先住一阵、四处看看，不急着回去
+      const d = Dir.state(s);
+      if (r < (acc += per.roam) && (!d.roam || s.t - d.roam.t >= cf.daysPerYear)) {
+        const ts = A.filter((a) => a.ok && a.type === 'travel' && s.places[a.to].danger <= per.danger && a.to !== (d.roam && d.roam.from));
+        if (ts.length) { const t = ts[Math.floor(rng() * ts.length)]; d.roam = { from: p.locationId, to: t.to, t: s.t }; return out({ act: t }, '在' + s.places[p.locationId].name + '住久了，想去' + s.places[t.to].name + '看看。'); }
       }
       if (r < (acc += per.social)) {
         const cs = A.filter((a) => a.ok && (a.type === 'befriend' || a.type === 'consult'));
@@ -218,8 +246,14 @@
         if (w) return out({ act: w }, '手头不宽裕，先挣些符钱。');
       }
     }
-    const a = Dir.diligent(s, rng) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 360) || find((x) => x.type === 'rest') || find((x) => x.type === 'cultivate');
+    let a = Dir.diligent(s, rng) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 360) || Dir.restFor(s, A) || find((x) => x.type === 'cultivate');
     if (!a) return null;
+    // 刚游历到新地方（三个月内）又要赶回去：不缺急用的东西就先在此地看看、住下修炼
+    const rm = Dir.state(s).roam;
+    if (a.type === 'travel' && rm && rm.to === p.locationId && s.t - rm.t < 120 && !stuck && !hurt) {
+      const stay = (rng() < 0.5 && find((x) => x.type === 'explore' && x.days === 30)) || find((x) => x.type === 'cultivate' && !x.coin && x.days === 90) || find((x) => x.type === 'cultivate' && !x.coin);
+      if (stay) return out({ act: stay }, stay.type === 'explore' ? '初到' + s.places[p.locationId].name + '，先四处看看。' : '在' + s.places[p.locationId].name + '住些日子，就地修炼。');
+    }
     return out({ act: a }, whyOf(s, a));
   };
   // 苦修路上的心声（模板；只在换了做法时才记）
@@ -228,16 +262,17 @@
     switch (a.type) {
       case 'breakthrough': return '修为已到关口，成败在此一举。';
       case 'cultivate': return a.coin ? '符钱尚足，以符钱修行快些。' : '闭关修炼，不问外事。';
-      case 'rest': case 'use': return a.item && a.item !== 'heal' ? '服下' + C().items[a.item].name + '。' : '伤还没好，先养伤。';
-      case 'travel': return '动身去' + s.places[a.to].name + '。';
+      case 'rest': case 'use': return a.item && a.item !== 'heal' ? '' : '伤还没好，先养伤。';
+      case 'travel': return ''; // 纪事里已写了去哪，不再重复一句
       case 'join': return '无门无派难有出路，去求入山门。';
       case 'learn': case 'sect_learn': return '换一门更好的功法。';
-      case 'redeem': case 'order': case 'buy': return '冲关缺的东西，得先备齐。';
+      case 'redeem': case 'order': case 'buy': return a.item === 'qiju' ? '中孚丹快用完了，补上几颗。' : '冲关缺的东西，得先备齐。';
       case 'mission': case 'work': return '道功、符钱不够，先去挣。';
       case 'explore': return '出去走走，或有机缘。';
       case 'befriend': return '去拜访' + n(a.npc) + '。';
       case 'diyuan': return '地渊开了，去碰碰运气。';
-      default: return a.label ? a.label + '。' : '';
+      case 'submit': case 'donate': return '把用不上的折成道功，好换冲关要用的东西。';
+      default: return ''; // 纪事里已写了做了什么，不再照抄一遍
     }
   };
 
@@ -253,7 +288,8 @@
     const brave = opts.filter((o) => ['fight', 'deep'].includes(o.id) && (ch(o) === null ? per.bold >= 2 : ch(o) >= line)).sort((a, b) => (ch(b) || 0) - (ch(a) || 0))[0];
     if (brave) return { id: brave.id, label: brave.label, why: ch(brave) !== null ? '胜算不小，拼一拼。' : '富贵险中求。', via: 'local' };
     const safe = opts.find((o) => ['safe', 'pay', 'flee'].includes(o.id)) || opts.filter((o) => !o.irreversible)[0] || opts[0];
-    return { id: safe.id, label: safe.label, why: per.bold >= 1 ? '这回不值得拼命。' : '稳妥为上。', via: 'local' };
+    const risky = opts.some((o) => ['fight', 'deep'].includes(o.id));
+    return { id: safe.id, label: safe.label, why: !risky ? '' : per.bold >= 1 ? '这回不值得拼命。' : '稳妥为上。', via: 'local' };
   };
 
   /* ---------- 什么时候值得问 AI（「要紧时」模式）---------- */
@@ -418,12 +454,15 @@
     let i = 0;
     while (i < notes.length && hnum(notes[i].hid) < first) i++;
     const dn = (r) => ({ kind: 'dir', t: r.t, label: r.label, text: r.out, via: r.via });
+    // 按“一个念头 + 它引出的事”分组：新的组在前，组里念头在前、事情新的在前，读起来先知道为什么、再看结果
+    const groups = [{ head: null, items: [] }];
     for (const e of hs) {
-      while (i < notes.length && hnum(notes[i].hid) <= hnum(e.id)) out.push(dn(notes[i++]));
-      out.push({ kind: 'h', t: e.t, id: e.id, pov: e.pov, text: H().text(e), sev: e.severity });
+      while (i < notes.length && hnum(notes[i].hid) <= hnum(e.id)) groups.push({ head: dn(notes[i++]), items: [] });
+      groups[groups.length - 1].items.push({ kind: 'h', t: e.t, id: e.id, pov: e.pov, text: H().text(e), sev: e.severity });
     }
-    while (i < notes.length) out.push(dn(notes[i++]));
-    return out.reverse();
+    while (i < notes.length) groups.push({ head: dn(notes[i++]), items: [] });
+    for (const g of groups.reverse()) { if (g.head) out.push(g.head); out.push(...g.items.reverse()); }
+    return out;
   };
 
   FX.Dir = Dir;
