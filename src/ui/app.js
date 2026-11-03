@@ -70,11 +70,12 @@
   function afterAction() {
     scheduleSave();
     if (UI.s && UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
-    else if (UI.s && UI.s.pending.length && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
+    else if (UI.s && UI.s.pending.length && !dirOn() && !UI.modals.some((m) => m.type === 'event')) UI.modals.push({ type: 'event' });
     render();
     focusModal();
     aiAfter();
   }
+  const dirOn = () => !!(FX.Director && FX.Director.running && FX.Director.s === UI.s);
   /* ---------- AI：行动以后写一段叙述（不等它；回来了再刷新）---------- */
   // UI.aiMark 记着上回看到的纪事位置；读档、开局时对齐，免得把以前的事都写一遍
   function aiAfter() {
@@ -97,6 +98,7 @@
   async function readSave(text) {
     const r = Game.save.deserialize(text);
     if (!r.ok) { toast('读取失败：' + r.error, 5000); return false; }
+    if (FX.Director) FX.Director.reset();
     UI.s = r.state; UI.modals = []; UI.page = 'now'; UI.aiMark = Game.ai.mark(UI.s);
     afterAction();
     if (G.scrollTo) G.scrollTo(0, 0);
@@ -119,6 +121,7 @@
   // 导航按要办的事分：修行在此刻，买东西都在采买，跑图在地图；纪事、人物、天下大事合成见闻
   const PAGES = [
     { id: 'now', name: '此刻' },
+    { id: 'dir', name: '导演' },
     { id: 'shop', name: '采买' },
     { id: 'map', name: '地图' },
     { id: 'bag', name: '行囊' },
@@ -136,7 +139,7 @@
     root.innerHTML = `
       <div class="app">
         <nav class="side" aria-label="主导航"><div class="brand">家族修仙录</div><div class="sub">${esc(CF.world.region)}</div><div class="sub">${esc(ov.me.name)} · ${esc(ov.date)}</div>${nav}</nav>
-        <main id="main" class="p-${UI.page}"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
+        <main id="main" class="p-${UI.page}"><div class="mtop">${esc(ov.me.name)} · ${esc(ov.date)}${dirOn() ? ' · <button class="link" data-act="page" data-p="dir">导演中</button> <button class="link" data-act="dirStop">接管</button>' : UI.s.pending.length ? ' · <button class="link" data-act="openEvent">有事待决断</button>' : ''}</div>${PAGE[UI.page](ov)}</main>
         <aside class="right" aria-label="最近经历">${renderAside()}</aside>
       </div>
       <nav class="bottom" aria-label="底部导航">${bottom}</nav>
@@ -180,7 +183,9 @@
           <label>性别 <select id="in-sex"><option value="">随机</option><option value="M" ${st.sex === 'M' ? 'selected' : ''}>男</option><option value="F" ${st.sex === 'F' ? 'selected' : ''}>女</option></select></label>
           <label>种子 <input type="text" id="in-seed" value="${esc(st.seed)}" placeholder="随机" style="width:9em"></label>
           <button class="primary" data-act="newGame">踏入仙途</button>
+          <button data-act="newGame" data-dir="1">交给导演（全程 AI）</button>
         </div>
+        <p class="muted">交给导演：主角自己过这一生，按性格与本心修炼、游历、插手传闻、遇事拿主意，你只看；随时可暂停、调速、接管。开了 AI 就由 DeepSeek 替他想，没开就按本地策略走。</p>
         <p class="muted">资质与世界由种子决定。种子相同、选择相同，这一生就逐位相同。修道家族子弟的家族会以你的姓氏命名。</p>
         <p class="muted">世界与设定取自鹓扶君《仙业》的东弥州南域：胎息、练炁、筑基、紫府、洞玄、金丹，玄真派、五光宗、花神府、金谷墟市、地渊。</p>
       </div></div>`;
@@ -868,13 +873,42 @@
       <p class="muted small" style="margin-bottom:0">今天调用 ${use.n}/${c.dailyLimit} 次${use.tokens ? '，约 ' + n0(use.tokens) + ' token' : ''}。最近一次：${esc(AI.statusText())}。生平里可以请 AI 写小传。</p>
       ${rej}</div>`;
   }
+  /* ---------- 导演模式 ---------- */
+  PAGE.dir = (ov) => {
+    const s = UI.s, D = FX.Director, Dir = FX.Dir;
+    if (!D || !Dir) return '<h2>导演</h2><p class="muted">这一版没有导演模式。</p>';
+    const st = Dir.state(s), on = dirOn(), me = ov.me;
+    const chips = (obj, cur, act) => Object.keys(obj).map((k) => `<button class="chip ${k === cur ? 'on primary' : ''}" data-act="${act}" data-k="${k}">${esc(obj[k].name || obj[k])}</button>`).join('');
+    const per = Dir.PERSONAS[st.persona];
+    const tl = Dir.timeline(s, 70);
+    const nr = narrOf();
+    const row = (x) => x.kind === 'dir'
+      ? `<p class="dir-think"><b>${esc(x.label)}</b>${x.text ? ' <i>“' + esc(x.text) + '”</i>' : ''}<span class="src">${x.via === 'ai' ? 'AI' : '本心'}</span></p>`
+      : `${nr[x.id] ? aiNote(nr[x.id]) : ''}<p class="${x.pov ? '' : 'rumor'}"><span class="y">${esc(T.fmt(x.t))}</span>${esc(x.text)}</p>`;
+    const head = `<div class="card dir-head">
+      <div class="dir-who"><b>${esc(me.name)}</b> · ${ov.age} 岁 · ${esc(ov.realm)} · 在${esc(ov.place.name)} · 余寿约 ${n0(ov.left)} 年 · 符钱 ${n0(ov.stone)}${ov.faction ? ' · ' + esc(ov.faction.name) : ''}</div>
+      ${ov.need && isFinite(ov.need) ? bar((me.progress / ov.need) * 100) : ''}
+      <div class="row dir-ctl">${s.ended ? '<button class="primary" data-act="life">看生平</button><button data-act="askNew">另开一生</button>'
+        : on ? '<button class="primary" data-act="dirPause">⏸ 暂停</button><button data-act="dirStop">接管（我来玩）</button>'
+        : '<button class="primary" data-act="dirStart">▶ ' + (tl.some((x) => x.kind === 'dir') ? '继续导演' : '开始导演') + '</button><button data-act="dirOnce" ' + (D.busy ? 'disabled' : '') + '>走一步</button><button data-act="page" data-p="now">自己玩</button>'}</div>
+      <div class="dir-opt"><span class="muted">速度</span><div class="chips c4">${chips(D.SPEEDS, D.speed, 'dirSpeed')}</div></div>
+      <div class="dir-opt"><span class="muted">AI</span><div class="chips c3">${chips(D.MODES, D.aiMode, 'dirMode')}</div></div>
+      <p class="muted small" style="margin:.3em 0 0">${esc(D.aiState())}${D.status ? ' · <b class="warn">' + esc(D.status) + '</b>' : ''}${D.lastAI && D.aiMode !== 'off' ? ' · ' + esc(D.lastAI) : ''}</p>
+    </div>`;
+    const heart = `<div class="card"><h3>本心</h3><div class="chips long">${chips(Dir.PERSONAS, st.persona, 'dirPersona')}</div>
+      <p class="muted small">${esc(per.desc)}。性格：${esc((me.traits || []).join('、') || '平常')}。</p>
+      <div class="row"><input type="text" id="dir-aim" maxlength="60" value="${esc(st.aim)}" placeholder="志向（给 AI 看）：例如 一心想结金丹，不与人结仇"><button data-act="dirAim">定下</button></div></div>`;
+    return `<h2>导演模式</h2>${head}${s.ended ? '' : heart}
+      <div class="card"><h3>这一生</h3><div class="log dir-log">${tl.map(row).join('') || '<p class="muted">还没开始。点「开始导演」，看他自己过这一生。</p>'}</div></div>`;
+  };
+
   PAGE.sys = () => `<h2>存档与设置</h2>
     <div class="card"><div class="row"><button data-act="openSaves">存档管理 / 导入导出</button><button data-act="life">看生平</button><button class="danger" data-act="askNew">另开一生</button></div>
       <p class="muted">每次行动后自动存档。种子：${esc(UI.s.seed)}</p></div>
     <div class="card"><h3>字号</h3><div class="row"><button data-act="font" data-d="-1">小一号</button><button data-act="font" data-d="1">大一号</button></div></div>
     ${aiCard()}
     ${phoneCard()}
-    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：眼下会写纪事叙述、改写眼前的事、写小传；打字说想做什么、事件从世界里长出来、人物各有命运，接下来几步接入。</p>
+    <div class="card"><h3>这一版</h3><p>个人主角版，世界与设定取自《仙业》的东弥州：从南域起步，结成金丹后可遁过万里荒原，去中域、东域、西域、北域与东海。境界从胎息、练炁、筑基、紫府、洞玄、金丹一路到元神、返虚、纯阳、合道，九难过尽成大冶仙人；每过一道大关定一回根底（真炁品秩、道基、紫府异象、先天金汞、金丹品第、元神法相），前面的成色影响后面。拜入宗门与宗门传功，后期的天下大事（地渊开启、撷芳宴、道脉校考、天魔潮、丹元大会、四院大比）、玉宸派/赤明派/怙照宗三家大派、玉宸九殿任职、金丹十三味大药、法器与道术神通、洞府与洞天、仇家都已能玩。怀悟洞主、苗南老祖、君尧、颜熙真君等原著配角也在世上。AI（DeepSeek）可在上面开启：写纪事叙述、改写眼前的事、写小传，理解你打字说的想做什么，写找上门的事与人物近况。「导演」页可以把这一生交给主角自己过：按本心与志向修炼、游历、插手传闻、遇事拿主意，你只看，随时暂停、调速、接管；没开 AI 就按本地策略走。</p>
       <p class="muted">两条原则：不强行制造奇遇，多数日子什么都不发生；不保证你走运，有些努力就是没有回报。</p></div>`;
 
   /* ---------- 模态 ---------- */
@@ -1056,21 +1090,23 @@
       afterAction();
     },
     pickOrigin(d) { UI.start.origin = d.k; render(); },
-    newGame() {
+    newGame(d) {
       UI.start.surname = ($('#in-surname') || {}).value || '';
       UI.start.given = ($('#in-given') || {}).value || '';
       UI.start.sex = ($('#in-sex') || {}).value || '';
       UI.start.seed = ($('#in-seed') || {}).value || '';
       const seed = UI.start.seed || String(Date.now() % 1e9) + '-' + Math.floor(Math.random() * 1e6);
       UI.s = Game.newGame({ origin: UI.start.origin, surname: UI.start.surname, given: UI.start.given, sex: UI.start.sex, seed });
-      UI.page = 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
+      UI.page = d && d.dir ? 'dir' : 'now'; UI.modals = []; UI.aiMark = Game.ai.mark(UI.s);
+      if (FX.Director) FX.Director.reset();
+      if (d && d.dir && FX.Director) FX.Director.start(UI.s);
       afterAction();
       if (G.scrollTo) G.scrollTo(0, 0);
       toast(`${P.player(UI.s).name}踏入仙途（种子 ${seed}）`, 3500);
     },
     async continue() { const t = await loadAuto(); if (t) readSave(t); },
-    newRun() { UI.s = null; UI.modals = []; render(); },
-    askNew() { pushModal({ type: 'confirm', title: '另开一生', text: '当前这一生会留在自动存档里，直到新的一生开始后被覆盖。要继续保留，先存到槽位。', onYes: () => { UI.s = null; UI.modals = []; render(); } }); },
+    newRun() { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); },
+    askNew() { pushModal({ type: 'confirm', title: '另开一生', text: '当前这一生会留在自动存档里，直到新的一生开始后被覆盖。要继续保留，先存到槽位。', onYes: () => { if (FX.Director) FX.Director.reset(); UI.s = null; UI.modals = []; render(); } }); },
     do(d, el) {
       const a = Game.actions(UI.s)[Number(d.i)];
       if (!a) return;
@@ -1128,6 +1164,15 @@
       pushModal({ type: 'intent', title: '插手', input: e ? FX.H.text(e) : '', note: plans.length ? '' : '当事人已不在，插不上手了。', plans });
     },
     aiNpc(d) { FX.AI.npcBio(UI.s, d.id); render(); },
+    // 导演模式
+    dirStart() { UI.modals = UI.modals.filter((m) => m.type !== 'event'); FX.Director.start(UI.s); UI.page = 'dir'; render(); },
+    dirPause() { FX.Director.stop('已暂停'); afterAction(); },
+    dirStop() { FX.Director.stop(''); UI.page = 'now'; afterAction(); toast('你接管了，自己来'); },
+    async dirOnce() { await FX.Director.once(UI.s); afterAction(); },
+    dirSpeed(d) { FX.Director.setSpeed(d.k); render(); },
+    dirMode(d) { FX.Director.setMode(d.k); render(); },
+    dirPersona(d) { FX.Dir.setPersona(UI.s, d.k); scheduleSave(); render(); },
+    dirAim() { FX.Dir.setAim(UI.s, ($('#dir-aim') || {}).value || ''); scheduleSave(); toast('志向定下了'); render(); },
     intentGo(d) {
       const m = UI.modals[UI.modals.length - 1];
       const pl = m && m.plans && m.plans[Number(d.i)];
@@ -1231,9 +1276,20 @@
 
   function applyFont() { document.documentElement.style.setProperty('--fs', Math.round(15 * UI.fontScale) + 'px'); try { localStorage.setItem('family-xiuxian:font', String(UI.fontScale)); } catch (e) { /* 忽略 */ } }
 
+  // 导演跑得快时页面不停重画，按下到抬起之间按钮可能已换掉、点击就丢了：暂停、接管在按下时就办
+  const PRESS = new Set(['dirPause', 'dirStop']);
+  let pressed = 0;
+  document.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest && ev.target.closest('[data-act]');
+    if (!el || !PRESS.has(el.dataset.act) || ev.button) return;
+    ev.preventDefault();
+    pressed = Date.now();
+    ACT[el.dataset.act](el.dataset, el, ev);
+  });
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-act]');
     if (!el || !el.dataset.act) return;
+    if (PRESS.has(el.dataset.act) && Date.now() - pressed < 1000) return;
     const fn = ACT[el.dataset.act];
     if (fn) fn(el.dataset, el, ev);
   });
@@ -1254,6 +1310,7 @@
   });
   G.addEventListener('beforeunload', () => { if (UI.s) FX.Store.putSync('auto', Game.save.serialize(UI.s, Date.now())); });
 
+  let dirDrawn = 0, dirDrawTimer = null;
   async function boot() {
     try { UI.fontScale = Number(localStorage.getItem('family-xiuxian:font')) || 1; } catch (e) { UI.fontScale = 1; }
     try { UI.fold = JSON.parse(localStorage.getItem('family-xiuxian:fold') || '{}') || {}; } catch (e) { UI.fold = {}; }
@@ -1263,6 +1320,21 @@
     UI.hasAuto = !!(await loadAuto());
     if (UI.storeKind === 'none') toast('浏览器不允许本地存储：请用“导出”保存进度', 6000);
     if (FX.PWA) FX.PWA.onchange = () => { if (!UI.modals.length && (!UI.s || UI.page === 'sys')) render(); };
+    if (FX.Director) {
+      // 导演走一步：存档、记叙述、刷新；正在打字时不重画
+      FX.Director.onStep = () => {
+        if (!UI.s || FX.Director.s !== UI.s) return;
+        scheduleSave();
+        if (UI.s.ended && !UI.modals.some((m) => m.type === 'ending')) UI.modals.push({ type: 'ending', blocking: false });
+        aiAfter();
+        const a = document.activeElement;
+        if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+        // 至多每 0.3 秒重画一次，省电，也好点按钮
+        const now = Date.now();
+        if (now - dirDrawn >= 300 || !FX.Director.running) { dirDrawn = now; render(); }
+        else if (!dirDrawTimer) dirDrawTimer = setTimeout(() => { dirDrawTimer = null; dirDrawn = Date.now(); if (UI.s) render(); }, 300 - (now - dirDrawn));
+      };
+    }
     if (FX.AI) FX.AI.onUpdate = () => {
       if (UI.s) scheduleSave();
       const a = document.activeElement;

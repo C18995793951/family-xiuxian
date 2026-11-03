@@ -13,6 +13,7 @@
     "test:ai": "node test/ai-tests.js",
     "test:intent": "node test/intent-tests.js",
     "test:hooks": "node test/hook-tests.js",
-    "test:npc": "node test/npc-tests.js"
+    "test:npc": "node test/npc-tests.js",
+    "test:director": "node test/director-tests.js"
   }
 }

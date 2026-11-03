@@ -113,7 +113,7 @@ nav.bottom { display: none; }
   .app, .app.no-aside { display: block; }
   nav.side { display: none; }
   main { padding: .8em 16px calc(6em + env(safe-area-inset-bottom, 0px)); }
-  nav.bottom { display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+  nav.bottom { display: grid; grid-template-columns: repeat(8, 1fr); position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--line); z-index: 40; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   nav.bottom button { border: none; border-radius: 0; background: transparent; min-height: 52px; padding: .2em; font-size: .85em; }
   nav.bottom button.on { color: var(--accent); background: var(--panel-2); }
   .more-menu { position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); right: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; z-index: 45; padding: .4em; }
@@ -259,3 +259,14 @@ button.wide { width: 100%; margin-bottom: .6em; }
 .say-quote { font-size: 1.05em; margin: .2em 0 .5em; }
 .intent-plan { margin: .4em 0; }
 .intent-steps > div { margin: .3em 0; }
+
+/* 导演模式 */
+.dir-head .dir-who { margin-bottom: .4em; line-height: 1.6; }
+.dir-opt { display: grid; grid-template-columns: 2.6em 1fr; align-items: center; gap: .5em; margin: .35em 0; }
+.dir-opt .chips.c4 { grid-template-columns: repeat(4, 1fr); }
+.dir-opt .chips.c3 { grid-template-columns: repeat(3, 1fr); }
+.dir-ctl { margin: .5em 0; }
+.chips .chip.on { font-weight: bold; }
+.dir-log p.dir-think { margin: .5em 0 .2em; color: var(--accent); }
+.dir-log p.dir-think i { color: var(--text); font-style: normal; }
+.dir-log p.dir-think .src { color: var(--muted); font-size: .8em; margin-left: .4em; }
